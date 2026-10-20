@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Modo Claro */
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --primary: 346.8 77.2% 49.8%; /* #e11d48 Rojo BarCamp */
+    --primary-foreground: 355.7 100% 97.3%;
+    --primary-hover: 343.4 79.7% 41.2%; /* #be123c */
+    --secondary: 343 82% 31%; /* #881337 Burdeos */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 346.8 77.2% 49.8%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Modo Oscuro BarCamp 2026 */
+    --background: 240 10% 3.9%; /* #09090b Negro profundo */
+    --foreground: 0 0% 98%;     /* #fafafa */
+    --card: 240 10% 6.5%;       /* #121215 Superficie de tarjeta */
+    --card-foreground: 0 0% 98%;
+    --primary: 346.8 77.2% 49.8%; /* #e11d48 */
+    --primary-foreground: 355.7 100% 97.3%;
+    --primary-hover: 343.4 79.7% 41.2%;
+    --secondary: 343 82% 31%; /* #881337 */
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;    /* #27272a */
+    --muted-foreground: 240 5% 64.9%; /* #a1a1aa */
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;    /* #27272a Borde sutil */
+    --input: 240 3.7% 15.9%;
+    --ring: 346.8 77.2% 49.8%;
+  }
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Scrollbar moderna y discreta */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}

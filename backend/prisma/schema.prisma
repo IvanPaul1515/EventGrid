@@ -1,0 +1,363 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum EventStatus {
+  PLANNING
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum RegistrationSource {
+  EXCEL_IMPORT
+  MANUAL
+  ONSITE_SALE
+}
+
+enum RegistrationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  ATTENDED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  IMPORT
+  EXPORT
+  CLONE_EDITION
+  LOGIN
+  PAYMENT_RECEIVED
+  REGISTRATION_CANCELLED
+  REGISTRATION_REACTIVATED
+  COURTESY_ASSIGNED
+}
+
+enum AuditEntity {
+  PARTICIPANT
+  REGISTRATION
+  EVENT
+  EVENT_SETTINGS
+  USER
+  IMPORT_BATCH
+  TICKET_TYPE
+  PAYMENT
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String
+  fullName     String
+  role         Role          @default(OPERATOR)
+  isActive     Boolean       @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  importBatches         ImportBatch[]
+  auditLogs             AuditLog[]
+  attendedRegistrations Registration[]  @relation("AttendanceRegistrar")
+  grantedCourtesies     Registration[]  @relation("CourtesyGranter")
+  receivedPayments      Payment[]       @relation("PaymentReceiver")
+  attendanceLogs        AttendanceLog[]
+
+  @@map("users")
+}
+
+model Event {
+  id          String      @id @default(uuid())
+  slug        String      @unique
+  name        String
+  year        Int
+  startDate   DateTime
+  endDate     DateTime
+  venue       String      @default("PUCMM, Santiago de los Caballeros, RD")
+  description String?
+  status      EventStatus @default(PLANNING)
+  isDefault   Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  settings               EventSettings?
+  registrations          Registration[]
+  ticketTypes            TicketType[]
+  paymentMethods         PaymentMethod[]
+  salesResponsibles      SalesResponsible[]
+  customFieldDefinitions CustomFieldDefinition[]
+  importBatches          ImportBatch[]
+
+  @@index([year])
+  @@index([status])
+  @@map("events")
+}
+
+model EventSettings {
+  id                 String   @id @default(uuid())
+  eventId            String   @unique
+  primaryColor       String   @default("#e11d48") // Rojo BarCamp intenso
+  secondaryColor     String   @default("#881337") // Tono burdeos
+  backgroundColor    String   @default("#09090b") // Fondo negro profundo
+  themeMode          String   @default("dark")    // dark | light | system
+  currencyCode       String   @default("DOP")
+  currencySymbol     String   @default("RD$")
+  logoUrl            String?
+  coverImageUrl      String?
+  subtitle           String   @default("Tecnología, Innovación y Comunidad")
+  registrationPrefix String   @default("BC-")
+  customCss          Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("event_settings")
+}
+
+model Participant {
+  id             String         @id @default(uuid())
+  documentId     String?        // Cédula o pasaporte (opcional para extranjeros o menores, pero único si presente)
+  firstName      String
+  lastName       String
+  fullName       String         // Calculado de firstName + " " + lastName
+  email          String         // Correo electrónico
+  phone          String?
+  alternatePhone String?
+  institution    String?        // Institución académica o empresa
+  isDemo         Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  registrations  Registration[]
+
+  @@index([email])
+  @@index([documentId])
+  @@index([fullName])
+  @@map("participants")
+}
+
+model Registration {
+  id                   String             @id @default(uuid())
+  eventId              String
+  participantId        String
+  registrationNumber   String             // e.g. "BC26-0001" o número histórico
+  source               RegistrationSource @default(MANUAL)
+  importBatchId        String?
+  ticketTypeId         String?
+  paymentMethodId      String?
+  ticketPrice          Decimal            @default(0.0) @db.Decimal(10, 2)
+  amountPaid           Decimal            @default(0.0) @db.Decimal(10, 2)
+  balanceDue           Decimal            @default(0.0) @db.Decimal(10, 2)
+  totalAmount          Decimal            @default(0.0) @db.Decimal(10, 2) // En sync con amountPaid
+  isVerified           Boolean            @default(false)
+  isCourtesy           Boolean            @default(false)
+  courtesyAuthorizedBy String?
+  courtesyReason       String?
+  courtesyDate         DateTime?
+  courtesyUserId       String?
+  isDemo               Boolean            @default(false)
+  salesResponsibleId   String?
+  saleTimestamp        DateTime           @default(now())
+  status               RegistrationStatus @default(PENDING) // Estado de confirmación independiente
+  attended             Boolean            @default(false)   // Control de asistencia física (Check-in)
+  attendedAt           DateTime?
+  attendedByUserId     String?
+  customFields         Json?              // Campos dinámicos del Excel
+  notes                String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  event            Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participant      Participant       @relation(fields: [participantId], references: [id], onDelete: Restrict)
+  ticketType       TicketType?       @relation(fields: [ticketTypeId], references: [id], onDelete: SetNull)
+  paymentMethod    PaymentMethod?    @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  salesResponsible SalesResponsible? @relation(fields: [salesResponsibleId], references: [id], onDelete: SetNull)
+  importBatch      ImportBatch?      @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  attendedByUser   User?             @relation("AttendanceRegistrar", fields: [attendedByUserId], references: [id], onDelete: SetNull)
+  courtesyUser     User?             @relation("CourtesyGranter", fields: [courtesyUserId], references: [id], onDelete: SetNull)
+  attendanceLogs   AttendanceLog[]
+  payments         Payment[]
+
+  @@unique([eventId, registrationNumber])
+  @@unique([eventId, participantId]) // Un participante no se inscribe dos veces en la misma edición
+  @@index([eventId, status])
+  @@index([eventId, attended])
+  @@index([eventId, ticketTypeId])
+  @@index([eventId, paymentMethodId])
+  @@index([eventId, salesResponsibleId])
+  @@index([eventId, isDemo])
+  @@map("registrations")
+}
+
+model TicketType {
+  id          String   @id @default(uuid())
+  eventId     String
+  name        String   // Preventa, Entrada General, Cortesía, etc.
+  price       Decimal  @default(0.0) @db.Decimal(10, 2)
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  registrations Registration[]
+
+  @@unique([eventId, name])
+  @@map("ticket_types")
+}
+
+model PaymentMethod {
+  id        String   @id @default(uuid())
+  eventId   String
+  name      String   // Efectivo, Tarjeta, Transferencia, Cortesía, etc.
+  code      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  registrations Registration[]
+  payments      Payment[]
+
+  @@unique([eventId, name])
+  @@map("payment_methods")
+}
+
+model Payment {
+  id               String   @id @default(uuid())
+  registrationId   String
+  amount           Decimal  @db.Decimal(10, 2)
+  paymentMethodId  String?
+  notes            String?
+  receivedByUserId String?
+  createdAt        DateTime @default(now())
+
+  registration   Registration   @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  paymentMethod  PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  receivedByUser User?          @relation("PaymentReceiver", fields: [receivedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([registrationId])
+  @@map("payments")
+}
+
+model SalesResponsible {
+  id        String   @id @default(uuid())
+  eventId   String
+  name      String
+  email     String?
+  role      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  registrations Registration[]
+
+  @@unique([eventId, name])
+  @@map("sales_responsibles")
+}
+
+model CustomFieldDefinition {
+  id        String   @id @default(uuid())
+  eventId   String
+  key       String   // e.g. "talla_camiseta", "empresa", "alergias"
+  label     String
+  fieldType String   @default("string") // string, number, boolean, select
+  options   Json?    // Opciones para selects
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, key])
+  @@map("custom_field_definitions")
+}
+
+model ImportBatch {
+  id               String   @id @default(uuid())
+  eventId          String
+  importedByUserId String
+  fileName         String
+  fileSize         Int
+  totalRows        Int
+  validRows        Int
+  importedRows     Int
+  updatedRows      Int      @default(0)
+  skippedRows      Int      @default(0)
+  errorRows        Int      @default(0)
+  mappingConfig    Json
+  createdAt        DateTime @default(now())
+
+  event          Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  importedByUser User           @relation(fields: [importedByUserId], references: [id], onDelete: Restrict)
+  registrations  Registration[]
+  errors         ImportError[]
+
+  @@index([eventId])
+  @@map("import_batches")
+}
+
+model ImportError {
+  id            String   @id @default(uuid())
+  importBatchId String
+  rowNumber     Int
+  fieldName     String?
+  errorMessage  String
+  rawRowData    Json?
+  createdAt     DateTime @default(now())
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@index([importBatchId])
+  @@map("import_errors")
+}
+
+model AuditLog {
+  id        String      @id @default(uuid())
+  userId    String?
+  action    AuditAction
+  entity    AuditEntity
+  entityId  String?
+  changes   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model AttendanceLog {
+  id             String       @id @default(uuid())
+  registrationId String
+  userId         String?
+  action         String       // "CHECK_IN" | "REVERT"
+  reason         String?      // Razón en caso de reversión administrativa
+  timestamp      DateTime     @default(now())
+
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([registrationId])
+  @@index([timestamp])
+  @@map("attendance_logs")
+}

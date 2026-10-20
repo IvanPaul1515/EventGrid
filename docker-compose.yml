@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: barcamp_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-barcamp_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-barcamp_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-barcamp_rd}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - barcamp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-barcamp_admin} -d ${POSTGRES_DB:-barcamp_rd}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: barcamp_backend
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      API_PREFIX: /api/v1
+      DATABASE_URL: postgresql://${POSTGRES_USER:-barcamp_admin}:${POSTGRES_PASSWORD:-barcamp_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-barcamp_rd}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-barcamp_rd_super_secret_jwt_key_change_in_production_2026_xyz}
+      JWT_EXPIRES_IN: 7d
+      CORS_ORIGIN: http://localhost:3000,http://localhost:5173
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: barcamp_frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  barcamp_pgdata:

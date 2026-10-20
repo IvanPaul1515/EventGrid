@@ -1,0 +1,311 @@
+import { prisma } from '../../config/db.js';
+import { BadRequestError, NotFoundError } from '../../utils/errors.js';
+import * as XLSX from 'xlsx';
+import { SearchAttendanceQuery } from './attendance.dto.js';
+
+export class AttendanceService {
+  /**
+   * Obtiene los contadores de asistencia en tiempo real para la edición activa
+   */
+  static async getCounters(eventId: string) {
+    const [totalRegistrations, attendedCount] = await Promise.all([
+      prisma.registration.count({ where: { eventId } }),
+      prisma.registration.count({ where: { eventId, attended: true } }),
+    ]);
+
+    const pendingCount = totalRegistrations - attendedCount;
+
+    return {
+      totalRegistrations,
+      attendedCount,
+      pendingCount,
+    };
+  }
+
+  /**
+   * Búsqueda rápida universal de participantes y listado de asistencia
+   */
+  static async searchAndList(eventId: string, query: SearchAttendanceQuery) {
+    const { search, status = 'ALL', page = 1, limit = 25 } = query;
+    const skip = (page - 1) * limit;
+
+    const where: any = { eventId };
+
+    // Filtro por estado de asistencia
+    if (status === 'ATTENDED') {
+      where.attended = true;
+    } else if (status === 'PENDING') {
+      where.attended = false;
+    }
+
+    // Búsqueda rápida multi-campo
+    if (search && search.trim()) {
+      const term = search.trim();
+      where.OR = [
+        { registrationNumber: { contains: term } },
+        { participant: { firstName: { contains: term } } },
+        { participant: { lastName: { contains: term } } },
+        { participant: { fullName: { contains: term } } },
+        { participant: { email: { contains: term } } },
+        { participant: { documentId: { contains: term } } },
+        { participant: { phone: { contains: term } } },
+        { participant: { alternatePhone: { contains: term } } },
+        { participant: { institution: { contains: term } } },
+      ];
+    }
+
+    const [total, data, counters] = await Promise.all([
+      prisma.registration.count({ where }),
+      prisma.registration.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: [
+          // Primero los que acaban de llegar (si están asistidos), luego por fecha de inscripción
+          { attendedAt: 'desc' },
+          { createdAt: 'desc' },
+        ],
+        include: {
+          participant: true,
+          ticketType: true,
+          paymentMethod: { select: { id: true, name: true } },
+          attendedByUser: { select: { id: true, fullName: true, email: true } },
+        },
+      }),
+      this.getCounters(eventId),
+    ]);
+
+    return {
+      data,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+      counters,
+    };
+  }
+
+  /**
+   * Registrar asistencia física (Check-in)
+   */
+  static async checkIn(eventId: string, registrationId: string, operatorUserId: string) {
+    // Buscar la inscripción en la edición activa
+    const registration = await prisma.registration.findFirst({
+      where: {
+        id: registrationId,
+        eventId,
+      },
+      include: {
+        participant: true,
+        attendedByUser: { select: { id: true, fullName: true, email: true } },
+      },
+    });
+
+    if (!registration) {
+      throw new NotFoundError('Inscripción no encontrada en la edición activa de BarCamp RD');
+    }
+
+    // Prevención estricta contra registros duplicados
+    if (registration.attended) {
+      const arrivedTime = registration.attendedAt
+        ? new Date(registration.attendedAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : 'hora desconocida';
+      const registrar = registration.attendedByUser?.fullName || 'otro operador';
+
+      throw new BadRequestError(
+        `ASISTENCIA YA REGISTRADA: ${registration.participant.fullName} ya ingresó al evento a las ${arrivedTime} (Registrado por: ${registrar}).`
+      );
+    }
+
+    const now = new Date();
+
+    // Actualización atómica en la base de datos
+    const [updatedRegistration] = await prisma.$transaction([
+      prisma.registration.update({
+        where: { id: registrationId },
+        data: {
+          attended: true,
+          attendedAt: now,
+          attendedByUserId: operatorUserId,
+          status: 'ATTENDED',
+        },
+        include: {
+          participant: true,
+          paymentMethod: { select: { id: true, name: true } },
+          attendedByUser: { select: { id: true, fullName: true, email: true } },
+        },
+      }),
+      prisma.attendanceLog.create({
+        data: {
+          registrationId,
+          userId: operatorUserId,
+          action: 'CHECK_IN',
+          timestamp: now,
+        },
+      }),
+      prisma.auditLog.create({
+        data: {
+          userId: operatorUserId,
+          action: 'UPDATE' as any,
+          entity: 'REGISTRATION' as any,
+          entityId: registrationId,
+          changes: JSON.stringify({
+            action: 'CHECK_IN',
+            participantName: registration.participant.fullName,
+            ticket: registration.registrationNumber,
+            attendedAt: now.toISOString(),
+          }) as any,
+        },
+      }),
+    ]);
+
+    const counters = await this.getCounters(eventId);
+
+    return {
+      registration: updatedRegistration,
+      counters,
+      message: `¡Bienvenido(a), ${registration.participant.fullName}! Asistencia confirmada exitosamente.`,
+    };
+  }
+
+  /**
+   * Reversión administrativa de asistencia (Solo ADMIN)
+   */
+  static async revertAttendance(eventId: string, registrationId: string, adminUserId: string, reason: string) {
+    if (!reason || !reason.trim()) {
+      throw new BadRequestError('Debe especificar un motivo justificado para revertir la asistencia');
+    }
+
+    const registration = await prisma.registration.findFirst({
+      where: {
+        id: registrationId,
+        eventId,
+      },
+      include: {
+        participant: true,
+        attendedByUser: { select: { id: true, fullName: true } },
+      },
+    });
+
+    if (!registration) {
+      throw new NotFoundError('Inscripción no encontrada en la edición activa');
+    }
+
+    if (!registration.attended) {
+      throw new BadRequestError('El participante no tiene una asistencia registrada para revertir');
+    }
+
+    const now = new Date();
+
+    const [updatedRegistration] = await prisma.$transaction([
+      prisma.registration.update({
+        where: { id: registrationId },
+        data: {
+          attended: false,
+          attendedAt: null,
+          attendedByUserId: null,
+          status: 'CONFIRMED',
+        },
+        include: {
+          participant: true,
+          paymentMethod: { select: { id: true, name: true } },
+          attendedByUser: true,
+        },
+      }),
+      prisma.attendanceLog.create({
+        data: {
+          registrationId,
+          userId: adminUserId,
+          action: 'REVERT',
+          reason: reason.trim(),
+          timestamp: now,
+        },
+      }),
+      prisma.auditLog.create({
+        data: {
+          userId: adminUserId,
+          action: 'UPDATE' as any,
+          entity: 'REGISTRATION' as any,
+          entityId: registrationId,
+          changes: JSON.stringify({
+            action: 'CHECK_IN_REVERT',
+            reason: reason.trim(),
+            revertedAt: now.toISOString(),
+            previousAttendedAt: registration.attendedAt?.toISOString() || null,
+            previousAttendedBy: registration.attendedByUser?.fullName || null,
+          }) as any,
+        },
+      }),
+    ]);
+
+    const counters = await this.getCounters(eventId);
+
+    return {
+      registration: updatedRegistration,
+      counters,
+      message: `Asistencia de ${registration.participant.fullName} revertida correctamente.`,
+    };
+  }
+
+  /**
+   * Exportar lista de asistencia a archivo Excel (.xlsx)
+   */
+  static async exportAttendance(eventId: string, status?: string, search?: string) {
+    const where: any = { eventId };
+
+    if (status === 'ATTENDED') where.attended = true;
+    else if (status === 'PENDING') where.attended = false;
+
+    if (search && search.trim()) {
+      const term = search.trim();
+      where.OR = [
+        { registrationNumber: { contains: term } },
+        { participant: { firstName: { contains: term } } },
+        { participant: { lastName: { contains: term } } },
+        { participant: { fullName: { contains: term } } },
+        { participant: { email: { contains: term } } },
+        { participant: { documentId: { contains: term } } },
+      ];
+    }
+
+    const registrations = await prisma.registration.findMany({
+      where,
+      orderBy: [
+        { attended: 'desc' },
+        { attendedAt: 'desc' },
+        { registrationNumber: 'asc' },
+      ],
+      include: {
+        participant: true,
+        paymentMethod: true,
+        attendedByUser: { select: { fullName: true } },
+      },
+    });
+
+    const exportRows = registrations.map((r) => ({
+      'No. Registro': r.registrationNumber,
+      'Nombres y Apellidos': r.participant.fullName,
+      'Cédula / Documento': r.participant.documentId || 'No indicado',
+      'Correo Electrónico': r.participant.email,
+      'Teléfono': r.participant.phone || '',
+      'Tel. Alterno': r.participant.alternatePhone || '',
+      'Forma de Pago': r.paymentMethod?.name || 'No registrada',
+      'Es Cortesía': r.isCourtesy ? 'Sí (RD$ 0.00)' : 'No',
+      'Estado Asistencia': r.attended ? 'Asistió' : 'No ha llegado',
+      'Fecha y Hora de Entrada': r.attendedAt
+        ? new Date(r.attendedAt).toLocaleString('es-DO')
+        : 'Pendiente',
+      'Operador de Entrada': r.attendedByUser?.fullName || (r.attended ? 'Sistema' : '—'),
+      'Es Demo': r.isDemo ? 'Sí' : 'No',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Asistencia BarCamp');
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    return buffer;
+  }
+}

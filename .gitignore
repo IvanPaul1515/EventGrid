@@ -1,0 +1,72 @@
+# ===================================================
+# EventGrid — Git Ignore Configuration
+# ===================================================
+
+# Dependencies
+node_modules/
+*/node_modules/
+.pnp
+.pnp.js
+
+# Environment files and credentials (CRITICAL: Never commit secrets)
+.env
+.env.*
+!.env.example
+*.local
+
+# Production builds & compiled outputs
+dist/
+*/dist/
+build/
+*/build/
+out/
+
+# Local databases and SQLite engine files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-journal
+*.sqlite3
+dev.db
+backend/prisma/dev.db
+backend/dev.db
+backend/prisma/*.db
+backend/prisma/*.db-journal
+
+# Prisma generated client
+.prisma/
+
+# Logs and debug output
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing & Coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# OS metadata & Editor configurations
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Caches and temporary folders
+tmp/
+temp/
+.temp/
+.cache/
+.vite/
+.eslintcache
+.gemini/
