@@ -3,8 +3,8 @@ import { prisma } from '../config/db.js';
 
 export interface AuditParams {
   req: Request;
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'IMPORT' | 'EXPORT' | 'CLONE_EDITION' | 'LOGIN';
-  entity: 'PARTICIPANT' | 'REGISTRATION' | 'EVENT' | 'EVENT_SETTINGS' | 'USER' | 'IMPORT_BATCH';
+  action: string;
+  entity: string;
   entityId?: string;
   changes?: Record<string, any>;
 }

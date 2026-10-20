@@ -1,5 +1,5 @@
 import { api } from './api';
-import { Registration } from '../types';
+import { Registration, DailySalesSummary } from '../types';
 
 export interface AttendanceCounters {
   totalRegistrations: number;
@@ -84,5 +84,10 @@ export const attendanceService = {
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
+  },
+
+  async getDailySales(date?: string): Promise<DailySalesSummary> {
+    const res = await api.get('/attendance/daily-sales', { params: { date } });
+    return res.data.data;
   },
 };

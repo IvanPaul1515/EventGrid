@@ -107,6 +107,10 @@ export class AttendanceService {
       throw new NotFoundError('Inscripción no encontrada en la edición activa de BarCamp RD');
     }
 
+    if (registration.status === 'CANCELLED') {
+      throw new BadRequestError('No se puede registrar asistencia de una inscripción cancelada.');
+    }
+
     // Prevención estricta contra registros duplicados
     if (registration.attended) {
       const arrivedTime = registration.attendedAt
@@ -121,7 +125,9 @@ export class AttendanceService {
 
     const now = new Date();
 
-    // Actualización atómica en la base de datos
+    // Actualización atómica en la base de datos (Separación de estados: status permanece CONFIRMED/PENDING, attended = true)
+    const newStatus = registration.status === 'PENDING' ? 'CONFIRMED' : registration.status;
+
     const [updatedRegistration] = await prisma.$transaction([
       prisma.registration.update({
         where: { id: registrationId },
@@ -129,7 +135,8 @@ export class AttendanceService {
           attended: true,
           attendedAt: now,
           attendedByUserId: operatorUserId,
-          status: 'ATTENDED',
+          status: newStatus,
+          updatedByUserId: operatorUserId,
         },
         include: {
           participant: true,
@@ -206,7 +213,7 @@ export class AttendanceService {
           attended: false,
           attendedAt: null,
           attendedByUserId: null,
-          status: 'CONFIRMED',
+          updatedByUserId: adminUserId,
         },
         include: {
           participant: true,
@@ -307,5 +314,85 @@ export class AttendanceService {
 
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     return buffer;
+  }
+
+  /**
+   * Resumen diario de ventas presenciales y cobros en recepción
+   */
+  static async getDailySales(eventId: string, targetDate?: string) {
+    const baseDate = targetDate ? new Date(targetDate) : new Date();
+    const startOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 0, 0, 0);
+    const endOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 23, 59, 59, 999);
+
+    const [paymentsToday, registrationsToday] = await Promise.all([
+      prisma.payment.findMany({
+        where: {
+          registration: { eventId },
+          createdAt: {
+            gte: startOfDay,
+            lte: endOfDay,
+          },
+        },
+        include: {
+          paymentMethod: true,
+          receivedByUser: { select: { id: true, fullName: true, email: true } },
+          registration: {
+            include: {
+              participant: true,
+              ticketType: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.registration.findMany({
+        where: {
+          eventId,
+          createdAt: {
+            gte: startOfDay,
+            lte: endOfDay,
+          },
+        },
+        include: {
+          participant: true,
+          ticketType: true,
+          paymentMethod: true,
+        },
+      }),
+    ]);
+
+    let totalAmount = 0;
+    const byMethod: Record<string, { count: number; total: number }> = {};
+
+    for (const p of paymentsToday) {
+      const amount = Number(p.amount);
+      totalAmount += amount;
+      const methodName = p.paymentMethod?.name || 'Efectivo';
+      if (!byMethod[methodName]) {
+        byMethod[methodName] = { count: 0, total: 0 };
+      }
+      byMethod[methodName].count++;
+      byMethod[methodName].total += amount;
+    }
+
+    const onsiteSalesCount = registrationsToday.filter((r) => r.source === 'ONSITE_SALE').length;
+
+    return {
+      date: startOfDay.toISOString().slice(0, 10),
+      totalSalesCount: registrationsToday.length,
+      onsiteSalesCount,
+      totalPaymentsCount: paymentsToday.length,
+      totalAmount,
+      byMethod,
+      recentPayments: paymentsToday.slice(0, 10).map((p) => ({
+        id: p.id,
+        amount: Number(p.amount),
+        method: p.paymentMethod?.name || 'Efectivo',
+        participantName: p.registration.participant.fullName,
+        ticket: p.registration.registrationNumber,
+        time: p.createdAt,
+        operator: p.receivedByUser?.fullName || 'Sistema',
+      })),
+    };
   }
 }

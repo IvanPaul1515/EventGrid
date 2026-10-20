@@ -5,6 +5,9 @@ import {
   UpdateEventSchema,
   UpdateEventSettingsSchema,
   CloneEventSchema,
+  CreateTicketTypeSchema,
+  UpdateTicketTypeSchema,
+  UploadLogoSchema,
 } from './events.dto.js';
 import { recordAuditLog } from '../../middleware/audit.js';
 
@@ -131,7 +134,8 @@ export class EventsController {
 
   static async getTicketTypes(req: Request, res: Response, next: NextFunction) {
     try {
-      const ticketTypes = await EventsService.getTicketTypes(req.params.id);
+      const includeInactive = req.query.includeInactive === 'true';
+      const ticketTypes = await EventsService.getTicketTypes(req.params.id, includeInactive);
       return res.status(200).json({
         status: 'success',
         data: ticketTypes,
@@ -143,12 +147,17 @@ export class EventsController {
 
   static async createTicketType(req: Request, res: Response, next: NextFunction) {
     try {
-      const { name, price, description } = req.body;
-      const created = await EventsService.createTicketType(req.params.id, {
-        name,
-        price: Number(price),
-        description,
+      const validated = CreateTicketTypeSchema.parse(req.body);
+      const created = await EventsService.createTicketType(req.params.id, validated);
+
+      await recordAuditLog({
+        req,
+        action: 'CREATE',
+        entity: 'TICKET_TYPE',
+        entityId: created.id,
+        changes: validated,
       });
+
       return res.status(201).json({
         status: 'success',
         message: 'Tipo de entrada creado exitosamente',
@@ -161,17 +170,66 @@ export class EventsController {
 
   static async updateTicketType(req: Request, res: Response, next: NextFunction) {
     try {
-      const { name, price, description, isActive } = req.body;
-      const updated = await EventsService.updateTicketType(req.params.id, req.params.ticketTypeId, {
-        name,
-        price: price !== undefined ? Number(price) : undefined,
-        description,
-        isActive,
+      const validated = UpdateTicketTypeSchema.parse(req.body);
+      const updated = await EventsService.updateTicketType(req.params.id, req.params.ticketTypeId, validated);
+
+      await recordAuditLog({
+        req,
+        action: 'UPDATE',
+        entity: 'TICKET_TYPE',
+        entityId: updated.id,
+        changes: validated,
       });
+
       return res.status(200).json({
         status: 'success',
         message: 'Tipo de entrada actualizado exitosamente',
         data: updated,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async uploadLogo(req: Request, res: Response, next: NextFunction) {
+    try {
+      const validated = UploadLogoSchema.parse(req.body);
+      const result = await EventsService.uploadLogo(req.params.id, validated);
+
+      await recordAuditLog({
+        req,
+        action: 'UPDATE',
+        entity: 'EVENT_SETTINGS',
+        entityId: result.settings.id,
+        changes: { logoUrl: result.logoUrl },
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Logotipo actualizado exitosamente',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async removeLogo(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await EventsService.removeLogo(req.params.id);
+
+      await recordAuditLog({
+        req,
+        action: 'UPDATE',
+        entity: 'EVENT_SETTINGS',
+        entityId: result.settings.id,
+        changes: { logoUrl: null },
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Logotipo eliminado exitosamente',
+        data: result,
       });
     } catch (error) {
       next(error);

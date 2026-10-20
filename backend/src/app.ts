@@ -2,7 +2,13 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { ENV } from './config/env.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.resolve(__dirname, '../uploads');
 import { errorHandler } from './middleware/errorHandler.js';
 import { checkDatabaseConnection } from './config/db.js';
 import authRoutes from './modules/auth/auth.routes.js';
@@ -10,6 +16,7 @@ import eventsRoutes from './modules/events/events.routes.js';
 import participantsRoutes from './modules/participants/participants.routes.js';
 import importRoutes from './modules/import/import.routes.js';
 import attendanceRoutes from './modules/attendance/attendance.routes.js';
+import activityRoutes from './modules/activity/activity.routes.js';
 
 export const app = express();
 
@@ -34,6 +41,9 @@ app.use(
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser(ENV.COOKIE_SECRET));
+
+// Archivos estáticos públicos (Logos subidos de eventos y ediciones)
+app.use('/uploads', express.static(uploadsDir));
 
 // Endpoint de salud y diagnóstico
 app.get(`${ENV.API_PREFIX}/health`, async (req, res) => {
@@ -61,6 +71,7 @@ app.use(`${ENV.API_PREFIX}/events/:eventId/import`, importRoutes);
 app.use(`${ENV.API_PREFIX}/import`, importRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/attendance`, attendanceRoutes);
 app.use(`${ENV.API_PREFIX}/attendance`, attendanceRoutes);
+app.use(`${ENV.API_PREFIX}/activity`, activityRoutes);
 
 // Manejo central de errores
 app.use(errorHandler);

@@ -19,6 +19,58 @@ export function requireRole(allowedRoles: Array<'ADMIN' | 'OPERATOR' | 'VIEWER'>
   };
 }
 
+export type Permission =
+  | 'COURTESY_AUTHORIZE'
+  | 'PRICE_MODIFY'
+  | 'REGISTRATION_CANCEL'
+  | 'REGISTRATION_REACTIVATE'
+  | 'ATTENDANCE_REVERT'
+  | 'FINANCIAL_ADJUST'
+  | 'PARTICIPANTS_EXPORT'
+  | 'SETTINGS_MANAGE';
+
+export const ROLE_PERMISSIONS: Record<'ADMIN' | 'OPERATOR' | 'VIEWER', Permission[]> = {
+  ADMIN: [
+    'COURTESY_AUTHORIZE',
+    'PRICE_MODIFY',
+    'REGISTRATION_CANCEL',
+    'REGISTRATION_REACTIVATE',
+    'ATTENDANCE_REVERT',
+    'FINANCIAL_ADJUST',
+    'PARTICIPANTS_EXPORT',
+    'SETTINGS_MANAGE',
+  ],
+  OPERATOR: [
+    'REGISTRATION_CANCEL',
+    'PARTICIPANTS_EXPORT',
+  ],
+  VIEWER: [
+    'PARTICIPANTS_EXPORT',
+  ],
+};
+
+export function hasPermission(role: 'ADMIN' | 'OPERATOR' | 'VIEWER', permission: Permission): boolean {
+  return ROLE_PERMISSIONS[role]?.includes(permission) ?? false;
+}
+
+export function requirePermission(permission: Permission) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(new UnauthorizedError('Usuario no autenticado'));
+    }
+
+    if (!hasPermission(req.user.role, permission)) {
+      return next(
+        new ForbiddenError(
+          `Acceso denegado. Permiso insuficiente: se requiere ${permission}`
+        )
+      );
+    }
+
+    next();
+  };
+}
+
 export const requireAdmin = requireRole(['ADMIN']);
 export const requireOperatorOrAdmin = requireRole(['ADMIN', 'OPERATOR']);
 export const requireAnyRole = requireRole(['ADMIN', 'OPERATOR', 'VIEWER']);

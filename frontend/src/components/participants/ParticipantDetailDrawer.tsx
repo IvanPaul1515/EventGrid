@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DetailedRegistration, participantsService } from '../../services/participants.service';
 import { attendanceService } from '../../services/attendance.service';
 import { useAuth } from '../../context/AuthContext';
-import { PaymentMethod } from '../../types';
+import { PaymentMethod, RegistrationStatus, PaymentStatus } from '../../types';
 import { RecordPaymentModal } from './RecordPaymentModal';
 import { AssignCourtesyModal } from './AssignCourtesyModal';
 import { ReasonModal } from './ReasonModal';
@@ -21,7 +21,6 @@ import {
   Edit,
   Tag,
   DollarSign,
-  ShieldCheck,
   Clock,
   UserCheck,
   Ban,
@@ -29,15 +28,22 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  Save,
+  Shield,
 } from 'lucide-react';
 
 interface ParticipantDetailDrawerProps {
   registration: DetailedRegistration | null;
   isOpen: boolean;
   onClose: () => void;
-  onEdit: (reg: DetailedRegistration) => void;
+  onEdit?: (reg: DetailedRegistration) => void;
   onUpdated?: (updatedReg: DetailedRegistration) => void;
   paymentMethods?: PaymentMethod[];
+  onNavigate?: (direction: 'prev' | 'next') => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
 }
 
 export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = ({
@@ -47,9 +53,13 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   onEdit,
   onUpdated,
   paymentMethods = [],
+  onNavigate,
+  hasPrev = false,
+  hasNext = false,
 }) => {
   const { user, hasRole } = useAuth();
   const isAdmin = hasRole(['ADMIN']);
+  const isOperatorOrAdmin = hasRole(['ADMIN', 'OPERATOR']);
 
   // Modales secundarios
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -59,9 +69,36 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   const [showRevertModal, setShowRevertModal] = useState(false);
   const [showPaymentsLedger, setShowPaymentsLedger] = useState(false);
 
+  // Modo edición directa inline dentro de la ficha
+  const [isInlineEditing, setIsInlineEditing] = useState(false);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editDocumentId, setEditDocumentId] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editAlternatePhone, setEditAlternatePhone] = useState('');
+  const [editInstitution, setEditInstitution] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [savingInline, setSavingInline] = useState(false);
+
   // Estados de acción de check-in
   const [markingAttendance, setMarkingAttendance] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (registration) {
+      setEditFirstName(registration.participant.firstName || '');
+      setEditLastName(registration.participant.lastName || '');
+      setEditEmail(registration.participant.email || '');
+      setEditDocumentId(registration.participant.documentId || '');
+      setEditPhone(registration.participant.phone || '');
+      setEditAlternatePhone(registration.participant.alternatePhone || '');
+      setEditInstitution(registration.participant.institution || '');
+      setEditNotes(registration.notes || '');
+      setIsInlineEditing(false);
+      setFeedbackMsg(null);
+    }
+  }, [registration?.id]);
 
   if (!isOpen || !registration) return null;
 
@@ -78,6 +115,52 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   const balanceDue = registration.isCourtesy
     ? 0
     : Math.max(0, ticketPrice - amountPaid);
+
+  // Guardar cambios de edición inline directamente en la ficha
+  const handleSaveInline = async () => {
+    if (!editFirstName.trim() || !editLastName.trim() || !editEmail.trim()) {
+      setFeedbackMsg({ type: 'error', text: 'Nombres, Apellidos y Correo electrónico son obligatorios.' });
+      return;
+    }
+
+    setSavingInline(true);
+    setFeedbackMsg(null);
+    try {
+      const updated = await participantsService.update(registration.id, {
+        firstName: editFirstName.trim(),
+        lastName: editLastName.trim(),
+        email: editEmail.trim(),
+        documentId: editDocumentId.trim() || null,
+        phone: editPhone.trim() || null,
+        alternatePhone: editAlternatePhone.trim() || null,
+        institution: editInstitution.trim() || null,
+        notes: editNotes.trim() || null,
+      });
+
+      const updatedDetailed: DetailedRegistration = {
+        ...registration,
+        ...updated,
+        participant: {
+          ...registration.participant,
+          ...updated.participant,
+        },
+      };
+
+      if (onUpdated) onUpdated(updatedDetailed);
+      setIsInlineEditing(false);
+      setFeedbackMsg({
+        type: 'success',
+        text: 'Datos actualizados correctamente en la ficha.',
+      });
+    } catch (err: any) {
+      setFeedbackMsg({
+        type: 'error',
+        text: err.response?.data?.message || 'Error al actualizar el participante',
+      });
+    } finally {
+      setSavingInline(false);
+    }
+  };
 
   // Check-in directo desde la Ficha
   const handleMarkAttendance = async () => {
@@ -99,7 +182,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
           fullName: user?.fullName || 'Operador',
           email: user?.email || '',
         },
-        status: 'ATTENDED',
+        status: res.registration.status,
       };
 
       if (onUpdated) onUpdated(updatedDetailed);
@@ -128,7 +211,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       attendedAt: undefined,
       attendedByUserId: undefined,
       attendedByUser: undefined,
-      status: balanceDue === 0 || registration.isCourtesy ? 'CONFIRMED' : 'PENDING',
+      status: res.registration.status,
     };
     if (onUpdated) onUpdated(updatedDetailed);
     setShowRevertModal(false);
@@ -202,19 +285,88 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
     });
   };
 
-  const getStatusBadge = (status: string) => {
+  // Insignia 1: Estado de Inscripción (RegistrationStatus)
+  const renderRegistrationBadge = (status: RegistrationStatus | string) => {
     switch (status) {
       case 'CONFIRMED':
-        return <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">Confirmado</span>;
-      case 'ATTENDED':
-        return <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">Asistió</span>;
+        return (
+          <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" /> Confirmada
+          </span>
+        );
       case 'PENDING':
-        return <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">Pendiente</span>;
+        return (
+          <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+            <Clock className="w-3 h-3" /> Pendiente
+          </span>
+        );
       case 'CANCELLED':
-        return <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30">Cancelado</span>;
+        return (
+          <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1">
+            <Ban className="w-3 h-3" /> Cancelada
+          </span>
+        );
       default:
-        return <span className="px-2.5 py-0.5 text-xs rounded-full bg-zinc-800 text-zinc-300">{status}</span>;
+        return <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-800 text-zinc-300">{status}</span>;
     }
+  };
+
+  // Insignia 2: Estado de Pago (PaymentStatus)
+  const renderPaymentBadge = () => {
+    if (registration.isCourtesy) {
+      return (
+        <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30 flex items-center gap-1">
+          <Tag className="w-3 h-3" /> Cortesía
+        </span>
+      );
+    }
+    const payStatus = registration.paymentStatus || (balanceDue === 0 ? 'PAID' : amountPaid > 0 ? 'PARTIAL' : 'PENDING');
+    switch (payStatus) {
+      case 'PAID':
+        return (
+          <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+            <DollarSign className="w-3 h-3" /> Pagado
+          </span>
+        );
+      case 'PARTIAL':
+        return (
+          <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+            <DollarSign className="w-3 h-3" /> Abono Parcial
+          </span>
+        );
+      case 'COURTESY':
+        return (
+          <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30 flex items-center gap-1">
+            <Tag className="w-3 h-3" /> Cortesía
+          </span>
+        );
+      case 'PENDING':
+      default:
+        return (
+          <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" /> Pendiente Pago
+          </span>
+        );
+    }
+  };
+
+  // Insignia 3: Estado de Asistencia
+  const renderAttendanceBadge = () => {
+    if (registration.attended) {
+      const timeStr = registration.attendedAt
+        ? new Date(registration.attendedAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })
+        : '';
+      return (
+        <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
+          <CheckCircle2 className="w-3 h-3" /> Asistió {timeStr && `(${timeStr})`}
+        </span>
+      );
+    }
+    return (
+      <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700 flex items-center gap-1">
+        <Clock className="w-3 h-3" /> No ha llegado
+      </span>
+    );
   };
 
   return (
@@ -226,51 +378,82 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
           onClick={onClose}
         />
 
-        <div className="fixed inset-y-0 right-0 max-w-full flex pl-8">
-          <div className="w-screen max-w-lg bg-card border-l border-border shadow-2xl flex flex-col justify-between animate-in slide-in-from-right duration-250">
-            {/* Cabecera de la Ficha */}
+        <div className="fixed inset-y-0 right-0 max-w-full flex pl-4 sm:pl-8">
+          <div className="w-screen max-w-xl bg-card border-l border-border shadow-2xl flex flex-col justify-between animate-in slide-in-from-right duration-250">
+            {/* Cabecera de la Ficha con Navegación Anterior/Siguiente */}
             <div className="border-b border-border bg-gradient-to-b from-primary/15 via-background to-background p-6 shrink-0">
               <div className="flex items-center justify-between mb-3">
-                <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold px-2 py-0.5 rounded bg-primary/15 border border-primary/25">
-                  Ficha Oficial del Participante
-                </span>
-                <button
-                  onClick={onClose}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold px-2 py-0.5 rounded bg-primary/15 border border-primary/25">
+                    Ficha del Participante
+                  </span>
+                  {/* Navegación rápida entre participantes */}
+                  {onNavigate && (
+                    <div className="flex items-center gap-1 ml-2">
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('prev')}
+                        disabled={!hasPrev}
+                        className="p-1 rounded-md bg-background border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                        title="Participante anterior"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('next')}
+                        disabled={!hasNext}
+                        className="p-1 rounded-md bg-background border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                        title="Participante siguiente"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {isOperatorOrAdmin && !isInlineEditing && (
+                    <button
+                      type="button"
+                      onClick={() => setIsInlineEditing(true)}
+                      className="px-2.5 py-1 rounded-lg bg-primary/15 hover:bg-primary/25 text-primary text-xs font-bold border border-primary/30 flex items-center gap-1 transition-colors cursor-pointer"
+                      title="Editar datos directamente en esta ficha"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      <span>Editar</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={onClose}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
+              {/* Perfil del Participante */}
               <div className="flex items-start gap-4">
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-primary to-barcamp-burgundy flex items-center justify-center text-white font-black text-xl shadow-lg ring-2 ring-primary/40 shrink-0">
                   {p.firstName.charAt(0)}{p.lastName.charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-xl font-black text-foreground truncate tracking-tight">
-                    {p.fullName}
-                  </h2>
-                  <p className="text-xs text-muted-foreground truncate">{p.email}</p>
-
-                  <div className="flex items-center flex-wrap gap-2 mt-2">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-black text-foreground truncate tracking-tight">
+                      {p.fullName}
+                    </h2>
                     <span className="font-mono text-xs font-black px-2 py-0.5 rounded bg-zinc-800 text-white border border-zinc-700">
                       {registration.registrationNumber}
                     </span>
-                    {getStatusBadge(registration.status)}
-                    {registration.isCourtesy && (
-                      <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                        Cortesía
-                      </span>
-                    )}
-                    {registration.attended ? (
-                      <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Asistió
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700 flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> No ha llegado
-                      </span>
-                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{p.email}</p>
+
+                  {/* Tres insignias de estado independientes */}
+                  <div className="flex items-center flex-wrap gap-2 mt-2.5">
+                    {renderRegistrationBadge(registration.status)}
+                    {renderPaymentBadge()}
+                    {renderAttendanceBadge()}
                   </div>
                 </div>
               </div>
@@ -294,9 +477,9 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
               )}
             </div>
 
-            {/* Cuerpo de la Ficha con las 4 Secciones Requeridas */}
+            {/* Cuerpo de la Ficha */}
             <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(100vh-230px)]">
-              {/* SECCIÓN 4 PRIMERO: CONTROL DE ASISTENCIA (CHECK-IN DESTACADO) */}
+              {/* CONTROL DE ENTRADA (CHECK-IN DESTACADO) */}
               <div className="p-4 rounded-2xl border bg-muted/20 border-border space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -320,7 +503,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                   <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">
                     <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>Asistencia Física Confirmada</span>
+                      <span>Asistencia Confirmada</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs text-zinc-300 pt-1">
                       <div>
@@ -390,63 +573,197 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                 )}
               </div>
 
-              {/* SECCIÓN 1: INFORMACIÓN PERSONAL */}
+              {/* SECCIÓN 1: INFORMACIÓN PERSONAL (MODO VISTA / EDICIÓN INLINE) */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2 pb-1 border-b border-border">
-                  <User className="w-4 h-4 text-primary" />
-                  <span className="text-xs font-black uppercase tracking-wider text-foreground">
-                    1. Información Personal
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 rounded-xl bg-background border border-border">
-                    <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block mb-0.5">
-                      Cédula / Pasaporte
-                    </span>
-                    <span className="font-mono text-xs font-bold text-foreground">
-                      {p.documentId || 'No especificado'}
+                <div className="flex items-center justify-between pb-1 border-b border-border">
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-primary" />
+                    <span className="text-xs font-black uppercase tracking-wider text-foreground">
+                      1. Información Personal
                     </span>
                   </div>
-
-                  <div className="p-3 rounded-xl bg-background border border-border">
-                    <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block mb-0.5">
-                      Institución / Empresa
+                  {isInlineEditing && (
+                    <span className="text-[10px] font-bold text-primary px-2 py-0.5 rounded bg-primary/10 border border-primary/20">
+                      Modo Edición Activo
                     </span>
-                    <span className="text-xs font-bold text-primary truncate block">
-                      {p.institution || 'Independiente / No registrada'}
-                    </span>
-                  </div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 rounded-xl bg-background border border-border">
-                    <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground flex items-center gap-1 mb-0.5">
-                      <Phone className="w-3 h-3 text-primary" /> Teléfono
-                    </span>
-                    <span className="font-mono text-xs font-semibold text-foreground">
-                      {p.phone || 'No registrado'}
-                    </span>
-                  </div>
+                {isInlineEditing ? (
+                  <div className="space-y-3 p-4 rounded-2xl bg-background border border-primary/40 shadow-sm">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] uppercase font-mono font-bold text-muted-foreground mb-1">
+                          Nombre
+                        </label>
+                        <input
+                          type="text"
+                          value={editFirstName}
+                          onChange={(e) => setEditFirstName(e.target.value)}
+                          className="w-full px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase font-mono font-bold text-muted-foreground mb-1">
+                          Apellido
+                        </label>
+                        <input
+                          type="text"
+                          value={editLastName}
+                          onChange={(e) => setEditLastName(e.target.value)}
+                          className="w-full px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                    </div>
 
-                  <div className="p-3 rounded-xl bg-background border border-border">
-                    <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground flex items-center gap-1 mb-0.5">
-                      <Phone className="w-3 h-3 text-zinc-500" /> Tel. Alterno
-                    </span>
-                    <span className="font-mono text-xs font-semibold text-foreground">
-                      {p.alternatePhone || 'N/A'}
-                    </span>
-                  </div>
-                </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] uppercase font-mono font-bold text-muted-foreground mb-1">
+                          Cédula / Documento
+                        </label>
+                        <input
+                          type="text"
+                          value={editDocumentId}
+                          onChange={(e) => setEditDocumentId(e.target.value)}
+                          placeholder="402-XXXXXXX-X"
+                          className="w-full px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase font-mono font-bold text-muted-foreground mb-1">
+                          Institución / Empresa
+                        </label>
+                        <input
+                          type="text"
+                          value={editInstitution}
+                          onChange={(e) => setEditInstitution(e.target.value)}
+                          placeholder="PUCMM / Empresa"
+                          className="w-full px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                    </div>
 
-                <div className="p-3 rounded-xl bg-background border border-border">
-                  <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground flex items-center gap-1 mb-0.5">
-                    <Mail className="w-3 h-3 text-primary" /> Correo Electrónico
-                  </span>
-                  <span className="text-xs font-semibold text-foreground break-all">
-                    {p.email}
-                  </span>
-                </div>
+                    <div>
+                      <label className="block text-[10px] uppercase font-mono font-bold text-muted-foreground mb-1">
+                        Correo Electrónico
+                      </label>
+                      <input
+                        type="email"
+                        value={editEmail}
+                        onChange={(e) => setEditEmail(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] uppercase font-mono font-bold text-muted-foreground mb-1">
+                          Teléfono
+                        </label>
+                        <input
+                          type="text"
+                          value={editPhone}
+                          onChange={(e) => setEditPhone(e.target.value)}
+                          placeholder="809-XXX-XXXX"
+                          className="w-full px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] uppercase font-mono font-bold text-muted-foreground mb-1">
+                          Tel. Alterno
+                        </label>
+                        <input
+                          type="text"
+                          value={editAlternatePhone}
+                          onChange={(e) => setEditAlternatePhone(e.target.value)}
+                          className="w-full px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-mono font-bold text-muted-foreground mb-1">
+                        Notas / Observaciones
+                      </label>
+                      <textarea
+                        value={editNotes}
+                        onChange={(e) => setEditNotes(e.target.value)}
+                        rows={2}
+                        className="w-full px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                      <button
+                        type="button"
+                        onClick={() => setIsInlineEditing(false)}
+                        className="px-3 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveInline}
+                        disabled={savingInline}
+                        className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>{savingInline ? 'Guardando...' : 'Guardar Ficha'}</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3 rounded-xl bg-background border border-border">
+                        <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block mb-0.5">
+                          Cédula / Pasaporte
+                        </span>
+                        <span className="font-mono text-xs font-bold text-foreground">
+                          {p.documentId || 'No especificado'}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-background border border-border">
+                        <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block mb-0.5">
+                          Institución / Empresa
+                        </span>
+                        <span className="text-xs font-bold text-primary truncate block">
+                          {p.institution || 'Independiente / No registrada'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3 rounded-xl bg-background border border-border">
+                        <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground flex items-center gap-1 mb-0.5">
+                          <Phone className="w-3 h-3 text-primary" /> Teléfono
+                        </span>
+                        <span className="font-mono text-xs font-semibold text-foreground">
+                          {p.phone || 'No registrado'}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-background border border-border">
+                        <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground flex items-center gap-1 mb-0.5">
+                          <Phone className="w-3 h-3 text-zinc-500" /> Tel. Alterno
+                        </span>
+                        <span className="font-mono text-xs font-semibold text-foreground">
+                          {p.alternatePhone || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-background border border-border">
+                      <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground flex items-center gap-1 mb-0.5">
+                        <Mail className="w-3 h-3 text-primary" /> Correo Electrónico
+                      </span>
+                      <span className="text-xs font-semibold text-foreground break-all">
+                        {p.email}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* SECCIÓN 2: INFORMACIÓN DE INSCRIPCIÓN */}
@@ -502,7 +819,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                   </div>
                 </div>
 
-                {registration.notes && (
+                {registration.notes && !isInlineEditing && (
                   <div className="p-3 rounded-xl bg-background border border-border">
                     <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block mb-0.5">
                       Observaciones / Notas
@@ -722,24 +1039,61 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                   </div>
                 </div>
               )}
+
+              {/* AUDITORÍA Y TRAZABILIDAD */}
+              <div className="p-3 rounded-xl bg-muted/20 border border-border text-[11px] text-muted-foreground flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>
+                    Última actualización:{' '}
+                    <strong className="text-foreground">
+                      {new Date(registration.updatedAt).toLocaleString('es-DO')}
+                    </strong>
+                  </span>
+                </span>
+                <span>
+                  Por:{' '}
+                  <strong className="text-foreground">
+                    {registration.updatedByUser?.fullName || p.updatedByUser?.fullName || 'Sistema'}
+                  </strong>
+                </span>
+              </div>
             </div>
 
             {/* Pie de la Ficha: Acciones */}
             <div className="p-4 border-t border-border bg-card flex items-center justify-between gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onEdit(registration);
-                }}
-                className="py-2.5 px-4 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer"
-              >
-                <Edit className="w-3.5 h-3.5" />
-                <span>Editar Datos</span>
-              </button>
+              {isInlineEditing ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveInline}
+                    disabled={savingInline}
+                    className="py-2.5 px-4 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{savingInline ? 'Guardando...' : 'Guardar Cambios'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsInlineEditing(false)}
+                    className="py-2.5 px-3 rounded-xl border border-border bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsInlineEditing(true)}
+                  className="py-2.5 px-4 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>Editar Ficha</span>
+                </button>
+              )}
 
               {/* Acciones de Cancelación / Reactivación para ADMIN */}
-              {isAdmin && (
+              {isAdmin && !isInlineEditing && (
                 <>
                   {registration.status === 'CANCELLED' ? (
                     <button
@@ -757,7 +1111,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                       className="py-2.5 px-3 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
                     >
                       <Ban className="w-3.5 h-3.5" />
-                      <span>Cancelar Inscripción</span>
+                      <span>Cancelar</span>
                     </button>
                   )}
                 </>
@@ -778,48 +1132,48 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       {/* Modales Secundarios Integrados */}
       <RecordPaymentModal
         isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        onConfirm={handleConfirmPayment}
         participantName={p.fullName}
         registrationNumber={registration.registrationNumber}
         balanceDue={balanceDue}
         paymentMethods={paymentMethods}
+        onClose={() => setShowPaymentModal(false)}
+        onConfirm={handleConfirmPayment}
       />
 
       <AssignCourtesyModal
         isOpen={showCourtesyModal}
-        onClose={() => setShowCourtesyModal(false)}
-        onConfirm={handleConfirmCourtesy}
         participantName={p.fullName}
         registrationNumber={registration.registrationNumber}
+        onClose={() => setShowCourtesyModal(false)}
+        onConfirm={handleConfirmCourtesy}
       />
 
       <ReasonModal
         isOpen={showCancelModal}
-        onClose={() => setShowCancelModal(false)}
-        onConfirm={handleConfirmCancel}
         title="Cancelar Inscripción de Participante"
-        description={`Está a punto de cancelar la inscripción de ${p.fullName} (${registration.registrationNumber}). Los datos y el historial de pagos se conservarán intactos sin reembolsos automáticos.`}
+        description={`¿Está seguro de que desea cancelar la inscripción de ${p.fullName} (${registration.registrationNumber})? Los pagos históricos y registros de auditoría se mantendrán intactos.`}
         confirmLabel="Confirmar Cancelación"
         isDestructive={true}
+        onClose={() => setShowCancelModal(false)}
+        onConfirm={handleConfirmCancel}
       />
 
       <ReasonModal
         isOpen={showReactivateModal}
+        title="Reactivar Inscripción"
+        description={`Reactivará la inscripción de ${p.fullName} (${registration.registrationNumber}).`}
+        confirmLabel="Confirmar Reactivación"
+        isDestructive={false}
         onClose={() => setShowReactivateModal(false)}
         onConfirm={handleConfirmReactivate}
-        title="Reactivar Inscripción Cancelada"
-        description={`Va a reactivar la inscripción de ${p.fullName} (${registration.registrationNumber}).`}
-        confirmLabel="Reactivar Inscripción"
-        isDestructive={false}
       />
 
       <RevertModal
+        registration={registration}
         isOpen={showRevertModal}
         loading={false}
         onClose={() => setShowRevertModal(false)}
         onConfirm={handleConfirmRevert}
-        registration={registration}
       />
     </>
   );

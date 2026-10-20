@@ -41,3 +41,9 @@ export class ConflictError extends AppError {
     super(message, 409, details);
   }
 }
+
+export class ValidationError extends BadRequestError {
+  constructor(message = 'Datos inválidos', details?: any) {
+    super(message, details);
+  }
+}

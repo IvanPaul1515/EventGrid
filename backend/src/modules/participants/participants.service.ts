@@ -178,12 +178,17 @@ export class ParticipantsService {
         eventId,
       },
       include: {
-        participant: true,
+        participant: {
+          include: {
+            updatedByUser: { select: { id: true, fullName: true, email: true } },
+          },
+        },
         ticketType: true,
         paymentMethod: true,
         salesResponsible: true,
         attendedByUser: { select: { id: true, fullName: true, email: true } },
         courtesyUser: { select: { id: true, fullName: true, email: true } },
+        updatedByUser: { select: { id: true, fullName: true, email: true } },
         payments: {
           include: {
             paymentMethod: true,
@@ -244,6 +249,7 @@ export class ParticipantsService {
         registrationNumber: or.registrationNumber,
         ticketTypeName: or.ticketType?.name || 'General',
         status: or.status,
+        paymentStatus: or.paymentStatus || (or.isCourtesy ? 'COURTESY' : Number(or.balanceDue) === 0 ? 'PAID' : 'PENDING'),
         attended: or.attended,
         isCourtesy: or.isCourtesy,
         totalAmount: Number(or.amountPaid ?? or.totalAmount),
@@ -407,6 +413,14 @@ export class ParticipantsService {
       ? (isSqlite ? JSON.stringify(input.customFields) : input.customFields)
       : null;
 
+    const initialPaymentStatus = isCourtesy
+      ? 'COURTESY'
+      : balanceDue === 0 && amountPaid > 0
+      ? 'PAID'
+      : amountPaid > 0 && balanceDue > 0
+      ? 'PARTIAL'
+      : 'PENDING';
+
     const registration = await prisma.registration.create({
       data: {
         eventId,
@@ -425,6 +439,7 @@ export class ParticipantsService {
         courtesyDate: isCourtesy ? new Date() : null,
         isDemo: input.isDemo || false,
         paymentMethodId,
+        paymentStatus: initialPaymentStatus,
         salesResponsibleId: input.salesResponsibleId || null,
         saleTimestamp: input.saleTimestamp ? new Date(input.saleTimestamp) : new Date(),
         status: input.status || (balanceDue === 0 || isCourtesy ? 'CONFIRMED' : 'PENDING'),
@@ -457,7 +472,7 @@ export class ParticipantsService {
   /**
    * Actualizar registro existente
    */
-  static async update(eventId: string, registrationId: string, input: UpdateRegistrationInput) {
+  static async update(eventId: string, registrationId: string, input: UpdateRegistrationInput, userId?: string) {
     const existing = await prisma.registration.findFirst({
       where: { id: registrationId, eventId },
       include: {
@@ -495,6 +510,7 @@ export class ParticipantsService {
           alternatePhone: input.alternatePhone !== undefined ? input.alternatePhone : undefined,
           documentId: input.documentId !== undefined ? (input.documentId ? input.documentId.trim() : null) : undefined,
           institution: input.institution !== undefined ? (input.institution ? input.institution.trim() : null) : undefined,
+          updatedByUserId: userId || undefined,
         },
       });
     }
@@ -542,6 +558,18 @@ export class ParticipantsService {
       balanceDue = 0;
     }
 
+    // Calcular estado de pago
+    let paymentStatus = existing.paymentStatus || 'PENDING';
+    if (isCourtesy) {
+      paymentStatus = 'COURTESY';
+    } else if (balanceDue === 0 && amountPaid > 0) {
+      paymentStatus = 'PAID';
+    } else if (amountPaid > 0 && balanceDue > 0) {
+      paymentStatus = 'PARTIAL';
+    } else {
+      paymentStatus = 'PENDING';
+    }
+
     const isSqlite = process.env.DATABASE_URL?.startsWith('file:');
     let customFieldsData = undefined;
     if (input.customFields !== undefined) {
@@ -567,17 +595,24 @@ export class ParticipantsService {
           ? (input.courtesyReason !== undefined ? input.courtesyReason : existing.courtesyReason)
           : null,
         paymentMethodId,
+        paymentStatus,
         salesResponsibleId: input.salesResponsibleId !== undefined ? input.salesResponsibleId : undefined,
         saleTimestamp: input.saleTimestamp ? new Date(input.saleTimestamp) : undefined,
         status: input.status !== undefined ? input.status : undefined,
         notes: input.notes !== undefined ? input.notes : undefined,
         customFields: customFieldsData as any,
+        updatedByUserId: userId || undefined,
       },
       include: {
-        participant: true,
+        participant: {
+          include: {
+            updatedByUser: { select: { id: true, fullName: true, email: true } },
+          },
+        },
         ticketType: true,
         paymentMethod: true,
         salesResponsible: true,
+        updatedByUser: { select: { id: true, fullName: true, email: true } },
       },
     });
 
@@ -702,6 +737,14 @@ export class ParticipantsService {
 
     const now = new Date();
 
+    const onsitePaymentStatus = isCourtesy
+      ? 'COURTESY'
+      : balanceDue === 0
+      ? 'PAID'
+      : amountPaid > 0
+      ? 'PARTIAL'
+      : 'PENDING';
+
     // 4. Crear la inscripción
     const registration = await prisma.registration.create({
       data: {
@@ -721,9 +764,11 @@ export class ParticipantsService {
         courtesyDate: isCourtesy ? now : null,
         courtesyUserId: isCourtesy ? operatorUserId : null,
         paymentMethodId: isCourtesy ? null : input.paymentMethodId || null,
+        paymentStatus: onsitePaymentStatus,
         status: balanceDue === 0 || isCourtesy ? 'CONFIRMED' : 'PENDING',
         notes: input.notes || null,
         saleTimestamp: now,
+        updatedByUserId: operatorUserId,
       },
       include: {
         participant: true,
@@ -786,6 +831,14 @@ export class ParticipantsService {
     const newAmountPaid = currentPaid + paymentAmount;
     const newBalanceDue = Math.max(0, ticketPrice - newAmountPaid);
 
+    const newPaymentStatus = registration.isCourtesy
+      ? 'COURTESY'
+      : newBalanceDue === 0
+      ? 'PAID'
+      : newAmountPaid > 0
+      ? 'PARTIAL'
+      : 'PENDING';
+
     const [payment, updatedRegistration] = await prisma.$transaction([
       prisma.payment.create({
         data: {
@@ -807,7 +860,9 @@ export class ParticipantsService {
           balanceDue: newBalanceDue,
           totalAmount: newAmountPaid,
           isVerified: true,
+          paymentStatus: newPaymentStatus,
           status: newBalanceDue === 0 && registration.status === 'PENDING' ? 'CONFIRMED' : registration.status,
+          updatedByUserId: userId,
         },
         include: {
           participant: true,
@@ -853,6 +908,7 @@ export class ParticipantsService {
       data: {
         status: 'CANCELLED',
         notes: newNotes,
+        updatedByUserId: adminUserId,
       },
       include: {
         participant: true,
@@ -890,6 +946,7 @@ export class ParticipantsService {
       data: {
         status: newStatus,
         notes: newNotes,
+        updatedByUserId: adminUserId,
       },
       include: {
         participant: true,
@@ -931,9 +988,12 @@ export class ParticipantsService {
         courtesyUserId: adminUserId,
         ticketTypeId: courtesyTicketType ? courtesyTicketType.id : registration.ticketTypeId,
         ticketPrice: 0,
+        amountPaid: 0,
         balanceDue: 0,
-        isVerified: true,
-        status: registration.attended ? 'ATTENDED' : 'CONFIRMED',
+        totalAmount: 0,
+        paymentStatus: 'COURTESY',
+        status: 'CONFIRMED',
+        updatedByUserId: adminUserId,
       },
       include: {
         participant: true,

@@ -92,8 +92,18 @@ export const Sidebar: React.FC = () => {
       <div>
         <div className="h-16 flex items-center px-4 border-b border-border/80 justify-between">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary to-barcamp-crimson flex items-center justify-center shrink-0 shadow-lg shadow-primary/25 ring-1 ring-primary/40">
-              <Grid className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-primary/40 flex items-center justify-center shrink-0 shadow-lg shadow-primary/25 overflow-hidden">
+              {currentEvent?.settings?.logoUrl ? (
+                <img
+                  src={currentEvent.settings.logoUrl}
+                  alt={currentEvent.name}
+                  className="w-full h-full object-contain p-1"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-tr from-primary to-barcamp-crimson flex items-center justify-center">
+                  <Grid className="w-5 h-5 text-white" />
+                </div>
+              )}
             </div>
             {!collapsed && (
               <div className="flex flex-col">

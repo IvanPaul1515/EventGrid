@@ -66,17 +66,24 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [isDark]);
 
-  // Aplicar colores de la edición activa
+  // Aplicar colores y favicon de la edición activa
   useEffect(() => {
     if (currentEvent?.settings) {
-      const { primaryColor, secondaryColor, backgroundColor } = currentEvent.settings;
-      applyCustomPalette(primaryColor, secondaryColor, backgroundColor);
+      const { primaryColor, secondaryColor, accentColor, backgroundColor, faviconUrl } = currentEvent.settings;
+      applyCustomPalette(primaryColor, secondaryColor, accentColor, backgroundColor);
+
+      if (faviconUrl) {
+        const favicon = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+        if (favicon) {
+          favicon.href = faviconUrl;
+        }
+      }
     } else {
       resetDefaultTheme();
     }
   }, [currentEvent]);
 
-  const applyCustomPalette = (primary: string, secondary: string, bg?: string) => {
+  const applyCustomPalette = (primary: string, secondary: string, accent?: string, bg?: string) => {
     const root = document.documentElement;
     try {
       if (primary && primary.startsWith('#')) {
@@ -87,6 +94,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (secondary && secondary.startsWith('#')) {
         const secondaryHsl = hexToHSL(secondary);
         root.style.setProperty('--secondary', secondaryHsl);
+      }
+      if (accent && accent.startsWith('#')) {
+        const accentHsl = hexToHSL(accent);
+        root.style.setProperty('--accent', accentHsl);
       }
       if (bg && bg.startsWith('#') && isDark) {
         const bgHsl = hexToHSL(bg);
@@ -101,6 +112,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const root = document.documentElement;
     root.style.removeProperty('--primary');
     root.style.removeProperty('--secondary');
+    root.style.removeProperty('--accent');
     root.style.removeProperty('--background');
     root.style.removeProperty('--ring');
   };

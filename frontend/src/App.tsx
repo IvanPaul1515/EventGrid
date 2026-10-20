@@ -39,6 +39,7 @@ export const App: React.FC = () => {
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/users" element={<UsersPage />} />
                   <Route path="/audit" element={<AuditPage />} />
+                  <Route path="/activity" element={<AuditPage />} />
                 </Route>
               </Route>
 

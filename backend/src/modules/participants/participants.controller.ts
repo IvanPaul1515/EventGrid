@@ -79,8 +79,9 @@ export class ParticipantsController {
     try {
       const eventId = req.params.eventId || req.eventId!;
       const validated = UpdateRegistrationSchema.parse(req.body);
+      const userId = (req as any).user?.id || 'SYSTEM';
 
-      const updated = await ParticipantsService.update(eventId, req.params.id, validated);
+      const updated = await ParticipantsService.update(eventId, req.params.id, validated, userId);
 
       await recordAuditLog({
         req,

@@ -24,6 +24,8 @@ model User {
   grantedCourtesies     Registration[]  @relation("CourtesyGranter")
   receivedPayments      Payment[]       @relation("PaymentReceiver")
   attendanceLogs        AttendanceLog[]
+  modifiedRegistrations Registration[]  @relation("RegistrationModifier")
+  modifiedParticipants  Participant[]   @relation("ParticipantModifier")
 
   @@map("users")
 }
@@ -37,6 +39,7 @@ model Event {
   endDate     DateTime
   venue       String   @default("PUCMM, Santiago de los Caballeros, RD")
   description String?
+  maxCapacity Int?
   status      String   @default("PLANNING") // PLANNING, ACTIVE, COMPLETED, ARCHIVED
   isDefault   Boolean  @default(false)
   createdAt   DateTime @default(now())
@@ -60,11 +63,14 @@ model EventSettings {
   eventId            String   @unique
   primaryColor       String   @default("#e11d48")
   secondaryColor     String   @default("#881337")
+  accentColor        String   @default("#f43f5e")
   backgroundColor    String   @default("#09090b")
   themeMode          String   @default("dark")
   currencyCode       String   @default("DOP")
   currencySymbol     String   @default("RD$")
   logoUrl            String?
+  loginLogoUrl       String?
+  faviconUrl         String?
   coverImageUrl      String?
   subtitle           String   @default("Tecnología, Innovación y Comunidad")
   registrationPrefix String   @default("BC-")
@@ -78,19 +84,21 @@ model EventSettings {
 }
 
 model Participant {
-  id             String   @id @default(uuid())
-  documentId     String?
-  firstName      String
-  lastName       String
-  fullName       String
-  email          String
-  phone          String?
-  alternatePhone String?
-  institution    String?
-  isDemo         Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(uuid())
+  documentId      String?
+  firstName       String
+  lastName        String
+  fullName        String
+  email           String
+  phone           String?
+  alternatePhone  String?
+  institution     String?
+  isDemo          Boolean  @default(false)
+  updatedByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
+  updatedByUser User?          @relation("ParticipantModifier", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   registrations Registration[]
 
   @@index([email])
@@ -121,10 +129,12 @@ model Registration {
   isDemo               Boolean  @default(false)
   salesResponsibleId   String?
   saleTimestamp        DateTime @default(now())
-  status               String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, ATTENDED
+  status               String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED
+  paymentStatus        String   @default("PENDING") // PENDING, PARTIAL, PAID, COURTESY
   attended             Boolean  @default(false)
   attendedAt           DateTime?
   attendedByUserId     String?
+  updatedByUserId      String?
   customFields         String?  // JSON string
   notes                String?
   createdAt            DateTime @default(now())
@@ -138,12 +148,14 @@ model Registration {
   importBatch      ImportBatch?      @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
   attendedByUser   User?             @relation("AttendanceRegistrar", fields: [attendedByUserId], references: [id], onDelete: SetNull)
   courtesyUser     User?             @relation("CourtesyGranter", fields: [courtesyUserId], references: [id], onDelete: SetNull)
+  updatedByUser    User?             @relation("RegistrationModifier", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   attendanceLogs   AttendanceLog[]
   payments         Payment[]
 
   @@unique([eventId, registrationNumber])
   @@unique([eventId, participantId])
   @@index([eventId, status])
+  @@index([eventId, paymentStatus])
   @@index([eventId, attended])
   @@index([eventId, ticketTypeId])
   @@index([eventId, isDemo])
@@ -151,14 +163,17 @@ model Registration {
 }
 
 model TicketType {
-  id          String   @id @default(uuid())
-  eventId     String
-  name        String
-  price       Float    @default(0.0)
-  description String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String    @id @default(uuid())
+  eventId          String
+  name             String
+  price            Float     @default(0.0)
+  description      String?
+  isActive         Boolean   @default(true)
+  presaleStartDate DateTime?
+  presaleEndDate   DateTime?
+  totalCapacity    Int?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
   registrations Registration[]

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { AttendanceController } from './attendance.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
-import { requireAnyRole, requireOperatorOrAdmin, requireAdmin } from '../../middleware/rbac.js';
+import { requireAnyRole, requireOperatorOrAdmin, requirePermission } from '../../middleware/rbac.js';
 import { editionContext } from '../../middleware/editionContext.js';
 
 const router = Router({ mergeParams: true });
@@ -12,12 +12,13 @@ router.use(editionContext);
 // Rutas de lectura y exportación (ADMIN, OPERATOR, VIEWER)
 router.get('/', requireAnyRole, AttendanceController.searchAndList);
 router.get('/counters', requireAnyRole, AttendanceController.getCounters);
-router.get('/export', requireAnyRole, AttendanceController.exportData);
+router.get('/daily-sales', requireAnyRole, AttendanceController.getDailySales);
+router.get('/export', requirePermission('PARTICIPANTS_EXPORT'), AttendanceController.exportData);
 
 // Check-in (Operador y Administrador)
 router.post('/check-in', requireOperatorOrAdmin, AttendanceController.checkIn);
 
-// Reversión de asistencia (Estrictamente ADMINISTRADOR con justificación)
-router.post('/revert', requireAdmin, AttendanceController.revert);
+// Reversión de asistencia (Estrictamente ADMINISTRADOR con permiso ATTENDANCE_REVERT)
+router.post('/revert', requirePermission('ATTENDANCE_REVERT'), AttendanceController.revert);
 
 export default router;

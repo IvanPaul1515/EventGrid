@@ -121,4 +121,20 @@ export class AttendanceController {
       next(err);
     }
   }
+
+  static async getDailySales(req: Request, res: Response, next: NextFunction) {
+    try {
+      const date = req.query.date as string | undefined;
+      const result = await AttendanceService.getDailySales(
+        AttendanceController.getEventId(req),
+        date
+      );
+      res.json({
+        status: 'success',
+        data: result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 }

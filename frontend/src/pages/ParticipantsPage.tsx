@@ -260,19 +260,56 @@ export const ParticipantsPage: React.FC = () => {
 
   const isFiltering = !!(search || paymentMethodId || salesResponsibleId || status || isCourtesyFilter !== 'ALL');
 
+  // Navegación entre participantes en el drawer 360°
+  const currentDetailIndex = registrations.findIndex((r) => r.id === selectedForDetail?.id);
+  const hasPrevDetail = currentDetailIndex > 0;
+  const hasNextDetail = currentDetailIndex >= 0 && currentDetailIndex < registrations.length - 1;
+
+  const handleNavigateDetail = async (direction: 'prev' | 'next') => {
+    if (currentDetailIndex === -1) return;
+    const nextIdx = direction === 'prev' ? currentDetailIndex - 1 : currentDetailIndex + 1;
+    if (nextIdx >= 0 && nextIdx < registrations.length) {
+      const targetReg = registrations[nextIdx];
+      try {
+        const detailed = await participantsService.getById(targetReg.id);
+        setSelectedForDetail(detailed);
+      } catch (err) {
+        console.error('Error navegando participante:', err);
+      }
+    }
+  };
+
   const getStatusBadge = (st: string) => {
     switch (st) {
       case 'CONFIRMED':
-        return <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">Confirmado</span>;
-      case 'ATTENDED':
-        return <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/25">Asistió</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">Confirmado</span>;
       case 'PENDING':
       case 'PENDING_VERIFICATION':
-        return <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">Pendiente</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">Pendiente</span>;
       case 'CANCELLED':
-        return <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/25">Cancelado</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/25">Cancelado</span>;
       default:
-        return <span className="px-2 py-0.5 text-[11px] rounded-full bg-zinc-800 text-zinc-300">{st}</span>;
+        return <span className="px-2 py-0.5 text-[10px] rounded-full bg-zinc-800 text-zinc-300">{st}</span>;
+    }
+  };
+
+  const getPaymentStatusBadge = (reg: Registration) => {
+    if (reg.isCourtesy || reg.paymentStatus === 'COURTESY') {
+      return (
+        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30 inline-flex items-center gap-1">
+          <Tag className="w-2.5 h-2.5" /> Cortesía
+        </span>
+      );
+    }
+    const ps = reg.paymentStatus || (Number(reg.balanceDue || 0) <= 0 ? 'PAID' : Number(reg.amountPaid || 0) > 0 ? 'PARTIAL' : 'PENDING');
+    switch (ps) {
+      case 'PAID':
+        return <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">Pagado</span>;
+      case 'PARTIAL':
+        return <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">Parcial</span>;
+      case 'PENDING':
+      default:
+        return <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30">Pendiente</span>;
     }
   };
 
@@ -801,7 +838,10 @@ export const ParticipantsPage: React.FC = () => {
                       )}
                       {visibleColumns.status && (
                         <td className="p-3.5 whitespace-nowrap">
-                          {getStatusBadge(reg.status)}
+                          <div className="flex flex-col gap-1 items-start">
+                            {getStatusBadge(reg.status)}
+                            {getPaymentStatusBadge(reg)}
+                          </div>
                         </td>
                       )}
                       {visibleColumns.actions && (
@@ -910,6 +950,9 @@ export const ParticipantsPage: React.FC = () => {
         onUpdated={() => {
           fetchParticipants();
         }}
+        onNavigate={handleNavigateDetail}
+        hasPrev={hasPrevDetail}
+        hasNext={hasNextDetail}
       />
 
       {/* Modal de Nueva Venta Presencial */}

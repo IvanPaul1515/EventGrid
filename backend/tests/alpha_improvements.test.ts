@@ -218,13 +218,14 @@ describe('Mejoras Alpha: Recepción, Ventas, Fichas y Tipos de Entrada', () => {
 
   it('6. Búsqueda en recepción incluye institución y check-in desde Ficha', async () => {
     const uniqueEmail = `test.recepcion.${Date.now()}@empresa-tech.com`;
+    const uniqueInst = `Fintech Solutions ${Date.now()}`;
     const sale = await ParticipantsService.onsiteSale(
       eventId,
       {
         firstName: 'Federico',
         lastName: 'Troncoso',
         email: uniqueEmail,
-        institution: 'Fintech Solutions Dominicana',
+        institution: uniqueInst,
         ticketTypeId: generalTicketTypeId,
         paymentMethodId: cashPaymentMethodId,
         amountReceived: 2000,
@@ -235,7 +236,7 @@ describe('Mejoras Alpha: Recepción, Ventas, Fichas y Tipos de Entrada', () => {
 
     // Buscar por nombre de institución
     const searchRes = await AttendanceService.searchAndList(eventId, {
-      search: 'Fintech Solutions',
+      search: uniqueInst,
       status: 'ALL',
       page: 1,
       limit: 10,
@@ -250,7 +251,7 @@ describe('Mejoras Alpha: Recepción, Ventas, Fichas y Tipos de Entrada', () => {
     const checkInResult = await AttendanceService.checkIn(eventId, sale.registration.id, operatorUserId);
     expect(checkInResult.registration.attended).toBe(true);
     expect(checkInResult.registration.attendedByUserId).toBe(operatorUserId);
-    expect(checkInResult.registration.status).toBe('ATTENDED');
+    expect(checkInResult.registration.status).toBe('CONFIRMED');
 
     // Intentar marcar asistencia de nuevo debe fallar
     await expect(

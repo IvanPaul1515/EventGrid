@@ -317,7 +317,11 @@ export class ImportService {
       normalized.isCourtesy = isCourtesy;
 
       // 4. Estado de confirmación por defecto: PENDING si no viene en el archivo
-      if (!normalized.status || !['CONFIRMED', 'PENDING', 'CANCELLED', 'ATTENDED'].includes(normalized.status)) {
+      let isAttendedFromFile = false;
+      if (normalized.status === 'ATTENDED') {
+        normalized.status = 'CONFIRMED';
+        isAttendedFromFile = true;
+      } else if (!normalized.status || !['CONFIRMED', 'PENDING', 'CANCELLED'].includes(normalized.status)) {
         normalized.status = 'PENDING';
       }
 
@@ -640,6 +644,14 @@ export class ImportService {
           nextRegNum++;
         }
 
+        const paymentStatus = n.isCourtesy
+          ? 'COURTESY'
+          : balanceDue === 0 && amountPaid > 0
+          ? 'PAID'
+          : amountPaid > 0 && balanceDue > 0
+          ? 'PARTIAL'
+          : 'PENDING';
+
         // Crear inscripción vinculada al lote
         await prisma.registration.create({
           data: {
@@ -659,8 +671,11 @@ export class ImportService {
             courtesyReason: n.isCourtesy ? (n.courtesyReason || 'Cortesía importada') : null,
             courtesyDate: n.isCourtesy ? new Date() : null,
             paymentMethodId: resolvedPaymentId,
+            paymentStatus,
             salesResponsibleId: resolvedRespId,
-            status: (n.status as any) || (balanceDue === 0 || n.isCourtesy ? 'CONFIRMED' : 'PENDING'),
+            status: n.status === 'ATTENDED' ? 'CONFIRMED' : (n.status || (balanceDue === 0 || n.isCourtesy ? 'CONFIRMED' : 'PENDING')),
+            attended: n.status === 'ATTENDED',
+            attendedAt: n.status === 'ATTENDED' ? new Date() : null,
             notes: n.notes || null,
             saleTimestamp: n.saleTimestamp ? new Date(n.saleTimestamp) : new Date(),
           },

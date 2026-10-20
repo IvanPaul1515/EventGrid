@@ -1,5 +1,8 @@
 import { prisma } from '../../config/db.js';
-import { NotFoundError, ConflictError } from '../../utils/errors.js';
+import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 export class EventsService {
   static async getAll() {
@@ -261,20 +264,38 @@ export class EventsService {
     return newEvent;
   }
 
-  static async getTicketTypes(eventId: string) {
+  static async getTicketTypes(eventId: string, includeInactive = false) {
     return prisma.ticketType.findMany({
-      where: { eventId, isActive: true },
+      where: {
+        eventId,
+        ...(includeInactive ? {} : { isActive: true }),
+      },
       orderBy: { price: 'desc' },
     });
   }
 
-  static async createTicketType(eventId: string, data: { name: string; price: number; description?: string }) {
+  static async createTicketType(
+    eventId: string,
+    data: {
+      name: string;
+      price: number;
+      description?: string | null;
+      isActive?: boolean;
+      presaleStartDate?: string | Date | null;
+      presaleEndDate?: string | Date | null;
+      totalCapacity?: number | null;
+    }
+  ) {
     return prisma.ticketType.create({
       data: {
         eventId,
         name: data.name.trim(),
         price: data.price,
         description: data.description?.trim(),
+        isActive: data.isActive ?? true,
+        presaleStartDate: data.presaleStartDate ? new Date(data.presaleStartDate) : null,
+        presaleEndDate: data.presaleEndDate ? new Date(data.presaleEndDate) : null,
+        totalCapacity: data.totalCapacity ?? null,
       },
     });
   }
@@ -282,7 +303,15 @@ export class EventsService {
   static async updateTicketType(
     eventId: string,
     ticketTypeId: string,
-    data: { name?: string; price?: number; description?: string; isActive?: boolean }
+    data: {
+      name?: string;
+      price?: number;
+      description?: string | null;
+      isActive?: boolean;
+      presaleStartDate?: string | Date | null;
+      presaleEndDate?: string | Date | null;
+      totalCapacity?: number | null;
+    }
   ) {
     const existing = await prisma.ticketType.findFirst({
       where: { id: ticketTypeId, eventId },
@@ -294,9 +323,106 @@ export class EventsService {
       data: {
         name: data.name ? data.name.trim() : undefined,
         price: data.price !== undefined ? data.price : undefined,
-        description: data.description !== undefined ? data.description.trim() : undefined,
+        description: data.description !== undefined ? data.description?.trim() : undefined,
         isActive: data.isActive !== undefined ? data.isActive : undefined,
+        presaleStartDate: data.presaleStartDate !== undefined ? (data.presaleStartDate ? new Date(data.presaleStartDate) : null) : undefined,
+        presaleEndDate: data.presaleEndDate !== undefined ? (data.presaleEndDate ? new Date(data.presaleEndDate) : null) : undefined,
+        totalCapacity: data.totalCapacity !== undefined ? data.totalCapacity : undefined,
       },
     });
+  }
+
+  static async uploadLogo(
+    eventId: string,
+    fileData: { base64Data: string; fileName: string; mimeType?: string }
+  ) {
+    const existing = await prisma.eventSettings.findUnique({ where: { eventId } });
+    if (!existing) throw new NotFoundError('Ajustes de edición no encontrados');
+
+    let base64Content = fileData.base64Data;
+    let mimeType = fileData.mimeType;
+
+    const matches = fileData.base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (matches && matches.length === 3) {
+      mimeType = matches[1];
+      base64Content = matches[2];
+    }
+
+    const allowedMimeTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/svg+xml'];
+    if (mimeType && !allowedMimeTypes.includes(mimeType)) {
+      throw new BadRequestError('Formato de imagen no permitido. Utilice PNG, JPG, WEBP o SVG.');
+    }
+
+    const buffer = Buffer.from(base64Content, 'base64');
+    const maxSize = 2 * 1024 * 1024; // 2MB
+    if (buffer.length > maxSize) {
+      throw new BadRequestError('El tamaño del logotipo excede el límite permitido de 2 MB.');
+    }
+
+    let ext = 'png';
+    if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') ext = 'jpg';
+    else if (mimeType === 'image/webp') ext = 'webp';
+    else if (mimeType === 'image/svg+xml') ext = 'svg';
+    else if (fileData.fileName && fileData.fileName.includes('.')) {
+      ext = fileData.fileName.split('.').pop()?.toLowerCase() || 'png';
+    }
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const logosDir = path.resolve(__dirname, '../../../uploads/logos');
+    if (!fs.existsSync(logosDir)) {
+      fs.mkdirSync(logosDir, { recursive: true });
+    }
+
+    const filename = `logo_${eventId}_${Date.now()}.${ext}`;
+    const filePath = path.join(logosDir, filename);
+    fs.writeFileSync(filePath, buffer);
+
+    if (existing.logoUrl && existing.logoUrl.startsWith('/uploads/logos/')) {
+      const oldFilename = path.basename(existing.logoUrl);
+      const oldFilePath = path.join(logosDir, oldFilename);
+      if (fs.existsSync(oldFilePath)) {
+        try {
+          fs.unlinkSync(oldFilePath);
+        } catch (e) {
+          console.warn('No se pudo eliminar el logo anterior:', e);
+        }
+      }
+    }
+
+    const logoUrl = `/uploads/logos/${filename}`;
+    const updated = await prisma.eventSettings.update({
+      where: { eventId },
+      data: { logoUrl },
+    });
+
+    return { settings: updated, logoUrl };
+  }
+
+  static async removeLogo(eventId: string) {
+    const existing = await prisma.eventSettings.findUnique({ where: { eventId } });
+    if (!existing) throw new NotFoundError('Ajustes de edición no encontrados');
+
+    if (existing.logoUrl && existing.logoUrl.startsWith('/uploads/logos/')) {
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
+      const logosDir = path.resolve(__dirname, '../../../uploads/logos');
+      const filename = path.basename(existing.logoUrl);
+      const filePath = path.join(logosDir, filename);
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+        } catch (e) {
+          console.warn('No se pudo eliminar el logo del disco:', e);
+        }
+      }
+    }
+
+    const updated = await prisma.eventSettings.update({
+      where: { eventId },
+      data: { logoUrl: null },
+    });
+
+    return { settings: updated, logoUrl: null };
   }
 }

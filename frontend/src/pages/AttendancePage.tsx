@@ -9,7 +9,7 @@ import {
   participantsService,
   DetailedRegistration,
 } from '../services/participants.service';
-import { Registration, TicketType, PaymentMethod } from '../types';
+import { Registration, TicketType, PaymentMethod, DailySalesSummary } from '../types';
 import { ParticipantDetailDrawer } from '../components/participants/ParticipantDetailDrawer';
 import { OnsiteSaleModal } from '../components/sales/OnsiteSaleModal';
 import { ParticipantFormModal } from '../components/participants/ParticipantFormModal';
@@ -48,6 +48,12 @@ export const AttendancePage: React.FC = () => {
     pendingCount: 0,
   });
 
+  // Resumen de ventas del día en recepción
+  const [dailySales, setDailySales] = useState<DailySalesSummary | null>(null);
+
+  // Estado de conexión del servidor (Online ping)
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+
   // Catálogos de la edición activa
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
@@ -82,7 +88,22 @@ export const AttendancePage: React.FC = () => {
     searchInputRef.current?.focus();
   }, []);
 
-  // Cargar catálogos de la edición activa
+  // Monitoreo del estado de conexión con el servidor
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        await api.get('/health');
+        setIsOnline(true);
+      } catch {
+        setIsOnline(false);
+      }
+    };
+    checkConnection();
+    const interval = setInterval(checkConnection, 20000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Cargar catálogos y resumen de ventas diarias
   useEffect(() => {
     if (currentEvent) {
       api.get(`/events/${currentEvent.id}`).then((res) => {
@@ -91,6 +112,8 @@ export const AttendancePage: React.FC = () => {
           setPaymentMethods(res.data.data.paymentMethods || []);
         }
       }).catch(console.error);
+
+      attendanceService.getDailySales().then(setDailySales).catch(console.error);
     }
   }, [currentEvent]);
 
@@ -165,6 +188,25 @@ export const AttendancePage: React.FC = () => {
     }
   };
 
+  // Navegación entre participantes en el drawer
+  const currentDrawerIndex = registrations.findIndex((r) => r.id === selectedRegistration?.id);
+  const hasPrevDrawer = currentDrawerIndex > 0;
+  const hasNextDrawer = currentDrawerIndex >= 0 && currentDrawerIndex < registrations.length - 1;
+
+  const handleNavigateDrawer = async (direction: 'prev' | 'next') => {
+    if (currentDrawerIndex === -1) return;
+    const nextIdx = direction === 'prev' ? currentDrawerIndex - 1 : currentDrawerIndex + 1;
+    if (nextIdx >= 0 && nextIdx < registrations.length) {
+      const targetReg = registrations[nextIdx];
+      try {
+        const detailed = await participantsService.getById(targetReg.id);
+        setSelectedRegistration(detailed);
+      } catch (err) {
+        console.error('Error navegando participante:', err);
+      }
+    }
+  };
+
   // Exportar reporte de asistencia
   const handleExport = async () => {
     try {
@@ -194,9 +236,23 @@ export const AttendancePage: React.FC = () => {
             </span>
             <span className="text-xs text-muted-foreground">• Mesa de Recepción y Control de Asistencia</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground flex items-center gap-2">
-            <span>Control de Asistencia</span>
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground flex items-center gap-2">
+              <span>Control de Asistencia</span>
+            </h1>
+            {/* Indicador de conexión en tiempo real */}
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                isOnline
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  : 'bg-rose-500/10 text-rose-400 border-rose-500/30 animate-pulse'
+              }`}
+              title={isOnline ? 'Conexión activa con el servidor' : 'Sin conexión con el servidor'}
+            >
+              <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+              <span>{isOnline ? 'En línea' : 'Sin conexión'}</span>
+            </div>
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             Localice participantes por nombre, cédula, correo o ticket. Haga clic para consultar su ficha oficial y registrar su llegada.
           </p>
@@ -240,6 +296,43 @@ export const AttendancePage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Resumen Diario de Recepción: Ventas y Cobros de Hoy */}
+      {dailySales && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-card via-card to-primary/5 border border-border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <CreditCard className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">
+                Caja y Recaudación de Hoy ({dailySales.date})
+              </span>
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span className="text-xl font-black text-foreground">
+                  RD$ {dailySales.totalAmount.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  • {dailySales.totalSalesCount} venta(s) ({dailySales.onsiteSalesCount} presenciales)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {Object.entries(dailySales.byMethod).map(([method, data]) => (
+              <span
+                key={method}
+                className="px-2.5 py-1 rounded-lg bg-background border border-border text-xs font-semibold text-foreground flex items-center gap-1.5"
+              >
+                <span className="text-muted-foreground">{method}:</span>
+                <strong className="text-primary">RD$ {data.total.toLocaleString('es-DO')}</strong>
+                <span className="text-[10px] text-muted-foreground font-mono">({data.count})</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Tarjetas KPI de Asistencia en Tiempo Real */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -490,15 +583,39 @@ export const AttendancePage: React.FC = () => {
                           </span>
                         )}
 
-                        {reg.isCourtesy && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 inline-flex items-center gap-1">
-                            <Tag className="w-2.5 h-2.5" /> Cortesía RD$ 0
+                        {/* 1. Badge de Estado de Inscripción */}
+                        {reg.status === 'CONFIRMED' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800 text-zinc-300 border border-zinc-700">
+                            Inscripción Confirmada
+                          </span>
+                        )}
+                        {reg.status === 'PENDING' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                            Inscripción Pendiente
+                          </span>
+                        )}
+                        {reg.status === 'CANCELLED' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                            Cancelado
                           </span>
                         )}
 
-                        {balanceDue > 0 && (
+                        {/* 2. Badge de Estado de Pago */}
+                        {reg.isCourtesy || reg.paymentStatus === 'COURTESY' ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 inline-flex items-center gap-1">
+                            <Tag className="w-2.5 h-2.5" /> Cortesía RD$ 0
+                          </span>
+                        ) : reg.paymentStatus === 'PAID' || balanceDue === 0 ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            Pago Completo
+                          </span>
+                        ) : reg.paymentStatus === 'PARTIAL' || amountPaid > 0 ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                            Abono Parcial (Debe RD$ {balanceDue.toFixed(2)})
+                          </span>
+                        ) : (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                            Debe RD$ {balanceDue.toFixed(2)}
+                            Pago Pendiente (Debe RD$ {balanceDue.toFixed(2)})
                           </span>
                         )}
                       </div>
@@ -610,6 +727,9 @@ export const AttendancePage: React.FC = () => {
           );
           attendanceService.getCounters().then(setCounters).catch(console.error);
         }}
+        onNavigate={handleNavigateDrawer}
+        hasPrev={hasPrevDrawer}
+        hasNext={hasNextDrawer}
       />
 
       {/* Modal de Nueva Venta Presencial */}

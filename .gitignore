@@ -70,3 +70,10 @@ temp/
 .vite/
 .eslintcache
 .gemini/
+
+# Backups and uploaded assets
+backups/
+*/backups/
+uploads/
+backend/uploads/
+*.dump
