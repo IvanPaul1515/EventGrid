@@ -79,7 +79,8 @@ export const ParticipantsPage: React.FC = () => {
     attendance: true,
     salesResponsible: false,
     saleTimestamp: true,
-    status: true,
+    status: true, // Inscripción
+    paymentStatus: true, // Estado de Pago
     actions: true,
   });
 
@@ -147,6 +148,17 @@ export const ParticipantsPage: React.FC = () => {
 
   useEffect(() => {
     fetchParticipants();
+  }, [fetchParticipants]);
+
+  // Sincronización inmediata entre módulos mediante eventos del sistema
+  useEffect(() => {
+    const handleDataRefresh = () => {
+      fetchParticipants();
+    };
+    window.addEventListener('eventgrid:data-refresh', handleDataRefresh);
+    return () => {
+      window.removeEventListener('eventgrid:data-refresh', handleDataRefresh);
+    };
   }, [fetchParticipants]);
 
   // Notificación temporal
@@ -512,10 +524,11 @@ export const ParticipantsPage: React.FC = () => {
                       paymentMethod: 'Forma de Pago',
                       totalAmount: 'Monto Pagado',
                       balanceDue: 'Balance Pendiente',
+                      status: 'Inscripción (Estado)',
+                      paymentStatus: 'Estado de Pago',
                       attendance: 'Asistencia',
                       salesResponsible: 'Responsable',
                       saleTimestamp: 'Fecha y Hora',
-                      status: 'Estado',
                     }).map(([key, label]) => (
                       <label key={key} className="flex items-center gap-2 text-xs text-foreground cursor-pointer hover:bg-muted/50 p-1 rounded">
                         <input
@@ -602,9 +615,168 @@ export const ParticipantsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabla Administrativa de Participantes */}
+      {/* Directorio de Participantes: Vista Adaptativa Móvil y Tabla de Escritorio */}
       <div className="rounded-2xl bg-card border border-border overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        {/* VISTA ADAPTATIVA EN TARJETAS PARA CELULARES Y PANTALLAS PEQUEÑAS (< md) */}
+        <div className="md:hidden divide-y divide-border">
+          {loading ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <span>Cargando participantes...</span>
+            </div>
+          ) : registrations.length === 0 ? (
+            <div className="p-8 text-center space-y-3">
+              <Users className="w-10 h-10 text-muted-foreground mx-auto opacity-40" />
+              <p className="text-sm font-bold text-foreground">
+                {isFiltering ? 'No se encontraron participantes con esos filtros' : `No hay participantes registrados`}
+              </p>
+              <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                {isFiltering ? 'Intenta modificar el término de búsqueda o limpiar los filtros.' : 'Comienza registrando asistentes o importa tus archivos Excel.'}
+              </p>
+            </div>
+          ) : (
+            registrations.map((reg) => {
+              const p = reg.participant;
+              const ticketPrice = reg.isCourtesy ? 0 : Number(reg.ticketPrice ?? reg.totalAmount ?? 0);
+              const amountPaid = reg.isCourtesy ? 0 : Number(reg.amountPaid ?? reg.totalAmount ?? 0);
+              const balanceDue = reg.isCourtesy ? 0 : Math.max(0, ticketPrice - amountPaid);
+              const overpaid = Math.max(0, amountPaid - ticketPrice);
+
+              return (
+                <div
+                  key={reg.id}
+                  onClick={() => handleOpenDetail(reg)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleOpenDetail(reg);
+                    }
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  className="p-4 space-y-3 hover:bg-muted/40 active:scale-[0.99] transition-all cursor-pointer focus:outline-none focus:bg-muted/50"
+                  title="Presiona cualquier lugar de la tarjeta para abrir la ficha"
+                >
+                  {/* Fila 1: Ticket + Estados de Inscripción y Asistencia */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="px-2 py-0.5 rounded font-mono text-xs font-bold bg-zinc-900 border border-zinc-700 text-white">
+                      {reg.registrationNumber}
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      {getStatusBadge(reg.status)}
+                      {reg.attended ? (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/25 inline-flex items-center gap-1">
+                          <Check className="w-3 h-3 stroke-[3]" /> Asistió
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[10px] font-semibold border border-zinc-700 inline-flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> No ha llegado
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Fila 2: Avatar y Datos de Identidad */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary font-bold flex items-center justify-center text-sm shrink-0">
+                      {p.firstName.charAt(0)}{p.lastName.charAt(0)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-sm text-foreground truncate">
+                          {p.fullName}
+                        </span>
+                        {(reg.isDemo || p.isDemo) && (
+                          <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                            DEMO
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{p.email}</p>
+                      {p.documentId && (
+                        <p className="text-[11px] font-mono text-zinc-400 mt-0.5">
+                          Doc: <strong className="text-zinc-200">{p.documentId}</strong>
+                        </p>
+                      )}
+                      {p.institution && (
+                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                          {p.institution}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Fila 3: Tarifa, Estado de Pago y Botones de Acción */}
+                  <div className="flex items-center justify-between text-xs pt-2 border-t border-border/50 bg-background/50 -mx-4 -mb-4 p-3 rounded-b-xl">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-muted-foreground uppercase font-mono">
+                        {reg.ticketType?.name || (reg.isCourtesy ? 'Cortesía' : 'General')}
+                      </span>
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        {getPaymentStatusBadge(reg)}
+                        {overpaid > 0 && !reg.isCourtesy && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                            +{overpaid.toFixed(0)} favor
+                          </span>
+                        )}
+                        {balanceDue > 0 && !reg.isCourtesy && (
+                          <span className="text-[11px] font-black text-amber-400">
+                            Debe RD$ {balanceDue.toFixed(0)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDetail(reg);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Ficha</span>
+                      </button>
+                      {hasRole(['ADMIN', 'OPERATOR']) && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedForEdit(reg);
+                              setIsFormOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                            title="Editar"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedForDelete(reg);
+                              setIsDeleteOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* TABLA DE ESCRITORIO (>= md) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full min-w-[1100px] text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/40 font-mono text-[11px] text-muted-foreground uppercase tracking-wider select-none">
@@ -670,6 +842,8 @@ export const ParticipantsPage: React.FC = () => {
                   </th>
                 )}
                 {visibleColumns.balanceDue && <th className="p-3.5 font-bold text-right">Balance</th>}
+                {visibleColumns.status && <th className="p-3.5 font-bold">Inscripción</th>}
+                {visibleColumns.paymentStatus && <th className="p-3.5 font-bold">Estado de Pago</th>}
                 {visibleColumns.attendance && <th className="p-3.5 font-bold text-center">Asistencia</th>}
                 {visibleColumns.salesResponsible && <th className="p-3.5 font-bold">Responsable</th>}
                 {visibleColumns.saleTimestamp && (
@@ -683,21 +857,20 @@ export const ParticipantsPage: React.FC = () => {
                     </div>
                   </th>
                 )}
-                {visibleColumns.status && <th className="p-3.5 font-bold">Estado</th>}
                 {visibleColumns.actions && <th className="p-3.5 font-bold text-center">Acciones</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={12} className="p-12 text-center text-muted-foreground">
+                  <td colSpan={14} className="p-12 text-center text-muted-foreground">
                     <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
                     <span>Cargando participantes de {currentEvent?.name}...</span>
                   </td>
                 </tr>
               ) : registrations.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="p-12 text-center space-y-3">
+                  <td colSpan={14} className="p-12 text-center space-y-3">
                     <Users className="w-10 h-10 text-muted-foreground mx-auto opacity-40" />
                     <p className="text-sm font-bold text-foreground">
                       {isFiltering ? 'No se encontraron participantes con esos filtros' : `No hay participantes registrados en ${currentEvent?.name}`}
@@ -707,6 +880,7 @@ export const ParticipantsPage: React.FC = () => {
                     </p>
                     {hasRole(['ADMIN', 'OPERATOR']) && !isFiltering && (
                       <button
+                        type="button"
                         onClick={() => {
                           setSelectedForEdit(null);
                           setIsFormOpen(true);
@@ -725,33 +899,39 @@ export const ParticipantsPage: React.FC = () => {
                   return (
                     <tr
                       key={reg.id}
-                      className="hover:bg-muted/40 transition-colors group"
+                      onClick={() => handleOpenDetail(reg)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleOpenDetail(reg);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      className="hover:bg-muted/60 transition-colors group cursor-pointer focus:outline-none focus:bg-muted/50 select-none"
+                      title="Haz clic o presiona Enter para abrir la ficha de este participante"
                     >
                       {visibleColumns.registrationNumber && (
                         <td className="p-3.5 font-mono font-bold text-foreground whitespace-nowrap">
-                          <button
-                            onClick={() => handleOpenDetail(reg)}
-                            className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700/80 text-white hover:border-primary transition-colors text-left cursor-pointer"
-                            title="Ver ficha completa del participante"
+                          <span
+                            className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700/80 text-white group-hover:border-primary transition-colors text-xs font-mono font-bold inline-block"
+                            title="No. de registro oficial"
                           >
                             {reg.registrationNumber}
-                          </button>
+                          </span>
                         </td>
                       )}
                       {visibleColumns.fullName && (
                         <td className="p-3.5 whitespace-nowrap">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0">
+                            <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0 group-hover:scale-105 transition-transform">
                               {p.firstName.charAt(0)}
                             </div>
                             <div>
                               <div className="flex items-center gap-1.5">
-                                <button
-                                  onClick={() => handleOpenDetail(reg)}
-                                  className="font-bold text-foreground hover:text-primary transition-colors text-left cursor-pointer"
-                                >
+                                <span className="font-bold text-foreground group-hover:text-primary transition-colors">
                                   {p.fullName}
-                                </button>
+                                </span>
                                 {(reg.isDemo || p.isDemo) && (
                                   <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
                                     DEMO
@@ -865,15 +1045,46 @@ export const ParticipantsPage: React.FC = () => {
                           })()}
                         </td>
                       )}
+                      {/* Estado 1: Inscripción */}
+                      {visibleColumns.status && (
+                        <td className="p-3.5 whitespace-nowrap">
+                          {getStatusBadge(reg.status)}
+                        </td>
+                      )}
+                      {/* Estado 2: Pago */}
+                      {visibleColumns.paymentStatus && (
+                        <td className="p-3.5 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            {getPaymentStatusBadge(reg)}
+                            {(() => {
+                              const paid = Number(reg.amountPaid ?? reg.totalAmount ?? 0);
+                              const price = reg.isCourtesy ? 0 : Number(reg.ticketPrice ?? reg.totalAmount ?? 0);
+                              const overpaid = Math.max(0, paid - price);
+                              if (overpaid > 0 && !reg.isCourtesy) {
+                                return (
+                                  <span
+                                    className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
+                                    title={`Saldo a favor: RD$ ${overpaid.toFixed(2)}`}
+                                  >
+                                    +{overpaid.toFixed(0)} favor
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
+                        </td>
+                      )}
+                      {/* Estado 3: Asistencia */}
                       {visibleColumns.attendance && (
                         <td className="p-3.5 whitespace-nowrap text-center">
                           {reg.attended ? (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/25">
-                              Asistió
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/25 inline-flex items-center gap-1">
+                              <Check className="w-3 h-3 stroke-[3]" /> Asistió
                             </span>
                           ) : (
-                            <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[10px] font-semibold border border-zinc-700">
-                              No ha llegado
+                            <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[10px] font-semibold border border-zinc-700 inline-flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> No ha llegado
                             </span>
                           )}
                         </td>
@@ -893,19 +1104,15 @@ export const ParticipantsPage: React.FC = () => {
                           })}
                         </td>
                       )}
-                      {visibleColumns.status && (
-                        <td className="p-3.5 whitespace-nowrap">
-                          <div className="flex flex-col gap-1 items-start">
-                            {getStatusBadge(reg.status)}
-                            {getPaymentStatusBadge(reg)}
-                          </div>
-                        </td>
-                      )}
                       {visibleColumns.actions && (
                         <td className="p-3.5 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1.5">
                             <button
-                              onClick={() => handleOpenDetail(reg)}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenDetail(reg);
+                              }}
                               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                               title="Ver ficha 360°"
                             >
@@ -915,7 +1122,9 @@ export const ParticipantsPage: React.FC = () => {
                             {hasRole(['ADMIN', 'OPERATOR']) && (
                               <>
                                 <button
-                                  onClick={() => {
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setSelectedForEdit(reg);
                                     setIsFormOpen(true);
                                   }}
@@ -925,7 +1134,9 @@ export const ParticipantsPage: React.FC = () => {
                                   <Edit2 className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => {
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setSelectedForDelete(reg);
                                     setIsDeleteOpen(true);
                                   }}
@@ -1004,8 +1215,15 @@ export const ParticipantsPage: React.FC = () => {
           setSelectedForEdit(reg);
           setIsFormOpen(true);
         }}
-        onUpdated={() => {
+        onUpdated={(updatedReg) => {
+          if (updatedReg) {
+            setSelectedForDetail(updatedReg);
+            setRegistrations((prev) =>
+              prev.map((r) => (r.id === updatedReg.id ? { ...r, ...updatedReg } : r))
+            );
+          }
           fetchParticipants();
+          window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
         }}
         onNavigate={handleNavigateDetail}
         hasPrev={hasPrevDetail}

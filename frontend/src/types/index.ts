@@ -358,3 +358,45 @@ export interface EmailLog {
     };
   };
 }
+
+export interface FinancialSummary {
+  currencySymbol: string;
+  currencyCode: string;
+  totalRegistrations: number;
+  confirmedCount: number;
+  courtesyCount: number;
+  verifiedPaymentsCount: number;
+  totalPaymentsCount: number;
+  totalRevenue: number;
+  totalExpected: number;
+  totalPending: number;
+  totalOverpaid: number;
+  byMethod: Array<{
+    name: string;
+    count: number;
+    totalAmount: number;
+  }>;
+  byTicketType: Array<{
+    name: string;
+    price: number;
+    count: number;
+    totalRevenue: number;
+  }>;
+  byResponsible: Array<{
+    name: string;
+    count: number;
+    totalAmount: number;
+  }>;
+  recentTransactions: Array<{
+    id: string;
+    amount: number;
+    method: string;
+    reference: string;
+    notes?: string;
+    timestamp: string;
+    participantName: string;
+    ticketNumber: string;
+    operator: string;
+    isDirectPayment: boolean;
+  }>;
+}

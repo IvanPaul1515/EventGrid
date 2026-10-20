@@ -461,4 +461,161 @@ export class EventsService {
 
     return { settings: updated, logoUrl: null };
   }
+
+  /**
+   * Resumen y analítica financiera integral de la edición (Fase 4)
+   */
+  static async getFinancialSummary(eventId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: {
+        settings: true,
+        ticketTypes: true,
+        paymentMethods: true,
+        salesResponsibles: true,
+      },
+    });
+    if (!event) throw new NotFoundError('Edición no encontrada');
+
+    const isDemoFilter = !event.settings?.demoModeEnabled ? { isDemo: false } : {};
+
+    const registrations = await prisma.registration.findMany({
+      where: { eventId, ...isDemoFilter },
+      include: {
+        participant: true,
+        ticketType: true,
+        paymentMethod: true,
+        salesResponsible: true,
+        payments: {
+          include: {
+            paymentMethod: true,
+            receivedByUser: { select: { fullName: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    let totalRevenue = 0;
+    let totalExpected = 0;
+    let totalPending = 0;
+    let totalOverpaid = 0;
+    let confirmedCount = 0;
+    let courtesyCount = 0;
+    let verifiedPaymentsCount = 0;
+    let totalPaymentsCount = 0;
+
+    const methodBreakdown: Record<string, { name: string; count: number; totalAmount: number }> = {};
+    const ticketBreakdown: Record<string, { name: string; price: number; count: number; totalRevenue: number }> = {};
+    const responsibleBreakdown: Record<string, { name: string; count: number; totalAmount: number }> = {};
+    const allTransactions: any[] = [];
+
+    for (const reg of registrations) {
+      if (reg.status === 'CONFIRMED') confirmedCount++;
+
+      if (reg.isCourtesy) {
+        courtesyCount++;
+      } else {
+        const price = Number(reg.ticketPrice ?? reg.totalAmount ?? 0);
+        const paid = Number(reg.amountPaid ?? reg.totalAmount ?? 0);
+        totalExpected += price;
+        totalRevenue += paid;
+
+        if (paid > price) {
+          totalOverpaid += (paid - price);
+        } else {
+          totalPending += Math.max(0, price - paid);
+        }
+
+        if (reg.isVerified) verifiedPaymentsCount++;
+
+        // Desglose por tipo de entrada
+        const tName = reg.ticketType?.name || 'General';
+        if (!ticketBreakdown[tName]) {
+          ticketBreakdown[tName] = { name: tName, price, count: 0, totalRevenue: 0 };
+        }
+        ticketBreakdown[tName].count++;
+        ticketBreakdown[tName].totalRevenue += paid;
+      }
+
+      // Desglose por método de pago y recopilación de transacciones
+      if (reg.payments && reg.payments.length > 0) {
+        for (const p of reg.payments) {
+          totalPaymentsCount++;
+          const pAmount = Number(p.amount);
+          const mName = p.paymentMethod?.name || 'Efectivo';
+          if (!methodBreakdown[mName]) {
+            methodBreakdown[mName] = { name: mName, count: 0, totalAmount: 0 };
+          }
+          methodBreakdown[mName].count++;
+          methodBreakdown[mName].totalAmount += pAmount;
+
+          allTransactions.push({
+            id: p.id,
+            amount: pAmount,
+            method: mName,
+            reference: p.notes || 'Abono Registrado',
+            notes: p.notes,
+            timestamp: p.createdAt,
+            participantName: reg.participant.fullName,
+            ticketNumber: reg.registrationNumber,
+            operator: p.receivedByUser?.fullName || 'Sistema',
+            isDirectPayment: true,
+          });
+        }
+      } else if (Number(reg.amountPaid || 0) > 0 && !reg.isCourtesy) {
+        // Inscripción con pago inicial
+        const mName = reg.paymentMethod?.name || 'Efectivo';
+        if (!methodBreakdown[mName]) {
+          methodBreakdown[mName] = { name: mName, count: 0, totalAmount: 0 };
+        }
+        methodBreakdown[mName].count++;
+        methodBreakdown[mName].totalAmount += Number(reg.amountPaid || 0);
+        totalPaymentsCount++;
+
+        allTransactions.push({
+          id: `reg-${reg.id}`,
+          amount: Number(reg.amountPaid || 0),
+          method: mName,
+          reference: 'Registro Inicial',
+          notes: reg.notes,
+          timestamp: reg.saleTimestamp || reg.createdAt,
+          participantName: reg.participant.fullName,
+          ticketNumber: reg.registrationNumber,
+          operator: reg.salesResponsible?.name || 'Comité BarCamp',
+          isDirectPayment: false,
+        });
+      }
+
+      // Desglose por responsable
+      if (reg.salesResponsible) {
+        const sName = reg.salesResponsible.name;
+        if (!responsibleBreakdown[sName]) {
+          responsibleBreakdown[sName] = { name: sName, count: 0, totalAmount: 0 };
+        }
+        responsibleBreakdown[sName].count++;
+        responsibleBreakdown[sName].totalAmount += Number(reg.amountPaid || 0);
+      }
+    }
+
+    allTransactions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return {
+      currencySymbol: event.settings?.currencySymbol || 'RD$',
+      currencyCode: event.settings?.currencyCode || 'DOP',
+      totalRegistrations: registrations.length,
+      confirmedCount,
+      courtesyCount,
+      verifiedPaymentsCount,
+      totalPaymentsCount,
+      totalRevenue,
+      totalExpected,
+      totalPending,
+      totalOverpaid,
+      byMethod: Object.values(methodBreakdown),
+      byTicketType: Object.values(ticketBreakdown),
+      byResponsible: Object.values(responsibleBreakdown),
+      recentTransactions: allTransactions.slice(0, 50),
+    };
+  }
 }

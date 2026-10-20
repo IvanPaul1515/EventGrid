@@ -240,7 +240,7 @@ export const CommunicationsPage: React.FC = () => {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6">
       {/* Cabecera */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
         <div>
@@ -256,7 +256,7 @@ export const CommunicationsPage: React.FC = () => {
         </div>
 
         {/* Pestañas */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-card border border-border">
+        <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-card border border-border w-full sm:w-auto">
           {isAdmin && (
             <button
               onClick={() => setActiveTab('smtp')}

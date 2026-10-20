@@ -151,6 +151,17 @@ export const AttendancePage: React.FC = () => {
     fetchAttendance();
   }, [fetchAttendance]);
 
+  // Sincronización inmediata entre módulos mediante eventos del sistema
+  useEffect(() => {
+    const handleDataRefresh = () => {
+      fetchAttendance();
+    };
+    window.addEventListener('eventgrid:data-refresh', handleDataRefresh);
+    return () => {
+      window.removeEventListener('eventgrid:data-refresh', handleDataRefresh);
+    };
+  }, [fetchAttendance]);
+
   // Mostrar mensaje de feedback temporal
   const showFeedback = (
     type: 'success' | 'warning' | 'error',
@@ -556,11 +567,20 @@ export const AttendancePage: React.FC = () => {
                 <div
                   key={reg.id}
                   onClick={() => handleOpenDrawer(reg)}
-                  className={`p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all cursor-pointer ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleOpenDrawer(reg);
+                    }
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  className={`p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all cursor-pointer focus:outline-none focus:bg-muted/50 select-none ${
                     reg.attended
                       ? 'bg-emerald-500/5 hover:bg-emerald-500/10'
                       : 'hover:bg-muted/50'
                   }`}
+                  title="Haz clic o presiona Enter para abrir la ficha de este participante"
                 >
                   {/* Avatar y Datos del Participante */}
                   <div className="flex items-start gap-3.5 min-w-0">
@@ -739,6 +759,7 @@ export const AttendancePage: React.FC = () => {
             prev.map((r) => (r.id === updatedReg.id ? updatedReg : r))
           );
           attendanceService.getCounters().then(setCounters).catch(console.error);
+          window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
         }}
         onNavigate={handleNavigateDrawer}
         hasPrev={hasPrevDrawer}

@@ -17,9 +17,15 @@ import {
   Flame,
   Grid,
   Mail,
+  X,
 } from 'lucide-react';
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  mobileOpen?: boolean;
+  setMobileOpen?: (open: boolean) => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) => {
   const [collapsed, setCollapsed] = useState(false);
   const { currentEvent } = useEdition();
   const { hasRole } = useAuth();
@@ -48,7 +54,7 @@ export const Sidebar: React.FC = () => {
       to: '/import',
       label: 'Importar Excel',
       icon: FileSpreadsheet,
-      badge: 'Fase 3',
+      badge: 'Excel',
       roles: ['ADMIN', 'OPERATOR'],
     },
     {
@@ -91,61 +97,84 @@ export const Sidebar: React.FC = () => {
   ];
 
   return (
-    <aside
-      className={`relative bg-barcamp-dark border-r border-border flex flex-col justify-between transition-all duration-300 z-30 select-none ${
-        collapsed ? 'w-18' : 'w-64'
-      }`}
-    >
-      {/* Cabecera Sidebar: Logo EventGrid + Evento BarCamp */}
-      <div>
-        <div className="h-16 flex items-center px-4 border-b border-border/80 justify-between">
-          <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-primary/40 flex items-center justify-center shrink-0 shadow-lg shadow-primary/25 overflow-hidden">
-              {currentEvent?.settings?.logoUrl ? (
-                <img
-                  src={currentEvent.settings.logoUrl}
-                  alt={currentEvent.name}
-                  className="w-full h-full object-contain p-1"
-                />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-tr from-primary to-barcamp-crimson flex items-center justify-center">
-                  <Grid className="w-5 h-5 text-white" />
+    <>
+      {/* Backdrop para dispositivos móviles */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-200"
+          onClick={() => setMobileOpen && setMobileOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`fixed md:relative inset-y-0 left-0 bg-barcamp-dark border-r border-border flex flex-col justify-between transition-all duration-300 z-50 select-none ${
+          mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
+        } ${collapsed ? 'w-18' : 'w-64'}`}
+      >
+        {/* Cabecera Sidebar: Logo EventGrid + Evento BarCamp */}
+        <div>
+          <div className="h-16 flex items-center px-4 border-b border-border/80 justify-between">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-primary/40 flex items-center justify-center shrink-0 shadow-lg shadow-primary/25 overflow-hidden">
+                {currentEvent?.settings?.logoUrl ? (
+                  <img
+                    src={currentEvent.settings.logoUrl}
+                    alt={currentEvent.name}
+                    className="w-full h-full object-contain p-1"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-tr from-primary to-barcamp-crimson flex items-center justify-center">
+                    <Grid className="w-5 h-5 text-white" />
+                  </div>
+                )}
+              </div>
+              {!collapsed && (
+                <div className="flex flex-col">
+                  <span className="font-black text-sm tracking-tight text-white flex items-center gap-1">
+                    EVENT<span className="text-primary font-black">GRID</span>
+                  </span>
+                  <span className="text-[10px] text-zinc-400 font-mono tracking-wider">
+                    PLATAFORMA DE EVENTOS
+                  </span>
                 </div>
               )}
             </div>
-            {!collapsed && (
-              <div className="flex flex-col">
-                <span className="font-black text-sm tracking-tight text-white flex items-center gap-1">
-                  EVENT<span className="text-primary font-black">GRID</span>
-                </span>
-                <span className="text-[10px] text-zinc-400 font-mono tracking-wider">
-                  PLATAFORMA DE EVENTOS
-                </span>
-              </div>
-            )}
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCollapsed(!collapsed)}
+                className="hidden md:flex p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                title={collapsed ? 'Expandir menú lateral' : 'Colapsar menú lateral'}
+              >
+                {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+              </button>
+              {setMobileOpen && (
+                <button
+                  onClick={() => setMobileOpen(false)}
+                  className="md:hidden p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                  title="Cerrar menú"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
           </div>
 
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-            title={collapsed ? 'Expandir menú lateral' : 'Colapsar menú lateral'}
-          >
-            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          </button>
-        </div>
-
-        {/* Lista de Navegación */}
-        <nav className="p-3 space-y-1">
-          {navItems
-            .filter((item) => hasRole(item.roles as any))
-            .map((item) => {
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) =>
+          {/* Lista de Navegación */}
+          <nav className="p-3 space-y-1">
+            {navItems
+              .filter((item) => hasRole(item.roles as any))
+              .map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === '/'}
+                    onClick={() => {
+                      if (setMobileOpen) setMobileOpen(false);
+                    }}
+                    className={({ isActive }) =>
                     `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group ${
                       isActive
                         ? 'bg-primary text-white shadow-md shadow-primary/25 font-semibold'
@@ -191,5 +220,6 @@ export const Sidebar: React.FC = () => {
         </div>
       )}
     </aside>
+    </>
   );
 };

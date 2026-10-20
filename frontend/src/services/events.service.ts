@@ -1,5 +1,5 @@
 import { api } from './api';
-import { EventEdition, EventSettings, TicketType } from '../types';
+import { EventEdition, EventSettings, TicketType, FinancialSummary } from '../types';
 
 export const eventsService = {
   async getAll(): Promise<EventEdition[]> {
@@ -49,6 +49,11 @@ export const eventsService = {
 
   async cloneEdition(id: string, data: any): Promise<EventEdition> {
     const res = await api.post(`/events/${id}/clone`, data);
+    return res.data.data;
+  },
+
+  async getFinancialSummary(id: string): Promise<FinancialSummary> {
+    const res = await api.get(`/events/${id}/financial-summary`);
     return res.data.data;
   },
 };

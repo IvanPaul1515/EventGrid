@@ -10,9 +10,14 @@ import {
   LogOut,
   Layers,
   Sparkles,
+  Menu,
 } from 'lucide-react';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onToggleMobileMenu?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
   const { user, logout } = useAuth();
   const { events, currentEvent, switchEdition } = useEdition();
   const { isDark, toggleTheme } = useTheme();
@@ -46,9 +51,21 @@ export const Header: React.FC = () => {
   };
 
   return (
-    <header className="h-16 border-b border-border bg-card/85 backdrop-blur-md sticky top-0 z-40 px-6 flex items-center justify-between transition-colors">
+    <header className="h-16 border-b border-border bg-card/85 backdrop-blur-md sticky top-0 z-40 px-3 sm:px-6 flex items-center justify-between transition-colors">
       {/* EventGrid Brand + Selector de Edición BarCamp */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4">
+        {/* Botón Hamburger para Móviles */}
+        {onToggleMobileMenu && (
+          <button
+            type="button"
+            onClick={onToggleMobileMenu}
+            className="md:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+            title="Abrir menú de navegación"
+          >
+            <Menu className="w-5 h-5 text-foreground" />
+          </button>
+        )}
+
         {/* Identificador de Software EventGrid */}
         <div className="hidden sm:flex items-center gap-2 pr-4 border-r border-border">
           <span className="font-mono text-xs font-black tracking-widest text-foreground uppercase bg-zinc-800/80 px-2 py-1 rounded-md border border-border">

@@ -424,7 +424,7 @@ export const SettingsPage: React.FC = () => {
         </div>
 
         {/* Pestañas de Navegación */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-card border border-border">
+        <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-card border border-border w-full sm:w-auto">
           <button
             onClick={() => setActiveTab('visual')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${

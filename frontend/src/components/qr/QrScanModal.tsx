@@ -129,6 +129,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
         },
       });
       if (onAttendanceMarked) onAttendanceMarked();
+      window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
     } catch (err: any) {
       alert(err?.response?.data?.message || 'Error al registrar asistencia');
     } finally {

@@ -229,6 +229,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       };
 
       if (onUpdated) onUpdated(updatedDetailed);
+      window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
 
       setFeedbackMsg({
         type: 'success',
@@ -257,6 +258,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       status: res.registration.status,
     };
     if (onUpdated) onUpdated(updatedDetailed);
+    window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
     setShowRevertModal(false);
     setFeedbackMsg({
       type: 'success',
@@ -277,6 +279,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       payments: res.registration.payments || [res.payment, ...payments],
     };
     if (onUpdated) onUpdated(updatedDetailed);
+    window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
     setFeedbackMsg({
       type: 'success',
       text: `Abono de RD$ ${amount.toFixed(2)} registrado correctamente`,
@@ -294,6 +297,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       ...updated,
     };
     if (onUpdated) onUpdated(updatedDetailed);
+    window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
     setFeedbackMsg({
       type: 'success',
       text: `Cortesía asignada exitosamente a ${p.fullName}`,
@@ -308,6 +312,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       ...updated,
     };
     if (onUpdated) onUpdated(updatedDetailed);
+    window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
     setFeedbackMsg({
       type: 'success',
       text: 'Inscripción cancelada. Los datos y pagos históricos se conservan.',
@@ -322,6 +327,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       ...updated,
     };
     if (onUpdated) onUpdated(updatedDetailed);
+    window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
     setFeedbackMsg({
       type: 'success',
       text: 'Inscripción reactivada correctamente.',
@@ -421,10 +427,10 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
           onClick={onClose}
         />
 
-        <div className="fixed inset-y-0 right-0 max-w-full flex pl-4 sm:pl-8">
-          <div className="w-screen max-w-xl bg-card border-l border-border shadow-2xl flex flex-col justify-between animate-in slide-in-from-right duration-250">
+        <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-8">
+          <div className="w-screen max-w-full sm:max-w-xl bg-card border-l border-border shadow-2xl flex flex-col justify-between animate-in slide-in-from-right duration-250">
             {/* Cabecera de la Ficha con Navegación Anterior/Siguiente */}
-            <div className="border-b border-border bg-gradient-to-b from-primary/15 via-background to-background p-6 shrink-0">
+            <div className="border-b border-border bg-gradient-to-b from-primary/15 via-background to-background p-4 sm:p-6 shrink-0">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold px-2 py-0.5 rounded bg-primary/15 border border-primary/25">
@@ -521,7 +527,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
             </div>
 
             {/* Cuerpo de la Ficha */}
-            <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(100vh-230px)]">
+            <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 overflow-y-auto max-h-[calc(100vh-210px)]">
               {/* CONTROL DE ENTRADA (CHECK-IN DESTACADO) */}
               <div className="p-4 rounded-2xl border bg-muted/20 border-border space-y-3">
                 <div className="flex items-center justify-between">
