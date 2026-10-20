@@ -2,6 +2,12 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+const PRESERVED_EVENT_SLUGS = [
+  'barcamp-rd-2026',
+  'barcamp-rd-2025',
+  'barcamp-rd-2024',
+];
+
 async function cleanData() {
   console.log('🧹 Limpiando datos operativos y de prueba en EventGrid...');
 
@@ -32,7 +38,9 @@ async function cleanData() {
   // 7. Eliminar ediciones de prueba creadas durante tests
   const testEvents = await prisma.event.findMany({
     where: {
-      name: 'BarCamp RD 2029',
+      slug: {
+        notIn: PRESERVED_EVENT_SLUGS,
+      },
     },
   });
 
@@ -45,17 +53,13 @@ async function cleanData() {
     await prisma.eventSettings.deleteMany({ where: { eventId: ev.id } });
     await prisma.event.delete({ where: { id: ev.id } });
   }
-  console.log(`- Ediciones de prueba (2029) eliminadas: ${testEvents.length}`);
+  console.log(`- Ediciones de prueba eliminadas: ${testEvents.length}`);
 
-  // 8. Desactivar modo demo en BarCamp 2026 para que inicie 100% limpia para importación real
-  const activeEvent = await prisma.event.findFirst({ where: { isDefault: true } });
-  if (activeEvent) {
-    await prisma.eventSettings.updateMany({
-      where: { eventId: activeEvent.id },
-      data: { demoModeEnabled: false },
-    });
-    console.log(`- Modo demo en edición predeterminada (${activeEvent.name}): DESACTIVADO`);
-  }
+  // 8. Asegurar que el modo demo esté DESACTIVADO en todas las ediciones
+  const updatedSettings = await prisma.eventSettings.updateMany({
+    data: { demoModeEnabled: false },
+  });
+  console.log(`- Modo demo desactivado en configuraciones de eventos: ${updatedSettings.count}`);
 
   // 9. Verificar estado final
   const [totalRegs, totalParts, totalEvents, totalUsers] = await Promise.all([
@@ -65,10 +69,10 @@ async function cleanData() {
     prisma.user.count(),
   ]);
 
-  console.log('✅ Base de datos limpia y lista para importación:');
+  console.log('✅ Base de datos limpia y lista:');
   console.log(`   - Inscripciones: ${totalRegs}`);
   console.log(`   - Participantes: ${totalParts}`);
-  console.log(`   - Ediciones activas: ${totalEvents}`);
+  console.log(`   - Ediciones preservadas: ${totalEvents}`);
   console.log(`   - Usuarios del sistema: ${totalUsers}`);
 }
 
