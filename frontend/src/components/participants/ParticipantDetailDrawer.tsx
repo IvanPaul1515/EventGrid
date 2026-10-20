@@ -7,6 +7,8 @@ import { RecordPaymentModal } from './RecordPaymentModal';
 import { AssignCourtesyModal } from './AssignCourtesyModal';
 import { ReasonModal } from './ReasonModal';
 import { RevertModal } from '../attendance/RevertModal';
+import { DigitalTicketModal } from '../qr/DigitalTicketModal';
+import { SendSingleEmailModal } from '../communications/SendSingleEmailModal';
 import {
   X,
   User,
@@ -32,6 +34,8 @@ import {
   ChevronRight,
   Save,
   Shield,
+  QrCode,
+  Send,
 } from 'lucide-react';
 
 interface ParticipantDetailDrawerProps {
@@ -68,6 +72,8 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   const [showReactivateModal, setShowReactivateModal] = useState(false);
   const [showRevertModal, setShowRevertModal] = useState(false);
   const [showPaymentsLedger, setShowPaymentsLedger] = useState(false);
+  const [showTicketModal, setShowTicketModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   // Modo edición directa inline dentro de la ficha
   const [isInlineEditing, setIsInlineEditing] = useState(false);
@@ -571,6 +577,58 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* ENTRADA DIGITAL & CÓDIGO QR */}
+              <div className="p-4 rounded-2xl border bg-card border-border space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <QrCode className="w-4 h-4 text-primary" />
+                    <span className="text-xs font-black uppercase tracking-wider text-foreground">
+                      Entrada Digital & Código QR
+                    </span>
+                  </div>
+                  {registration.qrCode && (
+                    <span className="font-mono text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded border border-border">
+                      Token Activo
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 rounded-xl bg-muted/20 border border-border">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                      <QrCode className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">Credencial Digital del Participante</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {registration.qrCode ? 'Código QR seguro generado para acceso al evento' : 'QR pendiente de asignación'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowTicketModal(true)}
+                      className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>Ver Entrada / QR</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowEmailModal(true)}
+                      className="flex-1 sm:flex-none px-3 py-2 rounded-xl bg-muted hover:bg-muted/80 text-foreground font-semibold text-xs border border-border flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      title="Enviar correo individual"
+                    >
+                      <Mail className="w-3.5 h-3.5 text-primary" />
+                      <span>Enviar Correo</span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* SECCIÓN 1: INFORMACIÓN PERSONAL (MODO VISTA / EDICIÓN INLINE) */}
@@ -1174,6 +1232,22 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
         loading={false}
         onClose={() => setShowRevertModal(false)}
         onConfirm={handleConfirmRevert}
+      />
+
+      <DigitalTicketModal
+        registrationId={registration.id}
+        isOpen={showTicketModal}
+        onClose={() => setShowTicketModal(false)}
+        isAdmin={isAdmin}
+      />
+
+      <SendSingleEmailModal
+        registrationId={registration.id}
+        recipientName={p.fullName}
+        recipientEmail={p.email}
+        eventId={registration.eventId}
+        isOpen={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
       />
     </>
   );

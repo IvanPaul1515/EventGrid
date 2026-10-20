@@ -1,5 +1,6 @@
 import { prisma } from '../../config/db.js';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors.js';
+import crypto from 'crypto';
 import {
   CreateRegistrationInput,
   UpdateRegistrationInput,
@@ -37,6 +38,10 @@ export class ParticipantsService {
 
     // Filtros dinámicos
     const whereClause: any = { eventId };
+
+    if (!event.settings?.demoModeEnabled) {
+      whereClause.isDemo = false;
+    }
 
     if (paymentMethodId) whereClause.paymentMethodId = paymentMethodId;
     if (ticketTypeId) whereClause.ticketTypeId = ticketTypeId;
@@ -86,7 +91,10 @@ export class ParticipantsService {
       }),
       // Métricas de resumen de toda la edición
       prisma.registration.findMany({
-        where: { eventId },
+        where: {
+          eventId,
+          ...(!event.settings?.demoModeEnabled ? { isDemo: false } : {}),
+        },
         select: {
           status: true,
           attended: true,
@@ -443,6 +451,8 @@ export class ParticipantsService {
         salesResponsibleId: input.salesResponsibleId || null,
         saleTimestamp: input.saleTimestamp ? new Date(input.saleTimestamp) : new Date(),
         status: input.status || (balanceDue === 0 || isCourtesy ? 'CONFIRMED' : 'PENDING'),
+        qrCode: `eg_qr_${crypto.randomBytes(16).toString('hex')}`,
+        qrGeneratedAt: new Date(),
         notes: input.notes || null,
         customFields: customFieldsData as any,
       },
@@ -766,6 +776,8 @@ export class ParticipantsService {
         paymentMethodId: isCourtesy ? null : input.paymentMethodId || null,
         paymentStatus: onsitePaymentStatus,
         status: balanceDue === 0 || isCourtesy ? 'CONFIRMED' : 'PENDING',
+        qrCode: `eg_qr_${crypto.randomBytes(16).toString('hex')}`,
+        qrGeneratedAt: now,
         notes: input.notes || null,
         saleTimestamp: now,
         updatedByUserId: operatorUserId,

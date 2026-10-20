@@ -31,6 +31,7 @@ export interface EventSettings {
   coverImageUrl?: string | null;
   subtitle: string;
   registrationPrefix: string;
+  demoModeEnabled?: boolean;
   customCss?: Record<string, any>;
 }
 
@@ -125,6 +126,9 @@ export interface Registration {
   eventId: string;
   participantId: string;
   registrationNumber: string;
+  qrCode?: string;
+  qrGeneratedAt?: string;
+  qrRevokedAt?: string;
   source: 'EXCEL_IMPORT' | 'MANUAL' | 'ONSITE_SALE';
   importBatchId?: string;
   ticketTypeId?: string;
@@ -239,4 +243,113 @@ export interface ApiResponse<T> {
   status: 'success' | 'error';
   message?: string;
   data: T;
+}
+
+export interface DemoStatus {
+  demoModeEnabled: boolean;
+  counts: {
+    demoParticipants: number;
+    demoRegistrations: number;
+    realParticipants: number;
+    realRegistrations: number;
+    totalRegistrations: number;
+  };
+}
+
+export interface QrTicketData {
+  token: string;
+  qrDataUrl: string;
+  generatedAt: string;
+  registration: {
+    id: string;
+    registrationNumber: string;
+    status: RegistrationStatus;
+    paymentStatus: PaymentStatus;
+    isCourtesy: boolean;
+    attended: boolean;
+    attendedAt?: string;
+    ticketType: string;
+    price: number;
+  };
+  participant: {
+    id: string;
+    fullName: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    documentId?: string;
+    institution?: string;
+  };
+  event: {
+    id: string;
+    name: string;
+    year: number;
+    venue: string;
+    startDate: string;
+    endDate: string;
+    logoUrl?: string;
+    currencySymbol: string;
+  };
+}
+
+export interface QrScanResult {
+  valid: boolean;
+  status: 'VALID' | 'ALREADY_CHECKED_IN' | 'CANCELLED' | 'EDITION_MISMATCH' | 'REVOKED' | 'INVALID_CODE';
+  message: string;
+  canCheckIn: boolean;
+  registration?: Registration;
+}
+
+export interface EmailConfig {
+  id?: string;
+  eventId: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password?: string;
+  fromEmail: string;
+  fromName: string;
+  replyToEmail?: string;
+  isEnabled: boolean;
+}
+
+export interface EmailTemplate {
+  id: string;
+  eventId: string;
+  code: string;
+  name: string;
+  subject: string;
+  bodyHtml: string;
+  bodyText?: string;
+  variables?: string;
+  isSystem: boolean;
+}
+
+export type EmailLogStatus = 'PENDING' | 'SENT' | 'FAILED' | 'SIMULATED';
+
+export interface EmailLog {
+  id: string;
+  eventId: string;
+  registrationId?: string;
+  recipientEmail: string;
+  recipientName: string;
+  templateCode: string;
+  subject: string;
+  status: EmailLogStatus;
+  errorMessage?: string;
+  sentByUserId?: string;
+  sentByUser?: {
+    id: string;
+    fullName: string;
+    email: string;
+  };
+  sentAt: string;
+  registration?: {
+    id: string;
+    registrationNumber: string;
+    participant: {
+      fullName: string;
+    };
+  };
 }

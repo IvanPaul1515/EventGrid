@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useTheme } from '../context/ThemeContext';
 import { eventsService } from '../services/events.service';
-import { TicketType } from '../types';
+import { demoService } from '../services/demo.service';
+import { TicketType, DemoStatus } from '../types';
 import {
   Palette,
   Sparkles,
@@ -26,6 +27,11 @@ import {
   ToggleRight,
   Edit2,
   X,
+  FlaskConical,
+  Database,
+  ShieldCheck,
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
@@ -33,7 +39,7 @@ export const SettingsPage: React.FC = () => {
   const { applyCustomPalette, resetDefaultTheme } = useTheme();
 
   // Pestaña activa
-  const [activeTab, setActiveTab] = useState<'visual' | 'edition' | 'tickets'>('visual');
+  const [activeTab, setActiveTab] = useState<'visual' | 'edition' | 'tickets' | 'demo'>('visual');
 
   // Identidad Visual y Colores
   const [primaryColor, setPrimaryColor] = useState('#e11d48');
@@ -63,6 +69,17 @@ export const SettingsPage: React.FC = () => {
   const [editingTicket, setEditingTicket] = useState<Partial<TicketType> | null>(null);
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [ticketSaving, setTicketSaving] = useState(false);
+
+  // Estados de Entorno de Demostración
+  const [demoStatus, setDemoStatus] = useState<DemoStatus | null>(null);
+  const [loadingDemo, setLoadingDemo] = useState(false);
+  const [togglingDemo, setTogglingDemo] = useState(false);
+  const [generatingDemo, setGeneratingDemo] = useState(false);
+  const [demoCountToGenerate, setDemoCountToGenerate] = useState(25);
+  const [resettingDemo, setResettingDemo] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetConfirmationInput, setResetConfirmationInput] = useState('');
+  const [demoFeedback, setDemoFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Estados de carga y feedback
   const [saving, setSaving] = useState(false);
@@ -115,6 +132,82 @@ export const SettingsPage: React.FC = () => {
       console.error('Error cargando tipos de entradas:', err);
     } finally {
       setTicketsLoading(false);
+    }
+  };
+
+  const loadDemoStatus = async () => {
+    if (!currentEvent) return;
+    try {
+      setLoadingDemo(true);
+      const data = await demoService.getStatus(currentEvent.id);
+      setDemoStatus(data);
+    } catch (err: any) {
+      console.error('Error cargando estado demo:', err);
+    } finally {
+      setLoadingDemo(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'demo' && currentEvent) {
+      loadDemoStatus();
+    }
+  }, [activeTab, currentEvent]);
+
+  const handleToggleDemo = async () => {
+    if (!currentEvent) return;
+    try {
+      setTogglingDemo(true);
+      const targetState = !(demoStatus?.demoModeEnabled ?? false);
+      const res = await demoService.toggle(currentEvent.id, targetState);
+      setDemoFeedback({ type: 'success', message: res.message });
+      await refreshEditions();
+      await loadDemoStatus();
+    } catch (err: any) {
+      setDemoFeedback({
+        type: 'error',
+        message: err?.response?.data?.message || 'Error al modificar modo demo',
+      });
+    } finally {
+      setTogglingDemo(false);
+    }
+  };
+
+  const handleGenerateDemo = async () => {
+    if (!currentEvent) return;
+    try {
+      setGeneratingDemo(true);
+      setDemoFeedback(null);
+      const res = await demoService.generate(currentEvent.id, demoCountToGenerate);
+      setDemoFeedback({ type: 'success', message: res.message });
+      await loadDemoStatus();
+    } catch (err: any) {
+      setDemoFeedback({
+        type: 'error',
+        message: err?.response?.data?.message || 'Error al generar participantes de demostración',
+      });
+    } finally {
+      setGeneratingDemo(false);
+    }
+  };
+
+  const handleResetDemo = async () => {
+    if (!currentEvent) return;
+    if (resetConfirmationInput.trim() !== 'ELIMINAR-DEMO') {
+      alert('Debe escribir exactamente ELIMINAR-DEMO para autorizar el restablecimiento.');
+      return;
+    }
+    try {
+      setResettingDemo(true);
+      const res = await demoService.reset(currentEvent.id, resetConfirmationInput.trim());
+      setDemoFeedback({ type: 'success', message: res.message });
+      setShowResetModal(false);
+      setResetConfirmationInput('');
+      await loadDemoStatus();
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Error al restablecer datos de demostración');
+    } finally {
+      setResettingDemo(false);
     }
   };
 
@@ -361,6 +454,17 @@ export const SettingsPage: React.FC = () => {
           >
             <Tag className="w-3.5 h-3.5" />
             <span>Entradas & Precios</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('demo')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              activeTab === 'demo'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+            }`}
+          >
+            <FlaskConical className="w-3.5 h-3.5" />
+            <span>Entorno Demo</span>
           </button>
         </div>
       </div>
@@ -864,6 +968,276 @@ export const SettingsPage: React.FC = () => {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* PESTAÑA 4: ENTORNO DE DEMOSTRACIÓN */}
+      {activeTab === 'demo' && (
+        <div className="space-y-6 max-w-4xl">
+          {demoFeedback && (
+            <div
+              className={`p-4 rounded-xl text-xs font-semibold flex items-center gap-2 animate-fade-in ${
+                demoFeedback.type === 'success'
+                  ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                  : 'bg-rose-500/10 border border-rose-500/30 text-rose-400'
+              }`}
+            >
+              {demoFeedback.type === 'success' ? (
+                <Check className="w-4 h-4 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+              )}
+              <span>{demoFeedback.message}</span>
+            </div>
+          )}
+
+          {/* Tarjeta de Control Principal */}
+          <div className="p-6 rounded-2xl bg-card border border-border space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
+              <div>
+                <div className="flex items-center gap-2">
+                  <FlaskConical className="w-5 h-5 text-amber-500" />
+                  <h3 className="text-base font-bold text-foreground">
+                    Modo Demostración Administrable
+                  </h3>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Controle el entorno de pruebas para validar check-in, ventas presenciales, cortesías y códigos QR sin mezclar con registros oficiales.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                    demoStatus?.demoModeEnabled
+                      ? 'bg-amber-500/15 border-amber-500/40 text-amber-500'
+                      : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                  }`}
+                >
+                  {demoStatus?.demoModeEnabled ? 'MODO DEMO ACTIVADO' : 'MODO DEMO DESACTIVADO'}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={handleToggleDemo}
+                  disabled={togglingDemo || loadingDemo}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 ${
+                    demoStatus?.demoModeEnabled
+                      ? 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-600'
+                      : 'bg-amber-600 hover:bg-amber-500 text-white shadow-md shadow-amber-600/30'
+                  }`}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${togglingDemo ? 'animate-spin' : ''}`} />
+                  <span>
+                    {togglingDemo
+                      ? 'Actualizando...'
+                      : demoStatus?.demoModeEnabled
+                      ? 'Desactivar Modo Demo'
+                      : 'Activar Modo Demo'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Comportamiento según el estado */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div className={`p-4 rounded-xl border ${!demoStatus?.demoModeEnabled ? 'bg-primary/5 border-primary/20' : 'bg-muted/30 border-border opacity-70'}`}>
+                <h4 className="font-bold text-foreground flex items-center gap-1.5 mb-1.5">
+                  <ShieldCheck className="w-4 h-4 text-primary" />
+                  Modo Demo Desactivado (Producción)
+                </h4>
+                <ul className="space-y-1 text-muted-foreground list-disc list-inside">
+                  <li>Muestra únicamente participantes e inscripciones reales.</li>
+                  <li>Oculta automáticamente registros de prueba en todas las consultas y exportaciones.</li>
+                  <li>Si la base de datos está vacía, muestra contadores en cero.</li>
+                </ul>
+              </div>
+
+              <div className={`p-4 rounded-xl border ${demoStatus?.demoModeEnabled ? 'bg-amber-500/5 border-amber-500/30' : 'bg-muted/30 border-border opacity-70'}`}>
+                <h4 className="font-bold text-amber-500 flex items-center gap-1.5 mb-1.5">
+                  <FlaskConical className="w-4 h-4 text-amber-500" />
+                  Modo Demo Activado (Entorno de Pruebas)
+                </h4>
+                <ul className="space-y-1 text-muted-foreground list-disc list-inside">
+                  <li>Permite evaluar recepción, lecturas QR, emisión de entradas y balance.</li>
+                  <li>Genera participantes con variedad de pagos, cortesías y asistencias.</li>
+                  <li>Identifica visualmente los registros como datos de demostración.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Conteo de Registros en Base de Datos */}
+          <div className="p-6 rounded-2xl bg-card border border-border space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <Database className="w-4 h-4 text-primary" />
+                Auditoría y Conteo de Registros Actuales
+              </h3>
+              <button
+                type="button"
+                onClick={loadDemoStatus}
+                disabled={loadingDemo}
+                className="text-xs text-primary hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingDemo ? 'animate-spin' : ''}`} />
+                <span>Actualizar conteo</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-4 rounded-xl bg-background border border-amber-500/20">
+                <p className="text-[10px] font-bold uppercase text-amber-500">Inscripciones Demo</p>
+                <p className="text-2xl font-black text-foreground mt-1">
+                  {demoStatus?.counts.demoRegistrations ?? 0}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">En la edición activa</p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-background border border-amber-500/20">
+                <p className="text-[10px] font-bold uppercase text-amber-500">Personas Demo</p>
+                <p className="text-2xl font-black text-foreground mt-1">
+                  {demoStatus?.counts.demoParticipants ?? 0}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Participantes ficticios</p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-background border border-emerald-500/20">
+                <p className="text-[10px] font-bold uppercase text-emerald-500">Inscripciones Reales</p>
+                <p className="text-2xl font-black text-foreground mt-1">
+                  {demoStatus?.counts.realRegistrations ?? 0}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Registros oficiales</p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-background border border-emerald-500/20">
+                <p className="text-[10px] font-bold uppercase text-emerald-500">Personas Reales</p>
+                <p className="text-2xl font-black text-foreground mt-1">
+                  {demoStatus?.counts.realParticipants ?? 0}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Participantes legítimos</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Generador de Participantes Ficticios */}
+          <div className="p-6 rounded-2xl bg-card border border-border space-y-4">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary" />
+              Generador Inteligente de Datos de Demostración
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Crea participantes ficticios con nombres dominicanos, cédulas válidas, instituciones representativas y escenarios variados (entradas pagadas, cortesías con justificación, abonos parciales, pendientes y registros con entrada ya marcada).
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-foreground">Cantidad:</span>
+                <select
+                  value={demoCountToGenerate}
+                  onChange={(e) => setDemoCountToGenerate(Number(e.target.value))}
+                  className="px-3 py-1.5 rounded-lg bg-background border border-border text-foreground text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value={5}>5 participantes</option>
+                  <option value={10}>10 participantes</option>
+                  <option value={25}>25 participantes</option>
+                  <option value={50}>50 participantes</option>
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGenerateDemo}
+                disabled={generatingDemo}
+                className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs shadow-md shadow-primary/25 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>
+                  {generatingDemo
+                    ? 'Generando participantes ficticios...'
+                    : `Generar ${demoCountToGenerate} Participantes Demo`}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Restablecimiento / Limpieza de Datos Demo */}
+          <div className="p-6 rounded-2xl bg-destructive/5 border border-destructive/20 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-destructive flex items-center gap-2">
+                  <Trash2 className="w-4 h-4" />
+                  Restablecer Datos de Demostración
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Elimina exclusivamente las inscripciones y personas marcadas como demo para dejar la plataforma limpia antes del evento oficial. No afectará configuraciones de precios ni participantes reales.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setResetConfirmationInput('');
+                  setShowResetModal(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-destructive hover:bg-destructive/90 text-white font-bold text-xs shadow-md shadow-destructive/25 transition-all cursor-pointer shrink-0"
+              >
+                Restablecer Demo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación Obligatoria de Restablecimiento */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-md bg-card rounded-2xl border border-destructive/40 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3 text-destructive">
+              <div className="p-2.5 rounded-xl bg-destructive/10 border border-destructive/20">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-bold text-foreground text-sm">Confirmación de Restablecimiento</h4>
+                <p className="text-xs text-muted-foreground">Acción administrativa de limpieza</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Esta operación eliminará de forma irreversible todas las inscripciones y registros de demostración generados en <strong>{currentEvent?.name}</strong>. Los datos reales y las importaciones oficiales permanecerán intactos.
+            </p>
+
+            <div className="p-3 rounded-xl bg-background border border-border">
+              <label className="block text-[11px] font-bold uppercase text-foreground mb-1.5">
+                Para autorizar, escriba exactamente: <span className="font-mono text-destructive">ELIMINAR-DEMO</span>
+              </label>
+              <input
+                type="text"
+                value={resetConfirmationInput}
+                onChange={(e) => setResetConfirmationInput(e.target.value)}
+                placeholder="ELIMINAR-DEMO"
+                className="w-full px-3 py-2 rounded-lg bg-card border border-border text-foreground font-mono text-xs focus:outline-none focus:ring-2 focus:ring-destructive"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowResetModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleResetDemo}
+                disabled={resettingDemo || resetConfirmationInput.trim() !== 'ELIMINAR-DEMO'}
+                className="px-4 py-2 rounded-xl bg-destructive hover:bg-destructive/90 text-white font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-40"
+              >
+                {resettingDemo ? 'Eliminando datos demo...' : 'Confirmar y Limpiar Demo'}
+              </button>
+            </div>
           </div>
         </div>
       )}

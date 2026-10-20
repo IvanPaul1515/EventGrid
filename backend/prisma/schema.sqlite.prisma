@@ -26,6 +26,7 @@ model User {
   attendanceLogs        AttendanceLog[]
   modifiedRegistrations Registration[]  @relation("RegistrationModifier")
   modifiedParticipants  Participant[]   @relation("ParticipantModifier")
+  sentEmails            EmailLog[]      @relation("EmailSender")
 
   @@map("users")
 }
@@ -52,6 +53,9 @@ model Event {
   salesResponsibles      SalesResponsible[]
   customFieldDefinitions CustomFieldDefinition[]
   importBatches          ImportBatch[]
+  emailConfig            EmailConfig?
+  emailTemplates         EmailTemplate[]
+  emailLogs              EmailLog[]
 
   @@index([year])
   @@index([status])
@@ -74,6 +78,7 @@ model EventSettings {
   coverImageUrl      String?
   subtitle           String   @default("Tecnología, Innovación y Comunidad")
   registrationPrefix String   @default("BC-")
+  demoModeEnabled    Boolean  @default(false)
   customCss          String?  // JSON string
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -135,6 +140,9 @@ model Registration {
   attendedAt           DateTime?
   attendedByUserId     String?
   updatedByUserId      String?
+  qrCode               String?   @unique
+  qrGeneratedAt        DateTime?
+  qrRevokedAt          DateTime?
   customFields         String?  // JSON string
   notes                String?
   createdAt            DateTime @default(now())
@@ -151,6 +159,7 @@ model Registration {
   updatedByUser    User?             @relation("RegistrationModifier", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   attendanceLogs   AttendanceLog[]
   payments         Payment[]
+  emailLogs        EmailLog[]
 
   @@unique([eventId, registrationNumber])
   @@unique([eventId, participantId])
@@ -322,4 +331,68 @@ model AttendanceLog {
   @@index([registrationId])
   @@index([timestamp])
   @@map("attendance_logs")
+}
+
+model EmailConfig {
+  id           String   @id @default(uuid())
+  eventId      String?  @unique
+  host         String   @default("smtp.example.com")
+  port         Int      @default(587)
+  secure       Boolean  @default(false)
+  user         String?
+  password     String?
+  fromEmail    String   @default("notificaciones@eventgrid.com")
+  fromName     String   @default("EventGrid Notificaciones")
+  replyToEmail String?
+  isEnabled    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  event Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("email_configs")
+}
+
+model EmailTemplate {
+  id        String   @id @default(uuid())
+  eventId   String?
+  code      String   // INSCRIPTION_CONFIRMATION, DIGITAL_TICKET, EVENT_REMINDER, PAYMENT_CONFIRMATION, PENDING_BALANCE, INSCRIPTION_CANCELLED, GENERAL_ANNOUNCEMENT
+  name      String
+  subject   String
+  bodyHtml  String
+  bodyText  String?
+  variables String?  // JSON string: ["participantName", "eventName", ...]
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, code])
+  @@map("email_templates")
+}
+
+model EmailLog {
+  id             String   @id @default(uuid())
+  eventId        String?
+  registrationId String?
+  recipientEmail String
+  recipientName  String?
+  templateCode   String?
+  subject        String
+  status         String   @default("PENDING") // PENDING, SENT, FAILED, SIMULATED
+  errorMessage   String?
+  sentByUserId   String?
+  sentAt         DateTime @default(now())
+
+  event        Event?        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  registration Registration? @relation(fields: [registrationId], references: [id], onDelete: SetNull)
+  sentByUser   User?         @relation("EmailSender", fields: [sentByUserId], references: [id], onDelete: SetNull)
+
+  @@index([eventId])
+  @@index([registrationId])
+  @@index([recipientEmail])
+  @@index([status])
+  @@index([sentAt])
+  @@map("email_logs")
 }

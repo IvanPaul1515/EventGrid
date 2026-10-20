@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Flame,
   Grid,
+  Mail,
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -61,6 +62,13 @@ export const Sidebar: React.FC = () => {
       label: 'Ediciones',
       icon: CalendarDays,
       roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
+    },
+    {
+      to: '/communications',
+      label: 'Comunicaciones',
+      icon: Mail,
+      badge: 'Correos',
+      roles: ['ADMIN', 'OPERATOR'],
     },
     {
       to: '/settings',

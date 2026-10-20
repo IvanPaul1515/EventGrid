@@ -13,6 +13,7 @@ import { Registration, TicketType, PaymentMethod, DailySalesSummary } from '../t
 import { ParticipantDetailDrawer } from '../components/participants/ParticipantDetailDrawer';
 import { OnsiteSaleModal } from '../components/sales/OnsiteSaleModal';
 import { ParticipantFormModal } from '../components/participants/ParticipantFormModal';
+import { QrScanModal } from '../components/qr/QrScanModal';
 import { api } from '../services/api';
 import {
   Search,
@@ -34,6 +35,7 @@ import {
   Eye,
   CreditCard,
   Check,
+  QrCode,
 } from 'lucide-react';
 
 export const AttendancePage: React.FC = () => {
@@ -72,6 +74,7 @@ export const AttendancePage: React.FC = () => {
   const [isOnsiteSaleOpen, setIsOnsiteSaleOpen] = useState(false);
   const [isNewParticipantOpen, setIsNewParticipantOpen] = useState(false);
   const [registrationToEdit, setRegistrationToEdit] = useState<Registration | null>(null);
+  const [isQrScanOpen, setIsQrScanOpen] = useState(false);
 
   // Feedback temporal
   const [feedback, setFeedback] = useState<{
@@ -262,6 +265,16 @@ export const AttendancePage: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2.5">
           {hasRole(['ADMIN', 'OPERATOR']) && (
             <>
+              <button
+                type="button"
+                onClick={() => setIsQrScanOpen(true)}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-purple-600/20 transition-all cursor-pointer"
+                title="Escanear entrada QR con cámara o lector USB"
+              >
+                <QrCode className="w-4 h-4" />
+                <span>Escanear QR</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setIsOnsiteSaleOpen(true)}
@@ -758,6 +771,24 @@ export const AttendancePage: React.FC = () => {
           await fetchAttendance();
           setIsNewParticipantOpen(false);
           setRegistrationToEdit(null);
+        }}
+      />
+
+      {/* Modal de Escaneo y Validación de Código QR */}
+      <QrScanModal
+        isOpen={isQrScanOpen}
+        onClose={() => setIsQrScanOpen(false)}
+        onAttendanceMarked={async () => {
+          await fetchAttendance();
+        }}
+        onOpenParticipantDetail={async (reg) => {
+          try {
+            const detailed = await participantsService.getById(reg.id);
+            setSelectedRegistration(detailed);
+            setIsDrawerOpen(true);
+          } catch (err) {
+            console.error('Error al abrir detalle desde escáner:', err);
+          }
         }}
       />
     </div>

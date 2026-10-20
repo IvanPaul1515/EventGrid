@@ -8,9 +8,15 @@ export class AttendanceService {
    * Obtiene los contadores de asistencia en tiempo real para la edición activa
    */
   static async getCounters(eventId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { settings: true },
+    });
+    const isDemoFilter = !event?.settings?.demoModeEnabled ? { isDemo: false } : {};
+
     const [totalRegistrations, attendedCount] = await Promise.all([
-      prisma.registration.count({ where: { eventId } }),
-      prisma.registration.count({ where: { eventId, attended: true } }),
+      prisma.registration.count({ where: { eventId, ...isDemoFilter } }),
+      prisma.registration.count({ where: { eventId, attended: true, ...isDemoFilter } }),
     ]);
 
     const pendingCount = totalRegistrations - attendedCount;
@@ -29,7 +35,13 @@ export class AttendanceService {
     const { search, status = 'ALL', page = 1, limit = 25 } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = { eventId };
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { settings: true },
+    });
+    const isDemoFilter = !event?.settings?.demoModeEnabled ? { isDemo: false } : {};
+
+    const where: any = { eventId, ...isDemoFilter };
 
     // Filtro por estado de asistencia
     if (status === 'ATTENDED') {
@@ -260,7 +272,12 @@ export class AttendanceService {
    * Exportar lista de asistencia a archivo Excel (.xlsx)
    */
   static async exportAttendance(eventId: string, status?: string, search?: string) {
-    const where: any = { eventId };
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { settings: true },
+    });
+    const isDemoFilter = !event?.settings?.demoModeEnabled ? { isDemo: false } : {};
+    const where: any = { eventId, ...isDemoFilter };
 
     if (status === 'ATTENDED') where.attended = true;
     else if (status === 'PENDING') where.attended = false;
@@ -324,10 +341,16 @@ export class AttendanceService {
     const startOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 0, 0, 0);
     const endOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 23, 59, 59, 999);
 
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { settings: true },
+    });
+    const isDemoFilter = !event?.settings?.demoModeEnabled ? { isDemo: false } : {};
+
     const [paymentsToday, registrationsToday] = await Promise.all([
       prisma.payment.findMany({
         where: {
-          registration: { eventId },
+          registration: { eventId, ...isDemoFilter },
           createdAt: {
             gte: startOfDay,
             lte: endOfDay,
@@ -348,6 +371,7 @@ export class AttendanceService {
       prisma.registration.findMany({
         where: {
           eventId,
+          ...isDemoFilter,
           createdAt: {
             gte: startOfDay,
             lte: endOfDay,

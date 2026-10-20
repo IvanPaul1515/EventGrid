@@ -135,6 +135,14 @@ export const Header: React.FC = () => {
         </div>
       </div>
 
+      {/* Indicador Global de Modo Demo */}
+      {currentEvent?.settings?.demoModeEnabled && (
+        <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-500 text-xs font-black tracking-wider animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-amber-500" />
+          <span>MODO DEMOSTRACIÓN ACTIVO</span>
+        </div>
+      )}
+
       {/* Controles de la Derecha: Tema, Rol y Perfil */}
       <div className="flex items-center gap-3">
         {/* Conmutador Modo Oscuro / Claro */}

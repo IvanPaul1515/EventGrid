@@ -17,6 +17,9 @@ import participantsRoutes from './modules/participants/participants.routes.js';
 import importRoutes from './modules/import/import.routes.js';
 import attendanceRoutes from './modules/attendance/attendance.routes.js';
 import activityRoutes from './modules/activity/activity.routes.js';
+import demoRoutes from './modules/demo/demo.routes.js';
+import qrRoutes from './modules/qr/qr.routes.js';
+import communicationsRoutes from './modules/communications/communications.routes.js';
 
 export const app = express();
 
@@ -72,6 +75,9 @@ app.use(`${ENV.API_PREFIX}/import`, importRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/attendance`, attendanceRoutes);
 app.use(`${ENV.API_PREFIX}/attendance`, attendanceRoutes);
 app.use(`${ENV.API_PREFIX}/activity`, activityRoutes);
+app.use(`${ENV.API_PREFIX}/demo`, demoRoutes);
+app.use(`${ENV.API_PREFIX}/qr`, qrRoutes);
+app.use(`${ENV.API_PREFIX}/communications`, communicationsRoutes);
 
 // Manejo central de errores
 app.use(errorHandler);
