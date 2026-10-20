@@ -211,4 +211,42 @@ describe('Fase 3: Motor de Importación Inteligente de Excel', () => {
     expect(errorsRes.status).toBe(200);
     expect(errorsRes.headers['content-type']).toContain('spreadsheetml.sheet');
   });
+
+  it('7. El rol OPERATOR no debe tener permiso para borrar un lote de Excel (403 Forbidden)', async () => {
+    const batchesRes = await request(app)
+      .get(`/api/v1/events/${event2026Id}/import/batches`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const batchId = batchesRes.body.data[0].id;
+    const deleteRes = await request(app)
+      .delete(`/api/v1/events/${event2026Id}/import/batches/${batchId}`)
+      .set('Authorization', `Bearer ${operatorToken}`);
+
+    expect(deleteRes.status).toBe(403);
+    expect(deleteRes.body.message).toContain('Acceso denegado');
+  });
+
+  it('8. El rol ADMIN debe poder borrar un lote específico de Excel y sus inscripciones', async () => {
+    const batchesRes = await request(app)
+      .get(`/api/v1/events/${event2026Id}/import/batches`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const batchId = batchesRes.body.data[0].id;
+    const deleteRes = await request(app)
+      .delete(`/api/v1/events/${event2026Id}/import/batches/${batchId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(deleteRes.status).toBe(200);
+    expect(deleteRes.body.data).toHaveProperty('deletedRegistrationsCount');
+    expect(deleteRes.body.data.batchId).toBe(batchId);
+  });
+
+  it('9. El rol ADMIN debe poder limpiar todas las importaciones de Excel con DELETE /import/all', async () => {
+    const clearRes = await request(app)
+      .delete(`/api/v1/events/${event2026Id}/import/all`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(clearRes.status).toBe(200);
+    expect(clearRes.body.data).toHaveProperty('deletedBatchesCount');
+  });
 });

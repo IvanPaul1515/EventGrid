@@ -832,13 +832,188 @@ export class ImportService {
           select: { id: true, fullName: true, email: true },
         },
         _count: {
-          select: { errors: true },
+          select: { errors: true, registrations: true },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
 
     return batches;
+  }
+
+  /**
+   * Eliminar un lote de importación específico y todas sus inscripciones asociadas
+   */
+  static async deleteBatch(batchId: string, eventId?: string) {
+    const batch = await prisma.importBatch.findUnique({
+      where: { id: batchId },
+      include: {
+        registrations: {
+          select: { id: true, participantId: true },
+        },
+      },
+    });
+
+    if (!batch) {
+      throw new NotFoundError('Lote de importación no encontrado');
+    }
+
+    if (eventId && batch.eventId !== eventId) {
+      throw new BadRequestError('El lote no corresponde a la edición activa');
+    }
+
+    const regIds = batch.registrations.map((r) => r.id);
+    const participantIds = Array.from(new Set(batch.registrations.map((r) => r.participantId)));
+
+    let deletedPaymentsCount = 0;
+    let deletedAttendanceCount = 0;
+    let deletedEmailsCount = 0;
+    let deletedRegistrationsCount = 0;
+    let deletedParticipantsCount = 0;
+
+    if (regIds.length > 0) {
+      const pRes = await prisma.payment.deleteMany({
+        where: { registrationId: { in: regIds } },
+      });
+      deletedPaymentsCount = pRes.count;
+
+      const aRes = await prisma.attendanceLog.deleteMany({
+        where: { registrationId: { in: regIds } },
+      });
+      deletedAttendanceCount = aRes.count;
+
+      const eRes = await prisma.emailLog.deleteMany({
+        where: { registrationId: { in: regIds } },
+      });
+      deletedEmailsCount = eRes.count;
+
+      const rRes = await prisma.registration.deleteMany({
+        where: { id: { in: regIds } },
+      });
+      deletedRegistrationsCount = rRes.count;
+    }
+
+    // Eliminar participantes que no tengan otras inscripciones en ningún evento
+    for (const pId of participantIds) {
+      const otherRegsCount = await prisma.registration.count({
+        where: { participantId: pId },
+      });
+      if (otherRegsCount === 0) {
+        await prisma.participant
+          .delete({
+            where: { id: pId },
+          })
+          .catch(() => {});
+        deletedParticipantsCount++;
+      }
+    }
+
+    // Eliminar errores asociados al lote
+    await prisma.importError.deleteMany({
+      where: { importBatchId: batchId },
+    });
+
+    // Eliminar el lote mismo
+    await prisma.importBatch.delete({
+      where: { id: batchId },
+    });
+
+    return {
+      batchId,
+      fileName: batch.fileName,
+      deletedRegistrationsCount,
+      deletedParticipantsCount,
+      deletedPaymentsCount,
+      deletedAttendanceCount,
+      deletedEmailsCount,
+    };
+  }
+
+  /**
+   * Eliminar todas las importaciones de Excel y registros asociados de la edición
+   */
+  static async deleteAllImported(eventId: string) {
+    const batches = await prisma.importBatch.findMany({
+      where: { eventId },
+      select: { id: true, fileName: true },
+    });
+
+    const batchIds = batches.map((b) => b.id);
+
+    // Buscar todas las inscripciones que provengan de EXCEL_IMPORT o tengan un importBatchId del evento
+    const importedRegs = await prisma.registration.findMany({
+      where: {
+        eventId,
+        OR: [
+          { source: 'EXCEL_IMPORT' },
+          ...(batchIds.length > 0 ? [{ importBatchId: { in: batchIds } }] : []),
+        ],
+      },
+      select: { id: true, participantId: true },
+    });
+
+    const regIds = importedRegs.map((r) => r.id);
+    const participantIds = Array.from(new Set(importedRegs.map((r) => r.participantId)));
+
+    let deletedPaymentsCount = 0;
+    let deletedAttendanceCount = 0;
+    let deletedEmailsCount = 0;
+    let deletedRegistrationsCount = 0;
+    let deletedParticipantsCount = 0;
+
+    if (regIds.length > 0) {
+      const pRes = await prisma.payment.deleteMany({
+        where: { registrationId: { in: regIds } },
+      });
+      deletedPaymentsCount = pRes.count;
+
+      const aRes = await prisma.attendanceLog.deleteMany({
+        where: { registrationId: { in: regIds } },
+      });
+      deletedAttendanceCount = aRes.count;
+
+      const eRes = await prisma.emailLog.deleteMany({
+        where: { registrationId: { in: regIds } },
+      });
+      deletedEmailsCount = eRes.count;
+
+      const rRes = await prisma.registration.deleteMany({
+        where: { id: { in: regIds } },
+      });
+      deletedRegistrationsCount = rRes.count;
+    }
+
+    for (const pId of participantIds) {
+      const remaining = await prisma.registration.count({
+        where: { participantId: pId },
+      });
+      if (remaining === 0) {
+        await prisma.participant
+          .delete({
+            where: { id: pId },
+          })
+          .catch(() => {});
+        deletedParticipantsCount++;
+      }
+    }
+
+    if (batchIds.length > 0) {
+      await prisma.importError.deleteMany({
+        where: { importBatchId: { in: batchIds } },
+      });
+      await prisma.importBatch.deleteMany({
+        where: { eventId },
+      });
+    }
+
+    return {
+      deletedBatchesCount: batches.length,
+      deletedRegistrationsCount,
+      deletedParticipantsCount,
+      deletedPaymentsCount,
+      deletedAttendanceCount,
+      deletedEmailsCount,
+    };
   }
 
   /**

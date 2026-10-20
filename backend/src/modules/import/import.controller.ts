@@ -109,4 +109,58 @@ export class ImportController {
       next(error);
     }
   }
+
+  static async deleteBatch(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { batchId } = req.params;
+      const eventId = req.params.eventId || req.eventId;
+      const result = await ImportService.deleteBatch(batchId, eventId);
+
+      await recordAuditLog({
+        req,
+        action: 'DELETE',
+        entity: 'IMPORT_BATCH',
+        entityId: batchId,
+        changes: {
+          fileName: result.fileName,
+          deletedRegistrationsCount: result.deletedRegistrationsCount,
+          deletedParticipantsCount: result.deletedParticipantsCount,
+        },
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: `El archivo '${result.fileName}' y sus ${result.deletedRegistrationsCount} registros fueron eliminados correctamente.`,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteAllImported(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = req.params.eventId || req.eventId!;
+      const result = await ImportService.deleteAllImported(eventId);
+
+      await recordAuditLog({
+        req,
+        action: 'DELETE',
+        entity: 'IMPORT_BATCH',
+        entityId: eventId,
+        changes: {
+          deletedBatchesCount: result.deletedBatchesCount,
+          deletedRegistrationsCount: result.deletedRegistrationsCount,
+        },
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: `Se eliminaron ${result.deletedBatchesCount} lote(s) de Excel y ${result.deletedRegistrationsCount} registro(s) importados.`,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

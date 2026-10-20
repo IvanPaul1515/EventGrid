@@ -59,6 +59,7 @@ export interface ImportBatchItem {
   };
   _count: {
     errors: number;
+    registrations?: number;
   };
 }
 
@@ -104,6 +105,25 @@ export const importService = {
 
   async getBatches(): Promise<ImportBatchItem[]> {
     const res = await api.get('/import/batches');
+    return res.data.data;
+  },
+
+  async deleteBatch(batchId: string): Promise<{
+    batchId: string;
+    fileName: string;
+    deletedRegistrationsCount: number;
+    deletedParticipantsCount: number;
+  }> {
+    const res = await api.delete(`/import/batches/${batchId}`);
+    return res.data.data;
+  },
+
+  async deleteAllImported(): Promise<{
+    deletedBatchesCount: number;
+    deletedRegistrationsCount: number;
+    deletedParticipantsCount: number;
+  }> {
+    const res = await api.delete('/import/all');
     return res.data.data;
   },
 

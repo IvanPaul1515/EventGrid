@@ -38,6 +38,12 @@ describe('Mejoras Alpha: Recepción, Ventas, Fichas y Tipos de Entrada', () => {
           description: 'Acceso completo al evento BarCamp RD 2026',
         },
       });
+    } else {
+      await prisma.ticketType.update({
+        where: { id: genTicket.id },
+        data: { price: 2000 },
+      });
+      genTicket.price = 2000 as any;
     }
     generalTicketTypeId = genTicket.id;
 

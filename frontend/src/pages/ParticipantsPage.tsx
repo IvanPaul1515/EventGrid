@@ -7,6 +7,7 @@ import { api } from '../services/api';
 import { ParticipantDetailDrawer } from '../components/participants/ParticipantDetailDrawer';
 import { ParticipantFormModal } from '../components/participants/ParticipantFormModal';
 import { DeleteConfirmModal } from '../components/participants/DeleteConfirmModal';
+import { DeleteExcelModal } from '../components/participants/DeleteExcelModal';
 import { OnsiteSaleModal } from '../components/sales/OnsiteSaleModal';
 import {
   Users,
@@ -29,6 +30,7 @@ import {
   ShoppingBag,
   Clock,
   Check,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export const ParticipantsPage: React.FC = () => {
@@ -89,6 +91,7 @@ export const ParticipantsPage: React.FC = () => {
   const [selectedForDelete, setSelectedForDelete] = useState<Registration | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [isDeleteExcelOpen, setIsDeleteExcelOpen] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Cargar catálogos al cambiar de edición
@@ -370,6 +373,19 @@ export const ParticipantsPage: React.FC = () => {
             <Download className="w-3.5 h-3.5 text-zinc-400" />
             <span>CSV</span>
           </button>
+
+          {/* Opción de Borrar Excel importado (ADMIN) */}
+          {hasRole(['ADMIN']) && (
+            <button
+              type="button"
+              onClick={() => setIsDeleteExcelOpen(true)}
+              className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Gestionar y borrar datos de Excel importados"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-rose-400" />
+              <span>Borrar Excel</span>
+            </button>
+          )}
 
           {/* Nueva Venta y Nuevo Registro (ADMIN y OPERATOR) */}
           {hasRole(['ADMIN', 'OPERATOR']) && (
@@ -990,6 +1006,16 @@ export const ParticipantsPage: React.FC = () => {
         loading={deleteLoading}
         onClose={() => setIsDeleteOpen(false)}
         onConfirm={handleConfirmDelete}
+      />
+
+      {/* Modal para Borrar Excel Importado (Admin) */}
+      <DeleteExcelModal
+        isOpen={isDeleteExcelOpen}
+        onClose={() => setIsDeleteExcelOpen(false)}
+        onDeleted={() => {
+          fetchParticipants();
+          showNotification('success', 'Lote de Excel eliminado exitosamente');
+        }}
       />
     </div>
   );

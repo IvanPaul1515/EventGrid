@@ -28,6 +28,7 @@ import {
   Info,
   Clock,
   User,
+  Trash2,
 } from 'lucide-react';
 
 type StepNumber = 1 | 2 | 3 | 4 | 5 | 6;
@@ -97,6 +98,13 @@ export const ImportPage: React.FC = () => {
 
   // Alerta de error
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Estados para borrado de lotes de Excel
+  const [batchToDelete, setBatchToDelete] = useState<ImportBatchItem | null>(null);
+  const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
+  const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -115,6 +123,44 @@ export const ImportPage: React.FC = () => {
       console.error('Error al cargar historial de lotes:', err);
     } finally {
       setLoadingBatches(false);
+    }
+  };
+
+  const handleDeleteBatch = async (batch: ImportBatchItem) => {
+    try {
+      setDeletingBatchId(batch.id);
+      setErrorMessage(null);
+      const res = await importService.deleteBatch(batch.id);
+      setSuccessMessage(
+        `El archivo '${batch.fileName}' y sus ${res.deletedRegistrationsCount} registros fueron eliminados correctamente.`
+      );
+      setBatchToDelete(null);
+      await fetchBatches();
+      if (executionResult?.batchId === batch.id) {
+        handleReset();
+      }
+    } catch (err: any) {
+      setErrorMessage(err.response?.data?.message || 'Error al eliminar el lote de Excel');
+    } finally {
+      setDeletingBatchId(null);
+    }
+  };
+
+  const handleDeleteAllBatches = async () => {
+    try {
+      setDeletingAll(true);
+      setErrorMessage(null);
+      const res = await importService.deleteAllImported();
+      setSuccessMessage(
+        `Se eliminaron ${res.deletedBatchesCount} lote(s) de Excel y ${res.deletedRegistrationsCount} registro(s) importados.`
+      );
+      setIsDeleteAllOpen(false);
+      await fetchBatches();
+      handleReset();
+    } catch (err: any) {
+      setErrorMessage(err.response?.data?.message || 'Error al eliminar todas las importaciones');
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -1002,8 +1048,50 @@ export const ImportPage: React.FC = () => {
               >
                 Importar Otro Archivo
               </button>
+              {hasRole(['ADMIN']) && executionResult?.batchId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const found = batches.find((b) => b.id === executionResult.batchId) || {
+                      id: executionResult.batchId,
+                      fileName: executionResult.fileName,
+                      importedRows: executionResult.importedCount,
+                      totalRows: executionResult.totalRows,
+                      fileSize: 0,
+                      validRows: executionResult.importedCount,
+                      updatedRows: executionResult.updatedCount,
+                      skippedRows: executionResult.skippedCount,
+                      errorRows: executionResult.errorCount,
+                      createdAt: new Date().toISOString(),
+                      importedByUser: { id: user?.id || '', fullName: user?.fullName || 'Admin', email: user?.email || '' },
+                      _count: { errors: executionResult.errorCount },
+                    };
+                    setBatchToDelete(found);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-xs font-semibold text-rose-400 hover:text-rose-300 transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Deshacer / Borrar este Excel</span>
+                </button>
+              )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Notificación de éxito */}
+      {successMessage && (
+        <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{successMessage}</span>
+          </div>
+          <button
+            onClick={() => setSuccessMessage(null)}
+            className="text-muted-foreground hover:text-foreground text-xs"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -1011,21 +1099,105 @@ export const ImportPage: React.FC = () => {
       {/* HISTORIAL DE LOTES DE IMPORTACIÓN                        */}
       {/* ======================================================== */}
       <div className="rounded-2xl bg-card border border-border p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <History className="w-4 h-4 text-primary" />
             <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">
               Historial de Lotes de Importación en {currentEvent?.name}
             </h3>
           </div>
-          <button
-            onClick={fetchBatches}
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-            title="Refrescar historial"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {hasRole(['ADMIN']) && batches.length > 0 && (
+              <button
+                onClick={() => setIsDeleteAllOpen(true)}
+                className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 hover:text-rose-300 font-bold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Eliminar todas las importaciones de Excel de esta edición"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Borrar todas las importaciones</span>
+              </button>
+            )}
+            <button
+              onClick={fetchBatches}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+              title="Refrescar historial"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </div>
+
+        {/* Modal de confirmación de borrado de lote individual */}
+        {batchToDelete && (
+          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-3 animate-in fade-in">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h4 className="text-xs font-bold text-rose-300 uppercase tracking-wider">
+                  ¿Confirmar eliminación de este archivo Excel?
+                </h4>
+                <p className="text-xs text-rose-200/90 leading-relaxed">
+                  Se eliminará permanentemente el lote{' '}
+                  <strong className="font-mono text-white">"{batchToDelete.fileName}"</strong> y todas las inscripciones asociadas generadas a partir de él. Esta acción no se puede deshacer.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setBatchToDelete(null)}
+                className="px-3 py-1.5 rounded-lg bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteBatch(batchToDelete)}
+                disabled={Boolean(deletingBatchId)}
+                className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{deletingBatchId ? 'Borrando...' : 'Sí, borrar Excel y sus registros'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de confirmación de borrado global */}
+        {isDeleteAllOpen && (
+          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-3 animate-in fade-in">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h4 className="text-xs font-bold text-rose-300 uppercase tracking-wider">
+                  ¿Confirmar eliminación de TODAS las importaciones de Excel?
+                </h4>
+                <p className="text-xs text-rose-200/90 leading-relaxed">
+                  Esta acción eliminará todos los lotes de Excel ({batches.length}) y todas las inscripciones importadas para{' '}
+                  <strong className="text-white">{currentEvent?.name}</strong>. Las inscripciones registradas manualmente no se verán afectadas.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteAllOpen(false)}
+                className="px-3 py-1.5 rounded-lg bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAllBatches}
+                disabled={deletingAll}
+                className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{deletingAll ? 'Borrando todo...' : 'Sí, eliminar todas las importaciones'}</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {loadingBatches ? (
           <div className="p-8 text-center text-muted-foreground text-xs">
@@ -1049,7 +1221,7 @@ export const ImportPage: React.FC = () => {
                   <th className="p-3 font-bold text-right">Importados</th>
                   <th className="p-3 font-bold text-right">Actualizados</th>
                   <th className="p-3 font-bold text-right">Errores</th>
-                  <th className="p-3 font-bold text-center">Reporte</th>
+                  <th className="p-3 font-bold text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -1082,18 +1254,29 @@ export const ImportPage: React.FC = () => {
                       {b.errorRows}
                     </td>
                     <td className="p-3 text-center whitespace-nowrap">
-                      {b.errorRows > 0 ? (
-                        <button
-                          onClick={() => importService.downloadErrorReport(b.id, b.fileName)}
-                          className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 font-bold text-[10px] inline-flex items-center gap-1 transition-colors cursor-pointer"
-                          title="Descargar archivo Excel con las filas erróneas"
-                        >
-                          <Download className="w-3 h-3 text-rose-400" />
-                          <span>Descargar ({b.errorRows})</span>
-                        </button>
-                      ) : (
-                        <span className="text-emerald-400 text-[10px] font-bold">Sin errores</span>
-                      )}
+                      <div className="flex items-center justify-center gap-1.5">
+                        {b.errorRows > 0 ? (
+                          <button
+                            onClick={() => importService.downloadErrorReport(b.id, b.fileName)}
+                            className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 font-bold text-[10px] inline-flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Descargar archivo Excel con las filas erróneas"
+                          >
+                            <Download className="w-3 h-3 text-rose-400" />
+                            <span>Errores ({b.errorRows})</span>
+                          </button>
+                        ) : null}
+                        {hasRole(['ADMIN']) && (
+                          <button
+                            onClick={() => setBatchToDelete(b)}
+                            disabled={deletingBatchId === b.id}
+                            className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 hover:text-rose-300 font-bold text-[11px] inline-flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                            title="Borrar este archivo Excel y sus inscripciones"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Borrar Excel</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
