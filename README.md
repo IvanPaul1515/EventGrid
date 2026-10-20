@@ -1,49 +1,63 @@
-# EventGrid — Sistema de Gestión de Eventos y Participantes
-### Plataforma Administrativa Oficial para BarCamp RD
+# EventGrid — Plataforma de Gestión de Eventos y Participantes
 
-**EventGrid** es una plataforma web administrativa modular, segura y de alto rendimiento diseñada para la gestión integral de registros, control de asistencia en recepción, conciliación de pagos, importación masiva de datos y administración multiedición del evento tecnológico **BarCamp RD**, celebrado en la **Pontificia Universidad Católica Madre y Maestra (PUCMM)**, Santiago de los Caballeros, República Dominicana.
+**EventGrid** es una plataforma de software independiente, multifuncional y adaptable diseñada para la gestión integral de eventos de diferentes tipos, formatos y tamaños: conferencias académicas, desconferencias tecnológicas, congresos empresariales, festivales y talleres prácticos.
 
-Inspirada en las mejores prácticas operativas y de auditoría de plataformas como Eventbrite, **EventGrid** está optimizada para la operación logística en mesa de recepción, reemplazando las hojas de cálculo tradicionales por una base de datos relacional robusta con sincronización en tiempo real.
+La plataforma centraliza en un único entorno modular y seguro la administración de participantes, inscripciones, taquilla y ventas presenciales, conciliación de pagos, importación masiva de datos, control de asistencia en tiempo real (Check-in), auditoría de operaciones y gestión multievento.
+
+> [!NOTE]
+> **EventGrid** es un software neutral e independiente. Puede alojar simultáneamente múltiples ediciones y eventos independientes (como **BarCamp RD**, cumbres técnicas o simposios institucionales), manteniendo para cada uno su propia identidad visual, catálogos, tarifas, participantes y libros contables de forma estrictamente aislada.
 
 ---
 
 ## 🚀 Capacidades y Módulos Principales
 
-### 1. Control de Asistencia y Recepción en Tiempo Real (Check-in)
-* **Flujo Seguro en Dos Pasos**: La búsqueda y selección de participantes abre su Ficha Oficial. Se evita cualquier marcaje accidental directamente desde la lista o mediante la tecla `Enter`.
-* **Ficha Oficial 360°**: Visualización organizada en 4 secciones:
-  1. *Información Personal*: Datos de contacto, documento de identidad e institución/empresa.
-  2. *Información de Inscripción*: Edición, tipo de entrada, origen del registro y observaciones.
-  3. *Información Financiera*: Desglose de tarifa, montos pagados, balances pendientes y libro de pagos.
-  4. *Control de Entrada*: Marcaje físico con botón dedicado, hora exacta y operador responsable.
-* **Métricas en Vivo**: Contadores instantáneos de *Total Registrados*, *Asistieron* y *Pendientes por Llegar* con porcentaje de participación.
-* **Reversión Administrativa**: Reversión de asistencias exclusiva para Administradores con justificación obligatoria en bitácora.
+### 1. Control de Asistencia y Recepción en Vivo (Check-in)
+* **Flujo Seguro en Dos Pasos**: Búsqueda universal por nombre, documento, correo, teléfono o código de ticket. La selección abre la **Ficha Oficial 360°** del participante, eliminando marcajes accidentales desde listas o mediante teclas rápidas.
+* **Ficha Oficial 360°**: Visualización integral organizada en:
+  1. *Identidad*: Nombres, apellidos, documento de identidad, empresa/institución y vías de contacto.
+  2. *Inscripción*: Edición activa, tipo de entrada asignada, fecha de registro y notas.
+  3. *Finanzas*: Tarifa oficial, monto pagado, balance pendiente y libro de pagos.
+  4. *Control de Acceso*: Marcaje físico de llegada con registro de fecha, hora exacta y operador responsable.
+* **Edición Directa en Ficha**: Capacidad de actualizar datos de contacto directamente en la ficha lateral con botones de navegación rápida (`Anterior` / `Siguiente`) entre asistentes.
+* **Separación Estricta de Estados**: Tres dimensiones independientes por registro:
+  - **Estado de Inscripción**: `CONFIRMED`, `PENDING`, `CANCELLED`.
+  - **Estado de Pago**: `PAID`, `PARTIAL`, `PENDING`, `COURTESY`.
+  - **Estado de Asistencia**: `attended: boolean` con fecha y auditoría.
+* **Reversión Administrativa**: Reversión controlada de asistencia exclusiva para administradores con justificación obligatoria en la bitácora de seguridad.
+* **Mesa de Recepción**: Widget en vivo de ventas del día y monitoreo de conectividad con el servidor (*En línea / Sin conexión*).
 
-### 2. Directorio de Participantes y Gestión Multiedición
-* **Aislamiento Multiedición**: Cada edición (BarCamp 2024, 2025, 2026 y futuras) mantiene sus registros independientes, permitiendo consultar el historial interanual de cada persona.
-* **Tabla Administrativa Avanzada**: Búsqueda universal, filtros por forma de pago, estado o cortesía, ordenamiento por columnas y selección de campos visibles.
-* **Exportación Profesional**: Descarga de reportes completos en formato Microsoft Excel (`.xlsx`) y CSV con formato y anchos de columna automáticos.
+### 2. Directorio de Participantes y Gestión Multievento
+* **Aislamiento Multiedición**: Cada evento o edición conserva su base de datos de inscripciones de forma independiente, posibilitando el análisis del historial multianual de asistencia por persona.
+* **Tabla Administrativa Avanzada**: Búsqueda global, filtros combinados por estado de inscripción, estado de pago o cortesías, ordenación multicriterio, paginación en servidor y personalización de columnas visibles.
+* **Exportación de Reportes**: Generación de reportes tabulares en formato Microsoft Excel (`.xlsx`) y CSV con formato profesional y encabezados tipados.
 
-### 3. Taquilla y Ventas Presenciales («Nueva Venta»)
-* **Punto de Venta Integrado**: Registro de ventas presenciales en recepción con generación automática de número de ticket correlativo (ej. `BC26-0042`).
-* **Tarifas y Tipos de Entrada**: Configuración de entradas (Preventa, General, Cortesía) con captura de precios congelados en el momento de la emisión.
-* **Cálculo Financiero Dinámico**: Cálculo en tiempo real de tarifa, monto recibido, monto a cobrar, **cambio a devolver** y **balance pendiente**.
-* **Gestión de Abonos y Pagos Parciales**: Libro contable por participante para liquidar saldos pendientes.
+### 3. Taquilla y Ventas Presenciales (Punto de Venta)
+* **Venta en Puerta**: Emisión de tickets correlativos con prefijo personalizable por evento (ej. `BC26-0001`, `CONF-0042`).
+* **Tarifas y Congelación de Precios**: Tipos de entrada con captura de precios históricos en el momento de la venta, garantizando que cambios posteriores de tarifas no alteren ventas previas.
+* **Cálculo Financiero Dinámico**: Cálculo instantáneo de tarifa, monto recibido, cambio a devolver y balance pendiente.
+* **Gestión de Abonos**: Registro progresivo de pagos parciales hasta liquidar la totalidad de la entrada.
 
 ### 4. Políticas de Cortesías y Cancelaciones
-* **Cortesías Oficiales**: Exentas de cobro (RD$ 0.00), excluidas de la recaudación neta del evento, con registro obligatorio de autorizador, motivo y fecha.
-* **Cancelación No Destructiva**: Los registros cancelados conservan sus datos y pagos históricos sin borrado físico ni reembolsos automáticos sin comprobación.
+* **Cortesías Oficiales**: Entradas exentas de pago (RD$ 0.00), excluidas de la recaudación neta del evento, con registro mandatorio del autorizador y motivo de otorgamiento.
+* **Cancelación No Destructiva**: Los registros cancelados conservan su trazabilidad histórica sin borrado físico ni alteraciones injustificadas en la contabilidad.
 
-### 5. Motor de Importación Inteligente de Excel (6 Pasos)
+### 5. Motor de Importación Inteligente de Datos (6 Pasos)
 * Compatible con formatos `.xlsx`, `.xls` y `.csv`.
-* Diccionario de alias lingüísticos para detección automática de cabeceras históricas de BarCamp.
-* Mapeo visual interactivo, vista previa y validación previa de integridad.
-* Estrategias configurables de resolución de duplicados (Omitir, Actualizar o Solo Nuevos).
+* Diccionario lingüístico de alias para autodetección inteligente de encabezados de columnas.
+* Asignación visual e interactiva de campos, validación estructural de tipos de datos e informe de errores previo a la inserción.
+* Estrategias configurables de resolución de duplicados (*Omitir*, *Actualizar datos* o *Importar únicamente registros nuevos*).
 
-### 6. Control de Acceso (RBAC) y Seguridad
-* Autenticación basada en sesiones y tokens JWT seguros con cookies `HttpOnly`.
-* Tres roles claramente definidos: **Administrador**, **Operador** y **Consulta**.
-* Bitácora de Auditoría para trazabilidad de creación, edición, pagos, exportaciones y reversiones.
+### 6. Personalización de Identidad Visual y Logos
+* **Logotipos por Evento**: Carga directa de imágenes oficiales (PNG, JPG, WEBP, SVG hasta 2MB) con previsualización en caliente y eliminación segura.
+* **Motor Temático Dinámico**: Personalización de colores primarios, secundarios, color de acento, fondos, prefijos de tickets y subtítulos institucionales aplicados en tiempo real a la interfaz sin necesidad de recompilar.
+
+### 7. Historial de Actividad, Auditoría y Seguridad (RBAC)
+* **Control de Acceso Basado en Roles (RBAC)**:
+  - **Administrador (`ADMIN`)**: Control operativo y de configuración total.
+  - **Operador (`OPERATOR`)**: Operación de taquilla, registro, check-in e importación.
+  - **Consulta (`VIEWER`)**: Supervisión de estadísticas y reportes en modo de solo lectura.
+* **Bitácora Inmutable (`/audit` y `/activity`)**: Registro detallado de acciones, usuario responsable, dirección IP, entidad afectada y diff en formato JSON de los cambios efectuados.
+* **Herramientas de Respaldo**: Scripts automatizados de backup y restauración de base de datos para entornos Windows (`.bat`) y Linux/macOS (`.sh`).
 
 ---
 
@@ -51,12 +65,12 @@ Inspirada en las mejores prácticas operativas y de auditoría de plataformas co
 
 | Capa | Tecnologías |
 | :--- | :--- |
-| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons, Recharts |
-| **Backend** | Node.js, Express, TypeScript, Zod, JWT, bcryptjs, Cookie-Parser |
-| **Base de Datos** | PostgreSQL 16 (Producción / Docker) y SQLite (Entorno de desarrollo local) |
-| **ORM** | Prisma ORM 6 (Migraciones, Client, Relaciones tipadas) |
+| **Frontend Web** | React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons, Recharts |
+| **Backend REST API** | Node.js, Express, TypeScript, Zod, JWT, bcryptjs, Cookie-Parser |
+| **Base de Datos** | PostgreSQL 16 (Producción / Docker) y SQLite (Entorno local de desarrollo) |
+| **ORM** | Prisma ORM 6 (Migraciones, esquema relacional, cliente fuertemente tipado) |
 | **Hojas de Cálculo** | SheetJS (`xlsx`) para lectura y generación de archivos binarios |
-| **Pruebas** | Vitest para pruebas unitarias e integración de API |
+| **Pruebas Automatizadas** | Vitest (58 pruebas unitarias y de integración) |
 | **Despliegue** | Docker & Docker Compose |
 
 ---
@@ -65,34 +79,28 @@ Inspirada en las mejores prácticas operativas y de auditoría de plataformas co
 
 - **Node.js**: v20.x o superior (LTS recomendado)
 - **npm**: v10.x o superior
-- **Docker y Docker Compose**: (Opcional, para ejecución en contenedores PostgreSQL)
+- **Docker y Docker Compose**: (Opcional, para ejecución en contenedores)
 - **Git**: Para control de versiones
 
 ---
 
-## 💻 Instalación y Configuración Local
+## 💻 Instalación y Ejecución Local
 
 ### 1. Clonar el Repositorio
 ```bash
-git clone <URL_DEL_REPOSITORIO>
-cd cool-mendel
+git clone https://github.com/IvanPaul1515/EventGrid.git
+cd EventGrid
 ```
 
 ### 2. Configurar Variables de Entorno
-Copia el archivo de plantilla `.env.example` en la raíz y en el directorio `backend`:
 ```bash
 cp .env.example .env
 cp backend/.env.example backend/.env
 ```
-> [!IMPORTANT]
-> En entornos de producción, genera claves aleatorias seguras para `JWT_SECRET` y `COOKIE_SECRET` (por ejemplo con `openssl rand -hex 32`).
 
 ### 3. Instalar Dependencias
 ```bash
-# Dependencias raíz
 npm install
-
-# Dependencias de Backend y Frontend
 npm install --prefix backend
 npm install --prefix frontend
 ```
@@ -100,22 +108,13 @@ npm install --prefix frontend
 ### 4. Inicializar Base de Datos con Prisma
 ```bash
 cd backend
-
-# Generar cliente de Prisma
 npx prisma generate
-
-# Sincronizar esquema de base de datos
 npx prisma db push
-
-# Poblar ediciones, métodos de pago, tipos de entrada y usuarios iniciales
 npm run prisma:seed
-
 cd ..
 ```
 
 ### 5. Iniciar Servidores de Desarrollo
-Puedes iniciar ambos servicios concurrentemente o por separado:
-
 ```bash
 # Terminal 1: Backend API (Puerto 4000)
 npm run dev:backend
@@ -133,13 +132,11 @@ El sistema estará accesible en:
 
 ## 🐳 Despliegue con Docker Compose (Producción)
 
-Para ejecutar el ecosistema completo (Base de datos PostgreSQL + Backend API + Frontend Nginx):
-
 ```bash
 docker compose up -d --build
 ```
 
-Para detener los servicios:
+Para detener los contenedores:
 ```bash
 docker compose down
 ```
@@ -148,11 +145,10 @@ docker compose down
 
 ## 🧪 Pruebas Automatizadas
 
-El proyecto cuenta con suites de pruebas automatizadas que validan RBAC, control de asistencia, ventas presenciales, balances y el motor de importación:
+El proyecto cuenta con 8 suites de pruebas que validan autenticación, RBAC, control de asistencia, ventas presenciales, balances contables y el motor de importación:
 
 ```bash
-cd backend
-npx vitest run
+npm test --prefix backend
 ```
 
 ---
@@ -163,34 +159,31 @@ npx vitest run
 EventGrid/
 ├── backend/
 │   ├── prisma/
-│   │   ├── schema.prisma          # Esquema relacional PostgreSQL / Prisma
-│   │   ├── schema.sqlite.prisma   # Esquema local para desarrollo
-│   │   ├── seed.ts                # Inicialización de usuarios y ediciones BarCamp
-│   │   ├── seed_participants.ts   # Generación de participantes de prueba
-│   │   └── seed_ticket_types.ts   # Tipos de entrada y tarifas
+│   │   ├── schema.prisma          # Esquema relacional PostgreSQL
+│   │   ├── schema.sqlite.prisma   # Esquema local SQLite
+│   │   └── seed.ts                # Semilla de datos y usuarios iniciales
+│   ├── scripts/                   # Scripts de migración interna
 │   ├── src/
-│   │   ├── config/                # Conexión DB y configuración de entorno
-│   │   ├── middleware/            # JWT Auth, RBAC, auditoría y errores
+│   │   ├── config/                # Base de datos y entorno
+│   │   ├── middleware/            # JWT, RBAC, auditoría y errores
 │   │   ├── modules/
+│   │   │   ├── activity/          # Bitácora de actividad y auditoría
 │   │   │   ├── attendance/        # Lógica de Check-in y reversión
-│   │   │   ├── auth/              # Inicio, cierre de sesión y tokens
-│   │   │   ├── events/            # Multiedición, personalización y tarifas
-│   │   │   ├── import/            # Motor de análisis e importación Excel
-│   │   │   └── participants/      # Directorio, ventas presenciales y abonos
-│   │   └── server.ts              # Punto de entrada del servidor Express
+│   │   │   ├── auth/              # Autenticación y credenciales
+│   │   │   ├── events/            # Gestión de eventos, tarifas y logos
+│   │   │   ├── import/            # Motor de importación de Excel
+│   │   │   └── participants/      # Directorio, fichas 360° y taquilla
+│   │   └── server.ts              # Servidor Express
 │   └── tests/                     # Suites de pruebas con Vitest
 ├── frontend/
 │   ├── src/
-│   │   ├── components/            # Componentes reutilizables y modales
-│   │   │   ├── attendance/        # Modales de asistencia
-│   │   │   ├── common/            # Header, Sidebar, Layout, Rutas protegidas
-│   │   │   ├── participants/      # Ficha 360°, abonos y cortesías
-│   │   │   └── sales/             # Punto de venta presencial (OnsiteSaleModal)
-│   │   ├── context/               # Contextos de Autenticación, Edición y Tema
-│   │   ├── pages/                 # Páginas de la aplicación administrativa
+│   │   ├── components/            # Componentes modulares y reutilizables
+│   │   ├── context/               # Autenticación, Edición y Tema
+│   │   ├── pages/                 # Vistas principales de la aplicación
 │   │   ├── services/              # Clientes de API REST (Axios)
-│   │   └── types/                 # Definiciones de TypeScript
+│   │   └── types/                 # Interfaces y tipos de TypeScript
 │   └── index.html
+├── scripts/                       # Herramientas de respaldo y restauración DB
 ├── docker-compose.yml             # Orquestación de contenedores
 ├── .env.example                   # Plantilla de variables de entorno
 └── README.md                      # Documentación del proyecto
@@ -202,12 +195,12 @@ EventGrid/
 
 | Rol | Correo Electrónico | Contraseña de Prueba | Permisos Principales |
 | :--- | :--- | :--- | :--- |
-| **Administrador** | `admin@barcamp.org.do` | `Admin123!` | Control total, configuración de ediciones, tarifas, cortesías, cancelaciones, reversión de asistencia y auditoría. |
-| **Operador** | `operador@barcamp.org.do` | `Operador123!` | Check-in en mesa de recepción, ventas presenciales, cobro de abonos, importación de Excel y registro de participantes. |
-| **Consulta** | `consulta@barcamp.org.do` | `Consulta123!` | Modo lectura para monitorear métricas, consultar fichas de participantes y exportar reportes sin permisos de escritura. |
+| **Administrador** | `admin@barcamp.org.do` | `BarCamp2026!Admin` | Control total, configuración de eventos, tarifas, cortesías, cancelaciones, reversión de asistencia y auditoría. |
+| **Operador** | `operador@barcamp.org.do` | `BarCamp2026!Op` | Check-in en recepción, ventas en taquilla, cobro de abonos, importación de Excel y registro de participantes. |
+| **Consulta** | `consulta@barcamp.org.do` | `BarCamp2026!View` | Supervisión del tablero de métricas (Dashboard), listados de asistencia y consulta de participantes en modo de solo lectura. |
 
 ---
 
 ## 📄 Licencia
 
-Desarrollado para el comité organizador de **BarCamp RD** en la **Pontificia Universidad Católica Madre y Maestra (PUCMM)**. Todos los derechos reservados.
+**EventGrid Platform**. Software para gestión integral de eventos y participantes. Todos los derechos reservados.

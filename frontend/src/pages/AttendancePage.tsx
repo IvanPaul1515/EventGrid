@@ -232,7 +232,7 @@ export const AttendancePage: React.FC = () => {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold px-2 py-0.5 rounded bg-primary/10 border border-primary/20">
-              {currentEvent?.name || 'BarCamp RD 2026'}
+              {currentEvent?.name || 'Evento Activo'}
             </span>
             <span className="text-xs text-muted-foreground">• Mesa de Recepción y Control de Asistencia</span>
           </div>

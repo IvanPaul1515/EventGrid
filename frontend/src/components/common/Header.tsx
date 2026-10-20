@@ -95,7 +95,7 @@ export const Header: React.FC = () => {
               <div className="absolute left-0 mt-2 w-72 rounded-xl bg-card border border-border shadow-2xl py-2 z-50 divide-y divide-border">
                 <div className="px-3.5 py-2">
                   <p className="text-[10px] font-bold text-muted-foreground uppercase font-mono tracking-wider">
-                    Ediciones BarCamp RD Registradas
+                    Eventos y Ediciones Registradas
                   </p>
                 </div>
                 <div className="py-1 max-h-64 overflow-y-auto">

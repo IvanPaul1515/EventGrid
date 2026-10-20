@@ -1,7 +1,7 @@
 {
-  "name": "barcamp-backend",
+  "name": "eventgrid-backend",
   "version": "1.0.0",
-  "description": "API REST para el Sistema Administrativo de BarCamp RD",
+  "description": "EventGrid REST API — Servicio backend para administración de eventos, inscripciones, ventas y control de asistencia",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",

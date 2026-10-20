@@ -67,7 +67,7 @@ export const DashboardPage: React.FC = () => {
               Hola, {user?.fullName.split(' ')[0]} 👋
             </h1>
             <p className="text-sm text-muted-foreground mt-1.5 max-w-2xl">
-              Bienvenido al sistema administrativo <strong>EventGrid</strong> para <strong>BarCamp RD</strong>. Supervisa las inscripciones, concilia pagos en RD$, gestiona cortesías y asistentes de {currentEvent?.name} con aislamiento por edición.
+              Bienvenido a <strong>EventGrid</strong>, plataforma de software independiente para la gestión integral de eventos. Administre inscripciones, concilie pagos, supervise el control de asistencia y gestione participantes en tiempo real para <strong>{currentEvent?.name || 'su evento'}</strong>.
             </p>
             <div className="flex flex-wrap items-center gap-4 mt-4 text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">

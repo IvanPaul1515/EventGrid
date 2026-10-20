@@ -19,7 +19,7 @@ export const UsersPage: React.FC = () => {
             Control de Usuarios y Permisos (RBAC)
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Administración de cuentas con acceso al panel administrativo de BarCamp RD.
+            Administración de cuentas con acceso al panel administrativo de EventGrid.
           </p>
         </div>
         <button className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-2 shadow-md transition-colors">

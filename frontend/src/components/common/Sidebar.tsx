@@ -110,8 +110,8 @@ export const Sidebar: React.FC = () => {
                 <span className="font-black text-sm tracking-tight text-white flex items-center gap-1">
                   EVENT<span className="text-primary font-black">GRID</span>
                 </span>
-                <span className="text-[10px] text-zinc-400 font-mono tracking-wider flex items-center gap-1">
-                  <Flame className="w-3 h-3 text-primary inline" /> BARCAMP RD
+                <span className="text-[10px] text-zinc-400 font-mono tracking-wider">
+                  PLATAFORMA DE EVENTOS
                 </span>
               </div>
             )}

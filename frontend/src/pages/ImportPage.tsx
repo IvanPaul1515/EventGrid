@@ -271,7 +271,7 @@ export const ImportPage: React.FC = () => {
             Asistente de Importación Inteligente
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Carga masiva de asistentes para <strong>BarCamp RD</strong> mediante archivos .xlsx, .xls o .csv.
+            Carga masiva y migración de asistentes para <strong>{currentEvent?.name || 'su evento'}</strong> mediante archivos .xlsx, .xls o .csv.
           </p>
         </div>
 

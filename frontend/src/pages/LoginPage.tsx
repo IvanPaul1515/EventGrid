@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { Flame, Lock, Mail, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Grid, Lock, Mail, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -46,19 +46,20 @@ export const LoginPage: React.FC = () => {
         {/* Encabezado con Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-primary to-barcamp-crimson shadow-xl shadow-primary/30 ring-1 ring-primary/50 mb-3 animate-in fade-in zoom-in duration-300">
-            <Flame className="w-8 h-8 text-white" />
+            <Grid className="w-8 h-8 text-white" />
           </div>
-          <div className="inline-block px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] font-mono font-medium text-zinc-400 mb-2">
-            Plataforma Administrativa <span className="text-white font-bold">EventGrid</span>
-          </div>
-          <h1 className="text-2xl font-black tracking-tight text-white">
-            BARCAMP <span className="text-primary">RD</span>
+          <h1 className="text-3xl font-black tracking-tight text-white">
+            EVENT<span className="text-primary font-black">GRID</span>
           </h1>
-          <p className="text-xs text-zinc-400 font-mono tracking-wider mt-1 uppercase">
-            Gestión de Eventos y Participantes
+          <p className="text-xs text-zinc-300 font-semibold mt-1">
+            Plataforma de Gestión de Eventos y Participantes
           </p>
-          <div className="mt-1 text-xs text-zinc-500">
-            Edición Activa: <span className="text-zinc-300 font-semibold">BarCamp RD 2026</span> • PUCMM Santiago
+          <p className="text-[11px] text-zinc-400 mt-0.5 max-w-sm mx-auto">
+            Software independiente y adaptable para la administración de inscripciones, ventas, pagos y control de asistencia.
+          </p>
+          <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-400 font-mono">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Edición activa: <strong className="text-zinc-200">BarCamp RD 2026</strong></span>
           </div>
         </div>
 

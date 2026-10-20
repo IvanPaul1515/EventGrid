@@ -373,7 +373,7 @@ export const SettingsPage: React.FC = () => {
             <div className="p-5 rounded-2xl bg-card border border-border space-y-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                 <FileImage className="w-3.5 h-3.5 text-primary" />
-                Logo Oficial del Evento (BarCamp RD)
+                Logo Oficial del Evento
               </h3>
               <p className="text-xs text-muted-foreground">
                 El logo cargado se mostrará en el encabezado, credenciales, barra lateral y reportes oficiales.
@@ -436,7 +436,7 @@ export const SettingsPage: React.FC = () => {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                   <Sparkles className="w-3.5 h-3.5 text-primary" />
-                  Paletas Oficiales BarCamp RD
+                  Paletas Recomendadas para Eventos
                 </h3>
                 <button
                   type="button"
@@ -623,7 +623,7 @@ export const SettingsPage: React.FC = () => {
               </div>
 
               <p className="text-[11px] text-muted-foreground mt-3">
-                Los cambios visuales se aplicarán instantáneamente al panel administrativo de BarCamp para la edición activa.
+                Los cambios visuales se aplicarán instantáneamente al panel administrativo para la edición activa.
               </p>
             </div>
           </div>

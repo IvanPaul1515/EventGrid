@@ -1,7 +1,8 @@
 {
-  "name": "barcamp-frontend",
+  "name": "eventgrid-frontend",
   "private": true,
   "version": "1.0.0",
+  "description": "EventGrid Web — Interfaz administrativa independiente para gestión de eventos",
   "type": "module",
   "scripts": {
     "dev": "vite",

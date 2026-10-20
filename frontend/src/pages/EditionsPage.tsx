@@ -90,7 +90,7 @@ export const EditionsPage: React.FC = () => {
             Administración Multiedición
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Gestión independiente de cada año de BarCamp RD (2024, 2025, 2026, 2027+).
+            Gestión independiente de eventos y ediciones en EventGrid con aislamiento estricto de registros.
           </p>
         </div>
 

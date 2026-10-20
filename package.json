@@ -1,7 +1,7 @@
 {
-  "name": "barcamp-rd-admin",
+  "name": "eventgrid",
   "version": "1.0.0",
-  "description": "BarCamp RD — Sistema Administrativo de Gestión de Eventos y Participantes",
+  "description": "EventGrid — Plataforma de software independiente, multifuncional y adaptable para la gestión de eventos y participantes",
   "private": true,
   "workspaces": [
     "backend",
@@ -17,12 +17,13 @@
     "docker:down": "docker compose down"
   },
   "keywords": [
-    "barcamp",
-    "barcamp-rd",
-    "eventbrite-alternative",
+    "eventgrid",
     "event-management",
-    "pucmm"
+    "ticketing",
+    "attendance",
+    "check-in",
+    "participants"
   ],
-  "author": "BarCamp RD Organization",
+  "author": "EventGrid Platform Team",
   "license": "UNLICENSED"
 }
