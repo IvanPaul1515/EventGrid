@@ -567,18 +567,20 @@ export class ParticipantsService {
     }
 
     let ticketPrice = existing.ticketPrice ? Number(existing.ticketPrice) : Number(existing.totalAmount);
-    if (input.ticketPrice !== undefined) {
+    if (input.ticketPrice !== undefined && input.ticketPrice !== null) {
       ticketPrice = Number(input.ticketPrice);
-    } else if (ticketType) {
+    } else if (input.ticketTypeId !== undefined && input.ticketTypeId !== existing.ticketTypeId && ticketType) {
+      ticketPrice = Number(ticketType.price);
+    } else if (ticketType && (!existing.ticketPrice || Number(existing.ticketPrice) === 0) && !isCourtesy) {
       ticketPrice = Number(ticketType.price);
     }
 
     let amountPaid = existing.amountPaid !== undefined && existing.amountPaid !== null
       ? Number(existing.amountPaid)
       : Number(existing.totalAmount);
-    if (input.amountPaid !== undefined) {
+    if (input.amountPaid !== undefined && input.amountPaid !== null) {
       amountPaid = Number(input.amountPaid);
-    } else if (input.totalAmount !== undefined) {
+    } else if (input.totalAmount !== undefined && input.totalAmount !== null) {
       amountPaid = Number(input.totalAmount);
     }
 
@@ -593,11 +595,11 @@ export class ParticipantsService {
     let paymentStatus = existing.paymentStatus || 'PENDING';
     if (isCourtesy) {
       paymentStatus = 'COURTESY';
-    } else if (balanceDue === 0 && amountPaid > 0) {
+    } else if (amountPaid >= ticketPrice && ticketPrice > 0) {
       paymentStatus = 'PAID';
     } else if (amountPaid > 0 && balanceDue > 0) {
       paymentStatus = 'PARTIAL';
-    } else {
+    } else if (amountPaid === 0) {
       paymentStatus = 'PENDING';
     }
 

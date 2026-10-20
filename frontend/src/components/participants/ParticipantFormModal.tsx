@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Registration, PaymentMethod, SalesResponsible } from '../../types';
+import { Registration, PaymentMethod, SalesResponsible, TicketType } from '../../types';
 import { useEdition } from '../../context/EditionContext';
 import { api } from '../../services/api';
 import {
@@ -12,6 +12,9 @@ import {
   AlertCircle,
   Save,
   Plus,
+  Tag,
+  Calendar,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface ParticipantFormModalProps {
@@ -38,7 +41,13 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   const [phone, setPhone] = useState('');
   const [alternatePhone, setAlternatePhone] = useState('');
   const [registrationNumber, setRegistrationNumber] = useState('');
-  const [totalAmount, setTotalAmount] = useState<number>(500);
+
+  // Tarifas y estado financiero
+  const [ticketTypeId, setTicketTypeId] = useState<string>('');
+  const [ticketPrice, setTicketPrice] = useState<number>(1750);
+  const [amountPaid, setAmountPaid] = useState<number>(1750);
+  const [saleTimestamp, setSaleTimestamp] = useState<string>('');
+
   const [isVerified, setIsVerified] = useState(true);
   const [isCourtesy, setIsCourtesy] = useState(false);
   const [courtesyAuthorizedBy, setCourtesyAuthorizedBy] = useState('');
@@ -51,18 +60,36 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   // Catálogos de la edición
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [salesResponsibles, setSalesResponsibles] = useState<SalesResponsible[]>([]);
+  const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Cargar catálogos de métodos de pago y responsables para la edición activa
+  // Cargar catálogos de métodos de pago, responsables y tipos de entrada para la edición activa
   useEffect(() => {
     if (currentEvent && isOpen) {
-      api.get(`/events/${currentEvent.id}`).then((res) => {
-        if (res.data.data) {
-          setPaymentMethods(res.data.data.paymentMethods || []);
-          setSalesResponsibles(res.data.data.salesResponsibles || []);
-        }
-      }).catch(console.error);
+      api
+        .get(`/events/${currentEvent.id}`)
+        .then((res) => {
+          if (res.data.data) {
+            setPaymentMethods(res.data.data.paymentMethods || []);
+            setSalesResponsibles(res.data.data.salesResponsibles || []);
+            const tts: TicketType[] = res.data.data.ticketTypes || [];
+            setTicketTypes(tts);
+
+            // Si es un registro nuevo y aún no hay tipo seleccionado, inicializar con el primer tipo activo
+            if (!registrationToEdit && tts.length > 0) {
+              const defT =
+                tts.find((t) => Number(t.price) > 0 && !t.name.toLowerCase().includes('preventa')) ||
+                tts[0];
+              if (defT) {
+                setTicketTypeId(defT.id);
+                setTicketPrice(Number(defT.price));
+                setAmountPaid(Number(defT.price));
+              }
+            }
+          }
+        })
+        .catch(console.error);
     }
   }, [currentEvent, isOpen]);
 
@@ -78,7 +105,23 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       setPhone(p.phone || '');
       setAlternatePhone(p.alternatePhone || '');
       setRegistrationNumber(registrationToEdit.registrationNumber || '');
-      setTotalAmount(Number(registrationToEdit.totalAmount) || 0);
+
+      const initialTicketPrice = Number(
+        registrationToEdit.ticketPrice ?? registrationToEdit.totalAmount ?? 0
+      );
+      const initialAmountPaid = Number(
+        registrationToEdit.amountPaid ?? registrationToEdit.totalAmount ?? 0
+      );
+      setTicketTypeId(registrationToEdit.ticketTypeId || '');
+      setTicketPrice(initialTicketPrice);
+      setAmountPaid(initialAmountPaid);
+
+      setSaleTimestamp(
+        registrationToEdit.saleTimestamp
+          ? new Date(registrationToEdit.saleTimestamp).toISOString().slice(0, 16)
+          : ''
+      );
+
       setIsVerified(registrationToEdit.isVerified || false);
       setIsCourtesy(Boolean(registrationToEdit.isCourtesy));
       setCourtesyAuthorizedBy(registrationToEdit.courtesyAuthorizedBy || '');
@@ -96,7 +139,10 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       setPhone('');
       setAlternatePhone('');
       setRegistrationNumber('');
-      setTotalAmount(500);
+      setTicketTypeId('');
+      setTicketPrice(1750);
+      setAmountPaid(1750);
+      setSaleTimestamp(new Date().toISOString().slice(0, 16));
       setIsVerified(true);
       setIsCourtesy(false);
       setCourtesyAuthorizedBy('');
@@ -110,6 +156,29 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   }, [registrationToEdit, isOpen]);
 
   if (!isOpen) return null;
+
+  // Manejo de cambio en el selector de tipo de entrada
+  const handleTicketTypeChange = (newTicketId: string) => {
+    setTicketTypeId(newTicketId);
+    const selected = ticketTypes.find((t) => t.id === newTicketId);
+    if (selected) {
+      const price = Number(selected.price);
+      setTicketPrice(price);
+      if (price === 0 || selected.name.toLowerCase().includes('cortes')) {
+        setIsCourtesy(true);
+        setAmountPaid(0);
+      } else {
+        setIsCourtesy(false);
+        // Si el monto pagado coincidía con la tarifa previa o estaba en 0, sincronizar con la nueva tarifa
+        if (amountPaid === 0 || amountPaid === ticketPrice) {
+          setAmountPaid(price);
+        }
+      }
+    }
+  };
+
+  const balanceDue = isCourtesy ? 0 : Math.max(0, ticketPrice - amountPaid);
+  const overpaidAmount = isCourtesy ? 0 : Math.max(0, amountPaid - ticketPrice);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,7 +194,12 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       phone: phone.trim() || null,
       alternatePhone: alternatePhone.trim() || null,
       registrationNumber: registrationNumber.trim() || null,
-      totalAmount: isCourtesy ? 0 : Number(totalAmount),
+      ticketTypeId: ticketTypeId || null,
+      ticketPrice: isCourtesy ? 0 : Number(ticketPrice),
+      amountPaid: isCourtesy ? 0 : Number(amountPaid),
+      totalAmount: isCourtesy ? 0 : Number(amountPaid),
+      balanceDue: isCourtesy ? 0 : Math.max(0, Number(ticketPrice) - Number(amountPaid)),
+      saleTimestamp: saleTimestamp ? new Date(saleTimestamp).toISOString() : undefined,
       isVerified,
       isCourtesy,
       courtesyAuthorizedBy: isCourtesy ? courtesyAuthorizedBy.trim() || null : null,
@@ -282,11 +356,120 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
 
           <div className="pt-2 border-t border-border">
             <span className="text-[11px] font-mono text-primary uppercase font-bold tracking-wider">
-              Datos de la Inscripción en {currentEvent?.name}
+              Datos de la Inscripción y Tarifa en {currentEvent?.name}
             </span>
           </div>
 
-          {/* Fila 4: Ticket, Monto y Estado */}
+          {/* Fila 4: Tipo de Entrada, Tarifa y Fecha de Venta */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-primary" />
+                <span>Tipo de Entrada</span>
+              </label>
+              <select
+                value={ticketTypeId}
+                onChange={(e) => handleTicketTypeChange(e.target.value)}
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="">-- Seleccionar Tarifa --</option>
+                {ticketTypes.map((tt) => (
+                  <option key={tt.id} value={tt.id}>
+                    {tt.name} — RD$ {Number(tt.price).toFixed(2)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">
+                Tarifa del Boleto (RD$)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                disabled={isCourtesy}
+                value={isCourtesy ? 0 : ticketPrice}
+                onChange={(e) => setTicketPrice(Number(e.target.value))}
+                className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
+                  isCourtesy ? 'opacity-50 cursor-not-allowed bg-muted' : ''
+                }`}
+              />
+              <span className="text-[10px] text-muted-foreground mt-0.5 block">
+                Precio oficial del boleto
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                <span>Monto Pagado (RD$)</span>
+                {isCourtesy && <span className="text-[10px] text-amber-400 font-bold">Cortesía</span>}
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                disabled={isCourtesy}
+                value={isCourtesy ? 0 : amountPaid}
+                onChange={(e) => setAmountPaid(Number(e.target.value))}
+                className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
+                  isCourtesy ? 'opacity-50 cursor-not-allowed bg-muted' : ''
+                }`}
+              />
+              <span className="text-[10px] text-muted-foreground mt-0.5 block">
+                Total efectivamente abonado
+              </span>
+            </div>
+          </div>
+
+          {/* Panel Dinámico Financiero (Saldo a Favor o Balance Pendiente) */}
+          {!isCourtesy && (
+            <div>
+              {overpaidAmount > 0 ? (
+                <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 text-cyan-300 font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span>
+                      ¡El participante pagó más de la tarifa! Saldo a favor:{' '}
+                      <strong className="text-white font-mono">+RD$ {overpaidAmount.toFixed(2)}</strong>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAmountPaid(ticketPrice)}
+                    className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[11px] transition-colors cursor-pointer"
+                  >
+                    Ajustar pago a la nueva tarifa (RD$ {ticketPrice.toFixed(2)})
+                  </button>
+                </div>
+              ) : balanceDue > 0 ? (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 text-amber-300 font-bold">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      Balance pendiente por pagar:{' '}
+                      <strong className="text-white font-mono">RD$ {balanceDue.toFixed(2)}</strong>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAmountPaid(ticketPrice)}
+                    className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-[11px] transition-colors cursor-pointer"
+                  >
+                    Liquidar completo (RD$ {ticketPrice.toFixed(2)})
+                  </button>
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Pago liquidado exacto (RD$ {ticketPrice.toFixed(2)})</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Fila 5: Número de Registro, Fecha de Compra y Estado */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">
@@ -305,21 +488,19 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                <span>Pago Total (RD$)</span>
-                {isCourtesy && <span className="text-[10px] text-amber-400 font-bold">Cortesía (RD$ 0.00)</span>}
+              <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-primary" />
+                <span>Fecha de Compra</span>
               </label>
               <input
-                type="number"
-                step="0.01"
-                min="0"
-                disabled={isCourtesy}
-                value={isCourtesy ? 0 : totalAmount}
-                onChange={(e) => setTotalAmount(Number(e.target.value))}
-                className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
-                  isCourtesy ? 'opacity-50 cursor-not-allowed bg-muted' : ''
-                }`}
+                type="datetime-local"
+                value={saleTimestamp}
+                onChange={(e) => setSaleTimestamp(e.target.value)}
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               />
+              <span className="text-[10px] text-muted-foreground mt-0.5 block">
+                Fecha en que se adquirió la boleta
+              </span>
             </div>
 
             <div>
@@ -350,9 +531,9 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                     const checked = e.target.checked;
                     setIsCourtesy(checked);
                     if (checked) {
-                      setTotalAmount(0);
-                    } else if (totalAmount === 0) {
-                      setTotalAmount(500);
+                      setAmountPaid(0);
+                    } else if (amountPaid === 0) {
+                      setAmountPaid(ticketPrice);
                     }
                   }}
                   className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 bg-background border-border"

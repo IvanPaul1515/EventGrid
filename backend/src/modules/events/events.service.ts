@@ -318,7 +318,7 @@ export class EventsService {
     });
     if (!existing) throw new NotFoundError('Tipo de entrada no encontrado en la edición activa');
 
-    return prisma.ticketType.update({
+    const updated = await prisma.ticketType.update({
       where: { id: ticketTypeId },
       data: {
         name: data.name ? data.name.trim() : undefined,
@@ -330,6 +330,42 @@ export class EventsService {
         totalCapacity: data.totalCapacity !== undefined ? data.totalCapacity : undefined,
       },
     });
+
+    // Si cambió el precio de la tarifa, propagar a las inscripciones no cortesía vinculadas
+    if (data.price !== undefined && Number(data.price) !== Number(existing.price)) {
+      const newPrice = Number(data.price);
+      const affectedRegistrations = await prisma.registration.findMany({
+        where: {
+          eventId,
+          ticketTypeId,
+          isCourtesy: false,
+        },
+      });
+
+      for (const reg of affectedRegistrations) {
+        const paid = Number(reg.amountPaid ?? reg.totalAmount ?? 0);
+        const newBalanceDue = Math.max(0, newPrice - paid);
+        let newPaymentStatus = 'PENDING';
+        if (paid >= newPrice && newPrice > 0) {
+          newPaymentStatus = 'PAID';
+        } else if (paid > 0 && newBalanceDue > 0) {
+          newPaymentStatus = 'PARTIAL';
+        } else if (paid === 0) {
+          newPaymentStatus = 'PENDING';
+        }
+
+        await prisma.registration.update({
+          where: { id: reg.id },
+          data: {
+            ticketPrice: newPrice,
+            balanceDue: newBalanceDue,
+            paymentStatus: newPaymentStatus as any,
+          },
+        });
+      }
+    }
+
+    return updated;
   }
 
   static async uploadLogo(

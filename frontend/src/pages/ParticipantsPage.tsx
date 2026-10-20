@@ -72,6 +72,7 @@ export const ParticipantsPage: React.FC = () => {
     phone: false,
     alternatePhone: false,
     ticketType: true,
+    ticketPrice: true,
     paymentMethod: true,
     totalAmount: true,
     balanceDue: true,
@@ -507,6 +508,7 @@ export const ParticipantsPage: React.FC = () => {
                       phone: 'Teléfono',
                       alternatePhone: 'Tel. Alterno',
                       ticketType: 'Tipo de Entrada',
+                      ticketPrice: 'Tarifa Boleto',
                       paymentMethod: 'Forma de Pago',
                       totalAmount: 'Monto Pagado',
                       balanceDue: 'Balance Pendiente',
@@ -644,6 +646,17 @@ export const ParticipantsPage: React.FC = () => {
                 {visibleColumns.phone && <th className="p-3.5 font-bold">Teléfono</th>}
                 {visibleColumns.alternatePhone && <th className="p-3.5 font-bold">Tel. Alterno</th>}
                 {visibleColumns.ticketType && <th className="p-3.5 font-bold">Tipo Entrada</th>}
+                {visibleColumns.ticketPrice && (
+                  <th
+                    onClick={() => handleSort('ticketPrice')}
+                    className="p-3.5 font-bold cursor-pointer hover:text-foreground text-right"
+                  >
+                    <div className="flex items-center justify-end gap-1">
+                      <span>Tarifa</span>
+                      <ArrowUpDown className="w-3 h-3 opacity-60" />
+                    </div>
+                  </th>
+                )}
                 {visibleColumns.paymentMethod && <th className="p-3.5 font-bold">Forma de Pago</th>}
                 {visibleColumns.totalAmount && (
                   <th
@@ -790,6 +803,15 @@ export const ParticipantsPage: React.FC = () => {
                           </span>
                         </td>
                       )}
+                      {visibleColumns.ticketPrice && (
+                        <td className="p-3.5 font-mono text-right font-bold text-foreground whitespace-nowrap">
+                          {reg.isCourtesy ? (
+                            <span className="text-amber-400 text-xs">RD$ 0.00</span>
+                          ) : (
+                            <span>RD$ {Number(reg.ticketPrice ?? reg.totalAmount ?? 0).toFixed(2)}</span>
+                          )}
+                        </td>
+                      )}
                       {visibleColumns.paymentMethod && (
                         <td className="p-3.5 whitespace-nowrap">
                           <span className="px-2 py-0.5 rounded-md bg-muted text-[11px] font-medium text-foreground">
@@ -815,13 +837,32 @@ export const ParticipantsPage: React.FC = () => {
                       )}
                       {visibleColumns.balanceDue && (
                         <td className="p-3.5 font-mono text-right whitespace-nowrap font-bold">
-                          {Number(reg.balanceDue || 0) > 0 ? (
-                            <span className="text-amber-400 font-black">
-                              RD$ {Number(reg.balanceDue).toFixed(2)}
-                            </span>
-                          ) : (
-                            <span className="text-emerald-400">RD$ 0.00</span>
-                          )}
+                          {(() => {
+                            const paid = Number(reg.amountPaid ?? reg.totalAmount ?? 0);
+                            const price = reg.isCourtesy ? 0 : Number(reg.ticketPrice ?? reg.totalAmount ?? 0);
+                            const overpaid = Math.max(0, paid - price);
+                            if (reg.isCourtesy) {
+                              return <span className="text-muted-foreground text-xs font-semibold">—</span>;
+                            }
+                            if (overpaid > 0) {
+                              return (
+                                <span
+                                  className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 inline-flex items-center gap-0.5"
+                                  title={`El participante pagó RD$ ${overpaid.toFixed(2)} más de la tarifa actual`}
+                                >
+                                  +RD$ {overpaid.toFixed(2)} a favor
+                                </span>
+                              );
+                            }
+                            if (Number(reg.balanceDue || 0) > 0) {
+                              return (
+                                <span className="text-amber-400 font-black">
+                                  Resta RD$ {Number(reg.balanceDue).toFixed(2)}
+                                </span>
+                              );
+                            }
+                            return <span className="text-emerald-400">RD$ 0.00</span>;
+                          })()}
                         </td>
                       )}
                       {visibleColumns.attendance && (

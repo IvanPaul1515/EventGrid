@@ -339,7 +339,10 @@ export const SettingsPage: React.FC = () => {
 
       if (editingTicket.id) {
         await eventsService.updateTicketType(currentEvent.id, editingTicket.id, payload);
-        showNotification('success', 'Entrada actualizada exitosamente');
+        showNotification(
+          'success',
+          `Tarifa "${editingTicket.name}" actualizada a RD$ ${Number(editingTicket.price).toFixed(2)} y reflejada en los participantes.`
+        );
       } else {
         await eventsService.createTicketType(currentEvent.id, payload);
         showNotification('success', 'Nuevo tipo de entrada creado');

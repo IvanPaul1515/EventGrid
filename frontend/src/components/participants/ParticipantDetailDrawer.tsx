@@ -121,6 +121,43 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   const balanceDue = registration.isCourtesy
     ? 0
     : Math.max(0, ticketPrice - amountPaid);
+  const creditBalance = registration.isCourtesy
+    ? 0
+    : Math.max(0, amountPaid - ticketPrice);
+
+  // Ajustar monto pagado directamente a la tarifa actual
+  const handleAdjustPaymentToTariff = async () => {
+    setSavingInline(true);
+    setFeedbackMsg(null);
+    try {
+      const updated = await participantsService.update(registration.id, {
+        amountPaid: ticketPrice,
+        totalAmount: ticketPrice,
+      });
+
+      const updatedDetailed: DetailedRegistration = {
+        ...registration,
+        ...updated,
+        participant: {
+          ...registration.participant,
+          ...updated.participant,
+        },
+      };
+
+      if (onUpdated) onUpdated(updatedDetailed);
+      setFeedbackMsg({
+        type: 'success',
+        text: `Monto pagado ajustado a la tarifa de RD$ ${ticketPrice.toFixed(2)} exitosamente.`,
+      });
+    } catch (err: any) {
+      setFeedbackMsg({
+        type: 'error',
+        text: err.response?.data?.message || 'Error al ajustar el monto del participante',
+      });
+    } finally {
+      setSavingInline(false);
+    }
+  };
 
   // Guardar cambios de edición inline directamente en la ficha
   const handleSaveInline = async () => {
@@ -931,7 +968,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                 )}
 
                 {/* Desglose Financiero */}
-                <div className="grid grid-cols-3 gap-2.5 text-center">
+                <div className={`grid gap-2.5 text-center ${creditBalance > 0 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
                   <div className="p-3 rounded-xl bg-background border border-border">
                     <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block mb-0.5">
                       Tarifa Boleto
@@ -968,7 +1005,39 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                       RD$ {balanceDue.toFixed(2)}
                     </span>
                   </div>
+
+                  {creditBalance > 0 && (
+                    <div className="p-3 rounded-xl bg-cyan-500/15 border border-cyan-500/30">
+                      <span className="text-[10px] uppercase font-mono tracking-wider text-cyan-400 block mb-0.5 font-bold">
+                        Pagó de más / Saldo
+                      </span>
+                      <span className="text-sm font-mono font-black text-cyan-300">
+                        + RD$ {creditBalance.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                 </div>
+
+                {/* Banner de Ajuste por Pago Superior a la Tarifa */}
+                {creditBalance > 0 && (
+                  <div className="mt-3 p-3.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+                    <div className="flex items-center gap-2 text-cyan-200">
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                      <span>
+                        El participante pagó <strong>RD$ {creditBalance.toFixed(2)}</strong> por encima de la tarifa actual (RD$ {ticketPrice.toFixed(2)}).
+                      </span>
+                    </div>
+                    {hasRole(['ADMIN', 'OPERATOR']) && (
+                      <button
+                        onClick={handleAdjustPaymentToTariff}
+                        disabled={savingInline}
+                        className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-colors cursor-pointer shadow disabled:opacity-50"
+                      >
+                        Ajustar pago a la tarifa (RD$ {ticketPrice.toFixed(2)})
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 rounded-xl bg-background border border-border">
