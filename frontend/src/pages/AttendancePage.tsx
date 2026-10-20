@@ -463,7 +463,7 @@ export const AttendancePage: React.FC = () => {
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={handleSearchKeyDown}
             placeholder="Buscar por nombre, apellido, cédula, correo, teléfono, institución o ticket (ej. BC26-0001)..."
-            className="w-full pl-13 pr-24 py-4 bg-background border-2 border-border focus:border-primary rounded-2xl text-sm sm:text-base text-foreground placeholder-muted-foreground focus:outline-none transition-all shadow-inner font-medium"
+            className="w-full pl-12 sm:pl-14 pr-28 py-4 bg-background border-2 border-border focus:border-primary rounded-2xl text-sm sm:text-base text-foreground placeholder-muted-foreground focus:outline-none transition-all shadow-inner font-medium"
           />
           <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-2">
             {search ? (
@@ -580,61 +580,61 @@ export const AttendancePage: React.FC = () => {
 
                     <div className="min-w-0">
                       <div className="flex items-center flex-wrap gap-2">
-                        <span className="font-black text-sm text-foreground hover:text-primary transition-colors">
+                        <span className="font-bold text-base text-foreground hover:text-primary transition-colors">
                           {p.fullName}
                         </span>
 
                         {p.institution && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-muted text-primary border border-border">
+                          <span className="px-2.5 py-0.5 rounded-md text-xs font-semibold bg-muted text-primary border border-border">
                             {p.institution}
                           </span>
                         )}
 
                         {(reg.isDemo || p.isDemo) && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
                             DEMO
                           </span>
                         )}
 
                         {/* 1. Badge de Estado de Inscripción */}
                         {reg.status === 'CONFIRMED' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800 text-zinc-300 border border-zinc-700">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-zinc-800 text-zinc-300 border border-zinc-700">
                             Inscripción Confirmada
                           </span>
                         )}
                         {reg.status === 'PENDING' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
                             Inscripción Pendiente
                           </span>
                         )}
                         {reg.status === 'CANCELLED' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30">
                             Cancelado
                           </span>
                         )}
 
                         {/* 2. Badge de Estado de Pago */}
                         {reg.isCourtesy || reg.paymentStatus === 'COURTESY' ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 inline-flex items-center gap-1">
-                            <Tag className="w-2.5 h-2.5" /> Cortesía RD$ 0
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30 inline-flex items-center gap-1">
+                            <Tag className="w-3 h-3" /> Cortesía RD$ 0
                           </span>
                         ) : reg.paymentStatus === 'PAID' || balanceDue === 0 ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                             Pago Completo
                           </span>
                         ) : reg.paymentStatus === 'PARTIAL' || amountPaid > 0 ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
                             Abono Parcial (Debe RD$ {balanceDue.toFixed(2)})
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30">
                             Pago Pendiente (Debe RD$ {balanceDue.toFixed(2)})
                           </span>
                         )}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground font-mono">
-                        <span className="px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-700/80 text-white font-bold">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-xs text-muted-foreground font-mono">
+                        <span className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-700/80 text-white font-bold text-xs">
                           {reg.registrationNumber}
                         </span>
                         {p.documentId && <span>Doc: <strong className="text-foreground">{p.documentId}</strong></span>}

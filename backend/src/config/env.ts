@@ -1,12 +1,17 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Cargar variables de entorno desde backend/.env o la raíz
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Cargar variables de entorno desde backend/.env prioritariamente
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
+dotenv.config({ path: path.resolve(process.cwd(), 'backend/.env'), override: true });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config();
 
-if (!process.env.DATABASE_URL) {
+if (!process.env.DATABASE_URL || process.env.DATABASE_URL.startsWith('postgresql://')) {
   process.env.DATABASE_URL = 'file:./dev.db';
 }
 

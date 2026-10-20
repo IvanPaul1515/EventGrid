@@ -14,7 +14,9 @@ export const qrService = {
 
   async scan(qrToken: string, activeEventId?: string): Promise<QrScanResult> {
     const res = await api.post<ApiResponse<QrScanResult>>('/qr/scan', {
+      codeOrToken: qrToken,
       qrToken,
+      eventId: activeEventId,
       activeEventId,
     });
     return res.data.data;

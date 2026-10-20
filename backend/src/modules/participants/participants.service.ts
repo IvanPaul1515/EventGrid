@@ -51,15 +51,36 @@ export class ParticipantsService {
     if (isCourtesy !== undefined) whereClause.isCourtesy = isCourtesy;
 
     if (search && search.trim() !== '') {
-      const s = search.trim();
-      whereClause.OR = [
+      let s = search.trim();
+      if (s.includes('/t/')) {
+        const parts = s.split('/t/');
+        s = parts[parts.length - 1];
+      }
+      const digits = s.replace(/\D/g, '');
+      const orClauses: any[] = [
         { registrationNumber: { contains: s } },
+        { qrCode: { contains: s } },
         { participant: { fullName: { contains: s } } },
+        { participant: { firstName: { contains: s } } },
+        { participant: { lastName: { contains: s } } },
         { participant: { email: { contains: s } } },
         { participant: { documentId: { contains: s } } },
         { participant: { phone: { contains: s } } },
+        { participant: { alternatePhone: { contains: s } } },
         { participant: { institution: { contains: s } } },
       ];
+      if (digits.length >= 4) {
+        if (digits.length === 11) {
+          const formattedCedula = `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10, 11)}`;
+          orClauses.push({ participant: { documentId: { contains: formattedCedula } } });
+        } else if (digits.length === 10) {
+          const formattedPhone = `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+          const paddedCedula = `0${digits.slice(0, 2)}-${digits.slice(2, 9)}-${digits.slice(9, 10)}`;
+          orClauses.push({ participant: { phone: { contains: formattedPhone } } });
+          orClauses.push({ participant: { documentId: { contains: paddedCedula } } });
+        }
+      }
+      whereClause.OR = orClauses;
     }
 
     let orderBy: any = {};
@@ -121,7 +142,7 @@ export class ParticipantsService {
     let totalBalanceDue = 0;
 
     for (const r of allEventRegistrations) {
-      if (r.status === 'CONFIRMED' || r.status === 'ATTENDED') confirmedCount++;
+      if (r.status === 'CONFIRMED' || (r.status as string) === 'ATTENDED') confirmedCount++;
       else if (r.status === 'PENDING') pendingCount++;
       else if (r.status === 'CANCELLED') cancelledCount++;
 
@@ -291,7 +312,7 @@ export class ParticipantsService {
     let isCourtesy = input.isCourtesy || false;
     let paymentMethodId = input.paymentMethodId || null;
 
-    if (ticketType && (ticketType.price === 0 || ticketType.name.toLowerCase().includes('cortes'))) {
+    if (ticketType && (Number(ticketType.price) === 0 || ticketType.name.toLowerCase().includes('cortes'))) {
       isCourtesy = true;
     }
 
@@ -450,7 +471,7 @@ export class ParticipantsService {
         paymentStatus: initialPaymentStatus,
         salesResponsibleId: input.salesResponsibleId || null,
         saleTimestamp: input.saleTimestamp ? new Date(input.saleTimestamp) : new Date(),
-        status: input.status || (balanceDue === 0 || isCourtesy ? 'CONFIRMED' : 'PENDING'),
+        status: input.status ? (input.status === 'ATTENDED' ? 'CONFIRMED' : (input.status as any)) : (balanceDue === 0 || isCourtesy ? 'CONFIRMED' : 'PENDING'),
         qrCode: `eg_qr_${crypto.randomBytes(16).toString('hex')}`,
         qrGeneratedAt: new Date(),
         notes: input.notes || null,
@@ -533,7 +554,7 @@ export class ParticipantsService {
     let ticketType = null;
     if (ticketTypeId) {
       ticketType = existing.event.ticketTypes.find((t) => t.id === ticketTypeId);
-      if (ticketType && (ticketType.price === 0 || ticketType.name.toLowerCase().includes('cortes'))) {
+      if (ticketType && (Number(ticketType.price) === 0 || ticketType.name.toLowerCase().includes('cortes'))) {
         isCourtesy = true;
       }
     }
@@ -608,7 +629,9 @@ export class ParticipantsService {
         paymentStatus,
         salesResponsibleId: input.salesResponsibleId !== undefined ? input.salesResponsibleId : undefined,
         saleTimestamp: input.saleTimestamp ? new Date(input.saleTimestamp) : undefined,
-        status: input.status !== undefined ? input.status : undefined,
+        attended: input.status === 'ATTENDED' ? true : undefined,
+        attendedAt: input.status === 'ATTENDED' ? new Date() : undefined,
+        status: input.status !== undefined ? (input.status === 'ATTENDED' ? 'CONFIRMED' : (input.status as any)) : undefined,
         notes: input.notes !== undefined ? input.notes : undefined,
         customFields: customFieldsData as any,
         updatedByUserId: userId || undefined,
@@ -626,7 +649,10 @@ export class ParticipantsService {
       },
     });
 
-    return updated;
+    return {
+      ...updated,
+      status: input.status === 'ATTENDED' ? 'ATTENDED' : updated.status,
+    };
   }
 
   /**
@@ -645,7 +671,7 @@ export class ParticipantsService {
     }
 
     const isCourtesy =
-      ticketType.price === 0 ||
+      Number(ticketType.price) === 0 ||
       ticketType.name.toLowerCase().includes('cortes') ||
       !!input.courtesyAuthorizedBy;
 
@@ -1109,9 +1135,9 @@ export class ParticipantsService {
     const prefix = event.settings?.registrationPrefix || `BC${String(event.year).slice(-2)}-`;
     const startCount = await prisma.registration.count({ where: { eventId } });
 
-    const generalTicket = event.ticketTypes.find((t) => t.price > 0 && !t.name.toLowerCase().includes('preventa')) || event.ticketTypes[0];
+    const generalTicket = event.ticketTypes.find((t) => Number(t.price) > 0 && !t.name.toLowerCase().includes('preventa')) || event.ticketTypes[0];
     const presaleTicket = event.ticketTypes.find((t) => t.name.toLowerCase().includes('preventa')) || generalTicket;
-    const courtesyTicket = event.ticketTypes.find((t) => t.price === 0) || null;
+    const courtesyTicket = event.ticketTypes.find((t) => Number(t.price) === 0) || null;
 
     let createdCount = 0;
 

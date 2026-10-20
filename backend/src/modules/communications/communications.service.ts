@@ -122,7 +122,12 @@ export class CommunicationsService {
       throw new BadRequestError('El servicio de correos está deshabilitado o no está configurado.');
     }
 
-    const isTestOrDemo = process.env.NODE_ENV === 'test' || !config.password;
+    const isTestOrDemo =
+      process.env.NODE_ENV === 'test' ||
+      process.env.VITEST === 'true' ||
+      !config.password ||
+      config.host.includes('mailtrap') ||
+      config.host.includes('example');
 
     if (isTestOrDemo) {
       // Simulación segura sin envío real en pruebas o entorno demo
@@ -323,11 +328,19 @@ export class CommunicationsService {
       text = text.replace(regex, val);
     }
 
-    // Regla de seguridad: En modo demo, pruebas unitarias o si el participante es demo, NUNCA enviar a un correo real
-    const isDemo = registration.isDemo || registration.event.settings?.demoModeEnabled || process.env.NODE_ENV === 'test';
     const config = await prisma.emailConfig.findFirst({
       where: { OR: [{ eventId: input.eventId }, { eventId: null }] },
     });
+
+    // Regla de seguridad: En modo demo, pruebas unitarias o si el participante es demo, NUNCA enviar a un correo real
+    const isDemo =
+      registration.isDemo ||
+      registration.event.settings?.demoModeEnabled ||
+      process.env.NODE_ENV === 'test' ||
+      process.env.VITEST === 'true' ||
+      Boolean(config?.host.includes('mailtrap')) ||
+      Boolean(config?.host.includes('example')) ||
+      registration.participant.email.includes('@eventgrid.test');
 
     if (isDemo || !config?.isEnabled) {
       const log = await prisma.emailLog.create({

@@ -56,14 +56,47 @@ export class QrService {
       errorCorrectionLevel: 'H',
     });
 
+    const eventSettings = registration.event.settings;
+
     return {
-      registrationId: registration.id,
-      registrationNumber: registration.registrationNumber,
+      token: registration.qrCode,
       qrToken: registration.qrCode,
       qrPayload,
       qrDataUrl,
-      generatedAt: registration.qrGeneratedAt || registration.createdAt,
-      revokedAt: registration.qrRevokedAt,
+      generatedAt: (registration.qrGeneratedAt || registration.createdAt).toISOString(),
+      revokedAt: registration.qrRevokedAt ? registration.qrRevokedAt.toISOString() : null,
+      registrationId: registration.id,
+      registrationNumber: registration.registrationNumber,
+      registration: {
+        id: registration.id,
+        registrationNumber: registration.registrationNumber,
+        status: registration.status,
+        paymentStatus: registration.paymentStatus,
+        isCourtesy: registration.isCourtesy,
+        attended: registration.attended,
+        attendedAt: registration.attendedAt ? registration.attendedAt.toISOString() : undefined,
+        ticketType: registration.ticketType?.name || (registration.isCourtesy ? 'Cortesía' : 'General'),
+        price: Number(registration.ticketPrice ?? registration.totalAmount ?? 0),
+      },
+      participant: {
+        id: registration.participant.id,
+        fullName: registration.participant.fullName,
+        firstName: registration.participant.firstName,
+        lastName: registration.participant.lastName,
+        email: registration.participant.email,
+        documentId: registration.participant.documentId || undefined,
+        institution: registration.participant.institution || undefined,
+      },
+      event: {
+        id: registration.event.id,
+        name: registration.event.name,
+        year: registration.event.year,
+        venue: registration.event.venue,
+        startDate: registration.event.startDate.toISOString(),
+        endDate: registration.event.endDate.toISOString(),
+        logoUrl: eventSettings?.logoUrl || undefined,
+        currencySymbol: eventSettings?.currencySymbol || 'RD$',
+      },
       ticket: {
         eventName: registration.event.name,
         editionYear: registration.event.year,
@@ -134,7 +167,7 @@ export class QrService {
    * Validar y procesar lectura de escaneo de QR
    * REGLA: Nunca marca asistencia automáticamente. Valida y devuelve la ficha y el estado.
    */
-  static async validateAndScan(codeOrToken: string, activeEventId: string) {
+  static async validateAndScan(codeOrToken: string, activeEventId?: string) {
     let token = codeOrToken.trim();
 
     // Extraer token si el escáner capturó la URL completa
@@ -150,9 +183,14 @@ export class QrService {
       }
     }
 
-    // Buscar inscripción por token seguro
+    // Buscar inscripción por token seguro o por número de registro
     const registration = await prisma.registration.findFirst({
-      where: { qrCode: token },
+      where: {
+        OR: [
+          { qrCode: token },
+          { registrationNumber: token },
+        ],
+      },
       include: {
         participant: true,
         ticketType: true,
@@ -172,17 +210,21 @@ export class QrService {
     if (!registration) {
       return {
         valid: false,
+        status: 'INVALID_CODE',
         error: 'TICKET_NOT_FOUND',
-        message: 'El código QR no corresponde a ninguna inscripción registrada en EventGrid.',
+        canCheckIn: false,
+        message: 'El código o token no corresponde a ninguna inscripción registrada en EventGrid.',
         registration: null,
       };
     }
 
     // Validar si pertenece a la edición activa seleccionada
-    if (registration.eventId !== activeEventId) {
+    if (activeEventId && registration.eventId !== activeEventId) {
       return {
         valid: false,
+        status: 'EDITION_MISMATCH',
         error: 'EDITION_MISMATCH',
+        canCheckIn: false,
         message: `Esta entrada pertenece a "${registration.event.name}", no a la edición actualmente en gestión.`,
         registration,
       };
@@ -192,7 +234,9 @@ export class QrService {
     if (registration.status === 'CANCELLED') {
       return {
         valid: false,
+        status: 'CANCELLED',
         error: 'REGISTRATION_CANCELLED',
+        canCheckIn: false,
         message: 'La inscripción asociada a esta entrada se encuentra CANCELADA.',
         registration,
       };
@@ -200,11 +244,17 @@ export class QrService {
 
     // Validar si ya asistió
     if (registration.attended) {
+      const arrivedTime = registration.attendedAt
+        ? new Date(registration.attendedAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : 'hora desconocida';
+      const registrar = registration.attendedByUser?.fullName || 'Operador';
+
       return {
         valid: true,
+        status: 'ALREADY_CHECKED_IN',
         alreadyAttended: true,
         canCheckIn: false,
-        message: 'Asistencia ya registrada previamente.',
+        message: `Asistencia ya registrada previamente a las ${arrivedTime} por ${registrar}.`,
         attendedAt: registration.attendedAt,
         attendedBy: registration.attendedByUser?.fullName,
         registration,
@@ -214,6 +264,7 @@ export class QrService {
     // Entrada válida y disponible para confirmar entrada
     return {
       valid: true,
+      status: 'VALID',
       alreadyAttended: false,
       canCheckIn: true,
       message: 'Entrada válida y vigente. Puede confirmar la asistencia del participante.',

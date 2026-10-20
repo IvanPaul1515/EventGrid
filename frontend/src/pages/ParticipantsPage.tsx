@@ -587,7 +587,7 @@ export const ParticipantsPage: React.FC = () => {
       {/* Tabla Administrativa de Participantes */}
       <div className="rounded-2xl bg-card border border-border overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full min-w-[1100px] text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/40 font-mono text-[11px] text-muted-foreground uppercase tracking-wider select-none">
                 {visibleColumns.registrationNumber && (
@@ -724,7 +724,7 @@ export const ParticipantsPage: React.FC = () => {
                                   {p.fullName}
                                 </button>
                                 {(reg.isDemo || p.isDemo) && (
-                                  <span className="px-1 py-0.2 text-[9px] font-mono font-bold rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                  <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
                                     DEMO
                                   </span>
                                 )}

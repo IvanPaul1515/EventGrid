@@ -1,6 +1,7 @@
 {
   "name": "eventgrid-backend",
   "version": "1.0.0",
+  "type": "module",
   "description": "EventGrid REST API — Servicio backend para administración de eventos, inscripciones, ventas y control de asistencia",
   "main": "dist/server.js",
   "scripts": {
@@ -11,7 +12,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
     "prisma:seed": "tsx prisma/seed.ts",
-    "test": "vitest run"
+    "test": "vitest run --fileParallelism=false"
   },
   "dependencies": {
     "@prisma/client": "^6.4.0",

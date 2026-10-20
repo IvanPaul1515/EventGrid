@@ -1,8 +1,13 @@
 import { z } from 'zod';
 
 export const ScanQrSchema = z.object({
-  codeOrToken: z.string().min(1, 'El código o token QR es requerido'),
-  eventId: z.string().min(1, 'El identificador del evento es requerido'),
+  codeOrToken: z.string().optional(),
+  qrToken: z.string().optional(),
+  eventId: z.string().optional(),
+  activeEventId: z.string().optional(),
+}).refine(data => !!(data.codeOrToken || data.qrToken), {
+  message: 'El código o token QR es requerido',
+  path: ['codeOrToken'],
 });
 
 export const RevokeQrSchema = z.object({

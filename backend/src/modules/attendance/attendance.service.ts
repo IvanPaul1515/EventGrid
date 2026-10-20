@@ -52,9 +52,15 @@ export class AttendanceService {
 
     // Búsqueda rápida multi-campo
     if (search && search.trim()) {
-      const term = search.trim();
-      where.OR = [
+      let term = search.trim();
+      if (term.includes('/t/')) {
+        const parts = term.split('/t/');
+        term = parts[parts.length - 1];
+      }
+      const digits = term.replace(/\D/g, '');
+      const orClauses: any[] = [
         { registrationNumber: { contains: term } },
+        { qrCode: { contains: term } },
         { participant: { firstName: { contains: term } } },
         { participant: { lastName: { contains: term } } },
         { participant: { fullName: { contains: term } } },
@@ -64,6 +70,18 @@ export class AttendanceService {
         { participant: { alternatePhone: { contains: term } } },
         { participant: { institution: { contains: term } } },
       ];
+      if (digits.length >= 4) {
+        if (digits.length === 11) {
+          const formattedCedula = `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10, 11)}`;
+          orClauses.push({ participant: { documentId: { contains: formattedCedula } } });
+        } else if (digits.length === 10) {
+          const formattedPhone = `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+          const paddedCedula = `0${digits.slice(0, 2)}-${digits.slice(2, 9)}-${digits.slice(9, 10)}`;
+          orClauses.push({ participant: { phone: { contains: formattedPhone } } });
+          orClauses.push({ participant: { documentId: { contains: paddedCedula } } });
+        }
+      }
+      where.OR = orClauses;
     }
 
     const [total, data, counters] = await Promise.all([

@@ -1,6 +1,7 @@
 import { prisma } from '../../config/db.js';
 import { BadRequestError, NotFoundError } from '../../utils/errors.js';
 import * as XLSX from 'xlsx';
+import crypto from 'crypto';
 
 // Diccionario de alias lingüísticos para detección automática de columnas históricas de BarCamp
 const ALIAS_DICTIONARY: Record<string, string[]> = {
@@ -72,6 +73,10 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
   courtesyAuthorizedBy: [
     'autorizado por', 'cortesía autorizada por', 'autorizo cortesia', 'autorizado'
   ],
+  attended: [
+    'asistencia', 'asistió', 'asistio', 'check-in', 'check in', 'checkin',
+    'llegada', 'llegó', 'llego', 'presente', 'entrada', 'asistente', 'asistio?'
+  ],
   notes: [
     'notas', 'nota', 'observaciones', 'observacion', 'comentarios', 'comentario'
   ],
@@ -83,6 +88,63 @@ function normalizeHeader(header: string): string {
     .trim()
     .replace(/[_-]/g, ' ')
     .replace(/\s+/g, ' ');
+}
+
+export function parseMoney(val: any): number {
+  if (val === undefined || val === null || val === '') return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  let str = String(val).replace(/[^\d.,-]/g, '').trim();
+  if (!str) return 0;
+  if (str.includes(',') && !str.includes('.')) {
+    str = str.replace(',', '.');
+  } else if (str.includes(',') && str.includes('.')) {
+    if (str.indexOf('.') < str.indexOf(',')) {
+      str = str.replace(/\./g, '').replace(',', '.');
+    } else {
+      str = str.replace(/,/g, '');
+    }
+  }
+  const parsed = parseFloat(str);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+export function normalizeDocumentId(raw: any): string | null {
+  if (!raw) return null;
+  const str = String(raw).trim();
+  if (!str) return null;
+  const digits = str.replace(/\D/g, '');
+  if (digits.length === 11) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10, 11)}`;
+  } else if (digits.length === 10) {
+    const padded = digits.padStart(11, '0');
+    return `${padded.slice(0, 3)}-${padded.slice(3, 10)}-${padded.slice(10, 11)}`;
+  }
+  return str;
+}
+
+export function normalizePhone(raw: any): string | null {
+  if (!raw) return null;
+  const str = String(raw).trim();
+  if (!str) return null;
+  const digits = str.replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+  } else if (digits.length === 11 && digits.startsWith('1')) {
+    return `${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7, 11)}`;
+  }
+  return str;
+}
+
+export function parseExcelDate(val: any): Date {
+  if (val instanceof Date) return val;
+  if (typeof val === 'number' && val > 20000 && val < 60000) {
+    return new Date((val - 25569) * 86400 * 1000);
+  }
+  if (typeof val === 'string' && val.trim()) {
+    const d = new Date(val.trim());
+    if (!isNaN(d.getTime())) return d;
+  }
+  return new Date();
 }
 
 export class ImportService {
@@ -101,7 +163,7 @@ export class ImportService {
 
     let workbook: XLSX.WorkBook;
     try {
-      workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+      workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true, cellText: true });
     } catch {
       throw new BadRequestError('No se pudo interpretar el archivo como una hoja de cálculo válida (.xlsx, .xls o .csv)');
     }
@@ -120,7 +182,7 @@ export class ImportService {
     }
 
     // Convertir a matriz bidimensional de celdas
-    const rawMatrix: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+    const rawMatrix: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false });
     if (!rawMatrix || rawMatrix.length === 0) {
       throw new BadRequestError('La hoja seleccionada está completamente vacía');
     }
@@ -180,6 +242,7 @@ export class ImportService {
       range: detectedHeaderIdx,
       defval: '',
       blankrows: false,
+      raw: false,
     });
 
     // Filtrar filas completamente vacías
@@ -274,6 +337,20 @@ export class ImportService {
           normalized.lastName = normalized.lastName || '—';
         }
       }
+      if (!normalized.fullName && (normalized.firstName || normalized.lastName)) {
+        normalized.fullName = `${normalized.firstName || ''} ${normalized.lastName || ''}`.trim();
+      }
+
+      // Normalizar identificaciones y teléfonos preservando ceros a la izquierda
+      if (normalized.documentId) {
+        normalized.documentId = normalizeDocumentId(normalized.documentId) || normalized.documentId;
+      }
+      if (normalized.phone) {
+        normalized.phone = normalizePhone(normalized.phone) || normalized.phone;
+      }
+      if (normalized.alternatePhone) {
+        normalized.alternatePhone = normalizePhone(normalized.alternatePhone) || normalized.alternatePhone;
+      }
 
       // 1. Validar campos obligatorios mínimos
       if (!normalized.firstName) {
@@ -291,39 +368,39 @@ export class ImportService {
         }
       }
 
-      // 2. Normalizar monto
-      let amount = 0;
-      if (normalized.totalAmount) {
-        const cleanAmount = String(normalized.totalAmount)
-          .replace(/[RD$$,\s]/gi, '')
-          .trim();
-        const parsedAmt = parseFloat(cleanAmount);
-        if (isNaN(parsedAmt) || parsedAmt < 0) {
-          errors.push(`Monto inválido: '${normalized.totalAmount}'`);
-        } else {
-          amount = parsedAmt;
-        }
-      }
+      // 2. Normalizar montos
+      const amount = parseMoney(normalized.totalAmount);
+      const ticketPrice = parseMoney(normalized.ticketPrice);
+      const amountPaid = parseMoney(normalized.amountPaid);
       normalized.totalAmount = amount;
+      normalized.ticketPrice = ticketPrice;
+      normalized.amountPaid = amountPaid;
 
       // 3. Reglas de Cortesía
       let isCourtesy = false;
       const pmStr = normalized.paymentMethod ? String(normalized.paymentMethod).toLowerCase() : '';
-      if (pmStr.includes('cortes') || normalized.isCourtesy === 'SÍ' || normalized.isCourtesy === 'true' || normalized.isCourtesy === '1') {
+      if (pmStr.includes('cortes') || normalized.isCourtesy === 'SÍ' || normalized.isCourtesy === 'SI' || normalized.isCourtesy === 'true' || normalized.isCourtesy === '1') {
         isCourtesy = true;
         normalized.totalAmount = 0.0;
+        normalized.ticketPrice = 0.0;
+        normalized.amountPaid = 0.0;
         normalized.isCourtesy = true;
       }
       normalized.isCourtesy = isCourtesy;
 
-      // 4. Estado de confirmación por defecto: PENDING si no viene en el archivo
+      // 4. Asistencia y Estado de confirmación
       let isAttendedFromFile = false;
+      if (normalized.attended) {
+        const attStr = String(normalized.attended).toLowerCase().trim();
+        isAttendedFromFile = ['sí', 'si', 'true', '1', 'presente', 'asistió', 'asistio', 'yes', 'y'].includes(attStr);
+      }
       if (normalized.status === 'ATTENDED') {
         normalized.status = 'CONFIRMED';
         isAttendedFromFile = true;
       } else if (!normalized.status || !['CONFIRMED', 'PENDING', 'CANCELLED'].includes(normalized.status)) {
         normalized.status = 'PENDING';
       }
+      normalized.attended = isAttendedFromFile;
 
       // 5. Detección de duplicados internos dentro de este mismo Excel
       if (normalized.email) {
@@ -487,6 +564,11 @@ export class ImportService {
             });
 
             if (existingReg) {
+              const qrUpdate = !existingReg.qrCode ? {
+                qrCode: `eg_qr_${crypto.randomBytes(16).toString('hex')}`,
+                qrGeneratedAt: new Date(),
+              } : {};
+
               await prisma.registration.update({
                 where: { id: existingReg.id },
                 data: {
@@ -494,6 +576,7 @@ export class ImportService {
                   isCourtesy: n.isCourtesy || false,
                   status: n.status || existingReg.status,
                   notes: n.notes || existingReg.notes,
+                  ...qrUpdate,
                 },
               });
 
@@ -618,9 +701,9 @@ export class ImportService {
         }
         if (!matchedTicketType && event.ticketTypes.length > 0) {
           if (n.isCourtesy) {
-            matchedTicketType = event.ticketTypes.find((t) => t.price === 0) || null;
+            matchedTicketType = event.ticketTypes.find((t) => Number(t.price) === 0) || null;
           } else {
-            matchedTicketType = event.ticketTypes.find((t) => t.price > 0) || event.ticketTypes[0];
+            matchedTicketType = event.ticketTypes.find((t) => Number(t.price) > 0) || event.ticketTypes[0];
           }
         }
 
@@ -652,6 +735,9 @@ export class ImportService {
           ? 'PARTIAL'
           : 'PENDING';
 
+        const isAttended = Boolean(n.attended || n.status === 'ATTENDED');
+        const qrCode = `eg_qr_${crypto.randomBytes(16).toString('hex')}`;
+
         // Crear inscripción vinculada al lote
         await prisma.registration.create({
           data: {
@@ -673,11 +759,14 @@ export class ImportService {
             paymentMethodId: resolvedPaymentId,
             paymentStatus,
             salesResponsibleId: resolvedRespId,
-            status: n.status === 'ATTENDED' ? 'CONFIRMED' : (n.status || (balanceDue === 0 || n.isCourtesy ? 'CONFIRMED' : 'PENDING')),
-            attended: n.status === 'ATTENDED',
-            attendedAt: n.status === 'ATTENDED' ? new Date() : null,
+            status: isAttended ? 'CONFIRMED' : (n.status || (balanceDue === 0 || n.isCourtesy ? 'CONFIRMED' : 'PENDING')),
+            attended: isAttended,
+            attendedAt: isAttended ? new Date() : null,
+            attendedByUserId: isAttended ? userId : null,
+            qrCode,
+            qrGeneratedAt: new Date(),
             notes: n.notes || null,
-            saleTimestamp: n.saleTimestamp ? new Date(n.saleTimestamp) : new Date(),
+            saleTimestamp: n.saleTimestamp ? parseExcelDate(n.saleTimestamp) : new Date(),
           },
         });
 

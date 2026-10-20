@@ -40,17 +40,21 @@ interface SystemFieldDef {
 }
 
 const SYSTEM_FIELDS: SystemFieldDef[] = [
-  { key: 'firstName', label: 'Nombres', required: true, description: 'Primer y segundo nombre del asistente' },
-  { key: 'lastName', label: 'Apellidos', required: true, description: 'Apellidos completos del participante' },
+  { key: 'fullName', label: 'Nombre Completo', required: false, description: 'Nombres y apellidos juntos en una sola columna' },
+  { key: 'firstName', label: 'Nombres', required: false, description: 'Primer y segundo nombre del asistente' },
+  { key: 'lastName', label: 'Apellidos', required: false, description: 'Apellidos completos del participante' },
   { key: 'email', label: 'Correo Electrónico', required: true, description: 'Correo institucional o personal único' },
   { key: 'documentId', label: 'Cédula / Documento', required: false, description: 'Cédula dominicana (11 dígitos) o pasaporte' },
   { key: 'phone', label: 'Teléfono Principal', required: false, description: 'Celular o teléfono de contacto' },
   { key: 'alternatePhone', label: 'Teléfono Alterno', required: false, description: 'Contacto secundario' },
+  { key: 'institution', label: 'Institución / Empresa', required: false, description: 'Universidad, empresa o centro educativo' },
+  { key: 'ticketType', label: 'Tipo de Entrada', required: false, description: 'General, VIP, Estudiante, etc.' },
   { key: 'registrationNumber', label: 'No. Registro / Ticket', required: false, description: 'Código o número de ticket (autogenerado si se omite)' },
   { key: 'paymentMethod', label: 'Forma de Pago', required: false, description: 'Efectivo, Tarjeta, Transferencia, Cortesía, etc.' },
   { key: 'totalAmount', label: 'Pago Total (RD$)', required: false, description: 'Monto pagado en pesos dominicanos' },
   { key: 'salesResponsible', label: 'Responsable de Venta', required: false, description: 'Persona o comité receptor del pago' },
   { key: 'status', label: 'Estado Confirmación', required: false, description: 'CONFIRMED, PENDING, ATTENDED o CANCELLED' },
+  { key: 'attended', label: 'Asistencia / Check-in', required: false, description: 'Indica si el participante ya asistió físicamente' },
   { key: 'isCourtesy', label: 'Es Cortesía', required: false, description: 'Indica si la entrada es de cortesía (RD$ 0.00)' },
   { key: 'courtesyAuthorizedBy', label: 'Autorizado Por', required: false, description: 'Quién autoriza la cortesía' },
   { key: 'notes', label: 'Observaciones / Notas', required: false, description: 'Notas o comentarios sobre el participante' },

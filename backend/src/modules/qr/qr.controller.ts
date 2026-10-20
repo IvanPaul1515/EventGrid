@@ -36,7 +36,9 @@ export class QrController {
 
   static async scan(req: Request, res: Response, next: NextFunction) {
     try {
-      const { codeOrToken, eventId } = ScanQrSchema.parse(req.body);
+      const parsed = ScanQrSchema.parse(req.body);
+      const codeOrToken = (parsed.codeOrToken || parsed.qrToken)!.trim();
+      const eventId = parsed.eventId || parsed.activeEventId || (req.headers['x-event-id'] as string) || undefined;
       const result = await QrService.validateAndScan(codeOrToken, eventId);
       return res.status(200).json({ status: 'success', data: result });
     } catch (error) {
