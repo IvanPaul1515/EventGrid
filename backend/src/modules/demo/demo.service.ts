@@ -39,18 +39,37 @@ export class DemoService {
 
     if (!event) throw new NotFoundError('Edición no encontrada');
 
-    const [demoCount, realCount] = await Promise.all([
+    const [demoRegistrations, realRegistrations, demoParticipants, realParticipants] = await Promise.all([
       prisma.registration.count({ where: { eventId, isDemo: true } }),
       prisma.registration.count({ where: { eventId, isDemo: false } }),
+      prisma.participant.count({
+        where: {
+          isDemo: true,
+          registrations: { some: { eventId } },
+        },
+      }),
+      prisma.participant.count({
+        where: {
+          isDemo: false,
+          registrations: { some: { eventId } },
+        },
+      }),
     ]);
 
     return {
       eventId,
       eventName: event.name,
       demoModeEnabled: event.settings?.demoModeEnabled ?? false,
-      demoCount,
-      realCount,
-      totalCount: demoCount + realCount,
+      demoCount: demoRegistrations,
+      realCount: realRegistrations,
+      totalCount: demoRegistrations + realRegistrations,
+      counts: {
+        demoRegistrations,
+        demoParticipants,
+        realRegistrations,
+        realParticipants,
+        totalRegistrations: demoRegistrations + realRegistrations,
+      },
     };
   }
 

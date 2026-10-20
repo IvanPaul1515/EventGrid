@@ -246,8 +246,13 @@ export interface ApiResponse<T> {
 }
 
 export interface DemoStatus {
+  eventId?: string;
+  eventName?: string;
   demoModeEnabled: boolean;
-  counts: {
+  demoCount?: number;
+  realCount?: number;
+  totalCount?: number;
+  counts?: {
     demoParticipants: number;
     demoRegistrations: number;
     realParticipants: number;

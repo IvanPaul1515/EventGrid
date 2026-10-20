@@ -1010,12 +1010,14 @@ export const SettingsPage: React.FC = () => {
               <div className="flex items-center gap-3">
                 <span
                   className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                    demoStatus?.demoModeEnabled
+                    (demoStatus?.demoModeEnabled ?? currentEvent?.settings?.demoModeEnabled)
                       ? 'bg-amber-500/15 border-amber-500/40 text-amber-500'
                       : 'bg-zinc-800 border-zinc-700 text-zinc-400'
                   }`}
                 >
-                  {demoStatus?.demoModeEnabled ? 'MODO DEMO ACTIVADO' : 'MODO DEMO DESACTIVADO'}
+                  {(demoStatus?.demoModeEnabled ?? currentEvent?.settings?.demoModeEnabled)
+                    ? 'MODO DEMO ACTIVADO'
+                    : 'MODO DEMO DESACTIVADO'}
                 </span>
 
                 <button
@@ -1023,7 +1025,7 @@ export const SettingsPage: React.FC = () => {
                   onClick={handleToggleDemo}
                   disabled={togglingDemo || loadingDemo}
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 ${
-                    demoStatus?.demoModeEnabled
+                    (demoStatus?.demoModeEnabled ?? currentEvent?.settings?.demoModeEnabled)
                       ? 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-600'
                       : 'bg-amber-600 hover:bg-amber-500 text-white shadow-md shadow-amber-600/30'
                   }`}
@@ -1032,7 +1034,7 @@ export const SettingsPage: React.FC = () => {
                   <span>
                     {togglingDemo
                       ? 'Actualizando...'
-                      : demoStatus?.demoModeEnabled
+                      : (demoStatus?.demoModeEnabled ?? currentEvent?.settings?.demoModeEnabled)
                       ? 'Desactivar Modo Demo'
                       : 'Activar Modo Demo'}
                   </span>
@@ -1042,7 +1044,13 @@ export const SettingsPage: React.FC = () => {
 
             {/* Comportamiento según el estado */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              <div className={`p-4 rounded-xl border ${!demoStatus?.demoModeEnabled ? 'bg-primary/5 border-primary/20' : 'bg-muted/30 border-border opacity-70'}`}>
+              <div
+                className={`p-4 rounded-xl border ${
+                  !(demoStatus?.demoModeEnabled ?? currentEvent?.settings?.demoModeEnabled)
+                    ? 'bg-primary/5 border-primary/20'
+                    : 'bg-muted/30 border-border opacity-70'
+                }`}
+              >
                 <h4 className="font-bold text-foreground flex items-center gap-1.5 mb-1.5">
                   <ShieldCheck className="w-4 h-4 text-primary" />
                   Modo Demo Desactivado (Producción)
@@ -1054,7 +1062,13 @@ export const SettingsPage: React.FC = () => {
                 </ul>
               </div>
 
-              <div className={`p-4 rounded-xl border ${demoStatus?.demoModeEnabled ? 'bg-amber-500/5 border-amber-500/30' : 'bg-muted/30 border-border opacity-70'}`}>
+              <div
+                className={`p-4 rounded-xl border ${
+                  (demoStatus?.demoModeEnabled ?? currentEvent?.settings?.demoModeEnabled)
+                    ? 'bg-amber-500/5 border-amber-500/30'
+                    : 'bg-muted/30 border-border opacity-70'
+                }`}
+              >
                 <h4 className="font-bold text-amber-500 flex items-center gap-1.5 mb-1.5">
                   <FlaskConical className="w-4 h-4 text-amber-500" />
                   Modo Demo Activado (Entorno de Pruebas)
@@ -1090,7 +1104,7 @@ export const SettingsPage: React.FC = () => {
               <div className="p-4 rounded-xl bg-background border border-amber-500/20">
                 <p className="text-[10px] font-bold uppercase text-amber-500">Inscripciones Demo</p>
                 <p className="text-2xl font-black text-foreground mt-1">
-                  {demoStatus?.counts.demoRegistrations ?? 0}
+                  {demoStatus?.counts?.demoRegistrations ?? demoStatus?.demoCount ?? 0}
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">En la edición activa</p>
               </div>
@@ -1098,7 +1112,7 @@ export const SettingsPage: React.FC = () => {
               <div className="p-4 rounded-xl bg-background border border-amber-500/20">
                 <p className="text-[10px] font-bold uppercase text-amber-500">Personas Demo</p>
                 <p className="text-2xl font-black text-foreground mt-1">
-                  {demoStatus?.counts.demoParticipants ?? 0}
+                  {demoStatus?.counts?.demoParticipants ?? demoStatus?.demoCount ?? 0}
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">Participantes ficticios</p>
               </div>
@@ -1106,7 +1120,7 @@ export const SettingsPage: React.FC = () => {
               <div className="p-4 rounded-xl bg-background border border-emerald-500/20">
                 <p className="text-[10px] font-bold uppercase text-emerald-500">Inscripciones Reales</p>
                 <p className="text-2xl font-black text-foreground mt-1">
-                  {demoStatus?.counts.realRegistrations ?? 0}
+                  {demoStatus?.counts?.realRegistrations ?? demoStatus?.realCount ?? 0}
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">Registros oficiales</p>
               </div>
@@ -1114,7 +1128,7 @@ export const SettingsPage: React.FC = () => {
               <div className="p-4 rounded-xl bg-background border border-emerald-500/20">
                 <p className="text-[10px] font-bold uppercase text-emerald-500">Personas Reales</p>
                 <p className="text-2xl font-black text-foreground mt-1">
-                  {demoStatus?.counts.realParticipants ?? 0}
+                  {demoStatus?.counts?.realParticipants ?? demoStatus?.realCount ?? 0}
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">Participantes legítimos</p>
               </div>

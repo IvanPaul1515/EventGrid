@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { ErrorBoundary } from './ErrorBoundary';
 
 export const Layout: React.FC = () => {
   return (
@@ -11,7 +12,9 @@ export const Layout: React.FC = () => {
         <Header />
         <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-background">
           <div className="max-w-7xl mx-auto space-y-6">
-            <Outlet />
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
           </div>
         </main>
       </div>
