@@ -38,6 +38,7 @@ export const SendSingleEmailModal: React.FC<SendSingleEmailModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string>('');
   const [resultMessage, setResultMessage] = useState<{ type: 'success' | 'error'; text: string; simulated?: boolean } | null>(null);
 
   useEffect(() => {
@@ -53,7 +54,6 @@ export const SendSingleEmailModal: React.FC<SendSingleEmailModalProps> = ({
       setLoading(true);
       const data = await communicationsService.getTemplates(eventId);
       setTemplates(data);
-      // Seleccionar DIGITAL_TICKET o la primera
       const initial = data.find((t) => t.code === 'DIGITAL_TICKET') || data[0];
       if (initial) {
         setSelectedTemplateCode(initial.code);
@@ -76,12 +76,31 @@ export const SendSingleEmailModal: React.FC<SendSingleEmailModalProps> = ({
     }
   };
 
+  const handleTogglePreview = async () => {
+    if (!showPreview) {
+      try {
+        const preview = await communicationsService.previewEmail({
+          eventId,
+          registrationId,
+          templateCode: selectedTemplateCode,
+          customSubject: subject,
+          customBodyHtml: bodyHtml,
+        });
+        setPreviewHtml(preview.html);
+      } catch {
+        setPreviewHtml(bodyHtml);
+      }
+    }
+    setShowPreview(!showPreview);
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setSending(true);
       setResultMessage(null);
       const res = await communicationsService.sendSingleEmail({
+        eventId,
         registrationId,
         templateCode: selectedTemplateCode,
         customSubject: subject,
@@ -199,20 +218,22 @@ export const SendSingleEmailModal: React.FC<SendSingleEmailModalProps> = ({
                 </label>
                 <button
                   type="button"
-                  onClick={() => setShowPreview(!showPreview)}
+                  onClick={handleTogglePreview}
                   className="text-xs text-primary hover:underline font-semibold flex items-center gap-1 cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5" />
-                  <span>{showPreview ? 'Ocultar Vista Previa' : 'Ver Vista Previa'}</span>
+                  <span>{showPreview ? 'Editar HTML' : 'Ver Vista Previa Real'}</span>
                 </button>
               </div>
 
               {showPreview ? (
-                <div className="p-4 rounded-xl bg-background border border-border max-h-56 overflow-y-auto">
-                  <p className="text-xs font-bold text-muted-foreground mb-2">Vista previa renderizada:</p>
-                  <div
-                    className="prose prose-sm dark:prose-invert max-w-none text-xs"
-                    dangerouslySetInnerHTML={{ __html: bodyHtml }}
+                <div className="p-3 rounded-xl bg-background border border-border">
+                  <p className="text-[11px] font-bold text-muted-foreground mb-2">Vista previa segura en iframe aislado (QA-11):</p>
+                  <iframe
+                    title="Vista previa del correo"
+                    sandbox="allow-same-origin"
+                    srcDoc={previewHtml}
+                    className="w-full h-64 border border-border rounded-lg bg-white"
                   />
                 </div>
               ) : (
@@ -225,7 +246,7 @@ export const SendSingleEmailModal: React.FC<SendSingleEmailModalProps> = ({
               )}
               <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
                 <Info className="w-3.5 h-3.5" />
-                <span>Variables disponibles: {'{{nombre_completo}}'}, {'{{numero_registro}}'}, {'{{nombre_evento}}'}, {'{{lugar_evento}}'}, {'{{tipo_entrada}}'}, {'{{qr_token}}'}.</span>
+                <span>Variables soportadas: {'{{participantName}}'}, {'{{registrationNumber}}'}, {'{{eventName}}'}, {'{{eventVenue}}'}, {'{{ticketType}}'}, {'{{qrUrl}}'}, {'{{amountPaid}}'}, {'{{balanceDue}}'}.</span>
               </p>
             </div>
           </div>

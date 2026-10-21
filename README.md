@@ -201,6 +201,25 @@ EventGrid/
 
 ---
 
+## 📧 Módulo de Comunicaciones y Robustez Operativa (QA)
+
+EventGrid cuenta con un subsistema completo de comunicaciones y transacciones atómicas de alta concurrencia:
+
+### 1. Sistema Centralizado de Comunicaciones y Envíos Masivos
+- **Administración SMTP:** Configurable por edición o a nivel global desde **Administración → Configuración de correo**, con cifrado autenticado en reposo (**AES-256-GCM**) y selector de alcance.
+- **Redactar y Enviar:** Envío directo e individual con soporte de tokens QR persistentes (`{{qrImageUrl}}`, `{{qrCode}}`) y variables contextuales (`{{participantName}}`, `{{eventName}}`, etc.).
+- **7 Plantillas Base Preconfiguradas:** Confirmación de inscripción, entrada digital con QR, actualización de datos, recordatorio previo, agradecimiento post-evento, cobro pendiente y notificación general.
+- **Previsualización Segura (Sandboxed Preview):** Vista previa aislada en iframe seguro (`sandbox="" - srcdoc`) con datos dinámicos sin persistencia en base de datos.
+- **Asistente de Envíos Masivos por Lotes:** Wizard paso a paso para envíos segmentados (`Todos`, `Confirmados`, `Pagados`, `Pendientes`, etc.) con procesamiento por lotes (`chunks` de 25), trazabilidad con identificador único (`batchId`) y sin límites artificiales de 200 destinatarios.
+- **Historial y Auditoría Centralizada:** Registro detallado de envíos (`EmailLog`) con filtros por estado (`SENT`, `SIMULATED`, `FAILED`), edición, fecha, búsqueda textual y código de lote.
+
+### 2. Control de Concurrencia y Transacciones Atómicas
+- **Check-in Concurrente:** Bloqueo atómico y transacciones que evitan check-ins duplicados simultáneos, manteniendo la independencia del estado de inscripción (`PENDING` nunca muta erróneamente a `CONFIRMED`).
+- **Inventario de Camisetas Atómico:** Protección contra sobregiros e inventario negativo durante entregas simultáneas (`deliveredQuantity < initialQuantity`) y validación estricta de tallas activas.
+- **Escaneo QR en Dispositivos Móviles:** Lector de cámara nativo integrado (`html5-qrcode`) con selección de entorno frontal/trasero y regla estricta: el escaneo QR valida la entrada sin marcar automáticamente la asistencia hasta la confirmación expresa del operador.
+
+---
+
 ## 🔐 Acceso al Sistema (Entorno de Desarrollo)
 
 | Rol | Correo Electrónico | Contraseña de Prueba | Permisos Principales |

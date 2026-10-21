@@ -10,6 +10,7 @@ import {
   BadgeDollarSign,
   CalendarDays,
   Palette,
+  Settings,
   UserCog,
   History,
   ChevronLeft,
@@ -86,8 +87,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
     },
     {
       to: '/settings',
-      label: 'Personalización',
-      icon: Palette,
+      label: 'Administración',
+      icon: Settings,
       roles: ['ADMIN'],
     },
     {

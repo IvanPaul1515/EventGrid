@@ -6,6 +6,8 @@ import {
   SendEmailSchema,
   SendBulkEmailSchema,
   UpdateTemplateSchema,
+  EmailPreviewSchema,
+  QueryLogsSchema,
 } from './communications.dto.js';
 import { recordAuditLog } from '../../middleware/audit.js';
 
@@ -45,8 +47,9 @@ export class CommunicationsController {
 
   static async testConnection(req: Request, res: Response, next: NextFunction) {
     try {
-      const { recipientEmail, eventId } = TestEmailSchema.parse(req.body);
-      const result = await CommunicationsService.testConnection(recipientEmail, eventId, req.user?.id);
+      const parsed = TestEmailSchema.parse(req.body);
+      const email = (parsed.recipientEmail || parsed.testRecipient)!.trim();
+      const result = await CommunicationsService.testConnection(email, parsed.eventId, req.user?.id);
       return res.status(200).json({ status: 'success', data: result });
     } catch (error) {
       next(error);
@@ -87,6 +90,16 @@ export class CommunicationsController {
     }
   }
 
+  static async previewEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const validated = EmailPreviewSchema.parse(req.body);
+      const result = await CommunicationsService.previewEmail(validated);
+      return res.status(200).json({ status: 'success', data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async sendSingleEmail(req: Request, res: Response, next: NextFunction) {
     try {
       const validated = SendEmailSchema.parse(req.body);
@@ -104,7 +117,18 @@ export class CommunicationsController {
         },
       });
 
-      return res.status(200).json({ status: 'success', data: result });
+      return res.status(200).json({
+        status: 'success',
+        message: result.message,
+        data: {
+          success: result.success,
+          logId: result.log.id,
+          status: result.log.status,
+          message: result.message,
+          simulated: result.simulated,
+          log: result.log,
+        },
+      });
     } catch (error) {
       next(error);
     }
@@ -124,10 +148,23 @@ export class CommunicationsController {
           templateCode: validated.templateCode,
           totalTargeted: result.totalTargeted,
           sentCount: result.sentCount,
+          batchId: result.batchId,
         },
       });
 
-      return res.status(200).json({ status: 'success', data: result });
+      return res.status(200).json({
+        status: 'success',
+        message: result.message,
+        data: {
+          total: result.totalTargeted,
+          sent: result.sentCount,
+          simulated: result.simulatedCount,
+          failed: result.failedCount,
+          excluded: result.excludedCount,
+          batchId: result.batchId,
+          message: result.message,
+        },
+      });
     } catch (error) {
       next(error);
     }
@@ -135,9 +172,14 @@ export class CommunicationsController {
 
   static async getLogs(req: Request, res: Response, next: NextFunction) {
     try {
-      const eventId = (req.query.eventId as string) || null;
-      const result = await CommunicationsService.getLogs(eventId, req.query as any);
-      return res.status(200).json({ status: 'success', data: result.data, pagination: result.pagination });
+      const parsed = QueryLogsSchema.parse(req.query);
+      const eventId = parsed.eventId || (req.query.eventId as string) || null;
+      const result = await CommunicationsService.getLogs(eventId, parsed);
+      return res.status(200).json({
+        status: 'success',
+        data: result.data,
+        pagination: result.pagination,
+      });
     } catch (error) {
       next(error);
     }

@@ -260,7 +260,7 @@ export interface ApiResponse<T> {
 }
 
 export interface DemoStatus {
-  eventId?: string;
+  eventId?: string | null;
   eventName?: string;
   demoModeEnabled: boolean;
   demoCount?: number;
@@ -321,16 +321,19 @@ export interface QrScanResult {
 
 export interface EmailConfig {
   id?: string;
-  eventId: string;
+  eventId?: string | null;
   host: string;
   port: number;
   secure: boolean;
   user: string;
   password?: string;
+  hasPassword?: boolean;
   fromEmail: string;
   fromName: string;
   replyToEmail?: string;
   isEnabled: boolean;
+  isGlobal?: boolean;
+  hasConfig?: boolean;
 }
 
 export interface EmailTemplate {
@@ -356,6 +359,7 @@ export interface EmailLog {
   templateCode: string;
   subject: string;
   status: EmailLogStatus;
+  batchId?: string | null;
   errorMessage?: string;
   sentByUserId?: string;
   sentByUser?: {

@@ -3,7 +3,8 @@ import { useEdition } from '../context/EditionContext';
 import { useTheme } from '../context/ThemeContext';
 import { eventsService } from '../services/events.service';
 import { demoService } from '../services/demo.service';
-import { TicketType, DemoStatus } from '../types';
+import { TicketType, DemoStatus, EmailConfig } from '../types';
+import { communicationsService } from '../services/communications.service';
 import {
   Palette,
   Sparkles,
@@ -33,6 +34,10 @@ import {
   RefreshCw,
   AlertTriangle,
   Shirt,
+  Server,
+  Send,
+  EyeOff,
+  Mail,
 } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
@@ -40,7 +45,7 @@ export const SettingsPage: React.FC = () => {
   const { applyCustomPalette, resetDefaultTheme } = useTheme();
 
   // Pestaña activa
-  const [activeTab, setActiveTab] = useState<'visual' | 'edition' | 'tickets' | 'reception' | 'demo'>('visual');
+  const [activeTab, setActiveTab] = useState<'visual' | 'edition' | 'tickets' | 'reception' | 'email' | 'demo'>('visual');
 
   // Identidad Visual y Colores
   const [primaryColor, setPrimaryColor] = useState('#e11d48');
@@ -86,6 +91,32 @@ export const SettingsPage: React.FC = () => {
   const [tshirtNewSize, setTshirtNewSize] = useState('');
   const [savingReception, setSavingReception] = useState(false);
 
+
+  // Configuración de Correo Técnico (SMTP en Administración)
+  const [smtpConfig, setSmtpConfig] = useState<Partial<EmailConfig>>({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    user: '',
+    password: '',
+    fromEmail: '',
+    fromName: 'EventGrid Notificaciones',
+    replyToEmail: '',
+    isEnabled: false,
+  });
+  const [smtpScope, setSmtpScope] = useState<'edition' | 'global'>('edition');
+  const [hasStoredPassword, setHasStoredPassword] = useState(false);
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false);
+  const [loadingSmtp, setLoadingSmtp] = useState(false);
+  const [savingSmtp, setSavingSmtp] = useState(false);
+  const [testingSmtp, setTestingSmtp] = useState(false);
+  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [smtpStatusBadge, setSmtpStatusBadge] = useState<{
+    type: 'success' | 'simulated' | 'error' | 'disabled';
+    label: string;
+    details?: string;
+  }>({ type: 'disabled', label: 'Servicio Deshabilitado' });
+
   // Estados de Entorno de Demostración
   const [demoStatus, setDemoStatus] = useState<DemoStatus | null>(null);
   const [loadingDemo, setLoadingDemo] = useState(false);
@@ -108,6 +139,11 @@ export const SettingsPage: React.FC = () => {
 
   // Inicializar estados con el evento activo
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && ['visual', 'edition', 'tickets', 'reception', 'email', 'demo'].includes(tabParam)) {
+      setActiveTab(tabParam as any);
+    }
     if (currentEvent) {
       setEditionName(currentEvent.name || '');
       setEditionVenue(currentEvent.venue || '');
@@ -423,6 +459,93 @@ export const SettingsPage: React.FC = () => {
   };
 
   // Alternar estado activo de tipo de entrada
+
+  const loadSmtpConfig = async () => {
+    try {
+      setLoadingSmtp(true);
+      const targetEventId = smtpScope === 'edition' ? currentEvent?.id : null;
+      const config = await communicationsService.getConfig(targetEventId);
+      if (config) {
+        setSmtpConfig({
+          ...config,
+          password: '',
+        });
+        setHasStoredPassword(Boolean(config.hasPassword));
+        if (!config.isEnabled) {
+          setSmtpStatusBadge({ type: 'disabled', label: 'Servicio Deshabilitado' });
+        } else if (config.host.includes('example') || config.host.includes('mailtrap')) {
+          setSmtpStatusBadge({ type: 'simulated', label: 'Modo Simulación Activo' });
+        } else {
+          setSmtpStatusBadge({ type: 'success', label: 'Conexión Configurada' });
+        }
+      }
+    } catch (err: any) {
+      console.error('Error cargando SMTP:', err);
+    } finally {
+      setLoadingSmtp(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'email') {
+      loadSmtpConfig();
+    }
+  }, [activeTab, currentEvent, smtpScope]);
+
+  const handleSaveSmtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setSavingSmtp(true);
+      const targetEventId = smtpScope === 'edition' ? currentEvent?.id : null;
+      await communicationsService.saveConfig({
+        ...smtpConfig,
+        eventId: targetEventId,
+      });
+      showNotification('success', 'Configuración de correo guardada exitosamente.');
+      await loadSmtpConfig();
+    } catch (err: any) {
+      showNotification('error', err?.response?.data?.message || 'Error al guardar configuración SMTP');
+    } finally {
+      setSavingSmtp(false);
+    }
+  };
+
+  const handleTestSmtpConnection = async () => {
+    if (!testEmailRecipient || !testEmailRecipient.includes('@')) {
+      showNotification('error', 'Ingrese un correo electrónico válido para recibir la prueba.');
+      return;
+    }
+    try {
+      setTestingSmtp(true);
+      const targetEventId = smtpScope === 'edition' ? currentEvent?.id : null;
+      const res = await communicationsService.testConnection(targetEventId, testEmailRecipient.trim());
+      if (res.simulated) {
+        setSmtpStatusBadge({
+          type: 'simulated',
+          label: 'Simulación Verificada',
+          details: res.message,
+        });
+        showNotification('success', res.message);
+      } else {
+        setSmtpStatusBadge({
+          type: 'success',
+          label: 'Conexión Real Verificada',
+          details: res.message,
+        });
+        showNotification('success', res.message);
+      }
+    } catch (err: any) {
+      setSmtpStatusBadge({
+        type: 'error',
+        label: 'Error de Conexión',
+        details: err?.response?.data?.message || 'Error SMTP',
+      });
+      showNotification('error', err?.response?.data?.message || 'Error al probar conexión SMTP');
+    } finally {
+      setTestingSmtp(false);
+    }
+  };
+
   const handleToggleTicketActive = async (ticket: TicketType) => {
     if (!currentEvent) return;
     try {
@@ -531,6 +654,17 @@ export const SettingsPage: React.FC = () => {
           >
             <Shirt className="w-3.5 h-3.5" />
             <span>Recepción & T-Shirts</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('email')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              activeTab === 'email'
+                ? 'bg-primary text-white shadow-sm'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+            }`}
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span>Configuración de correo</span>
           </button>
           <button
             onClick={() => setActiveTab('demo')}
@@ -1183,6 +1317,322 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* PESTAÑA: CONFIGURACIÓN DE CORREO TÉCNICO (ADMINISTRACIÓN) */}
+      {activeTab === 'email' && (
+        <div className="space-y-6 max-w-4xl animate-fade-in">
+          {/* Selector de Ámbito: Por Edición vs Global */}
+          <div className="p-4 rounded-2xl bg-card border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Ámbito de Configuración
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {smtpScope === 'edition'
+                  ? `Configuración técnica exclusiva para ${currentEvent?.name || 'la edición activa'}.`
+                  : 'Configuración técnica global que aplicará a todas las ediciones sin servidor propio.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-background border border-border self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setSmtpScope('edition')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  smtpScope === 'edition'
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Esta Edición
+              </button>
+              <button
+                type="button"
+                onClick={() => setSmtpScope('global')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  smtpScope === 'global'
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Global / Predeterminada
+              </button>
+            </div>
+          </div>
+
+          {/* Tarjeta de Estado de Conectividad */}
+          <div className="p-5 rounded-2xl bg-card border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                  smtpStatusBadge.type === 'success'
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : smtpStatusBadge.type === 'simulated'
+                    ? 'bg-sky-500/10 text-sky-400 border-sky-500/30'
+                    : smtpStatusBadge.type === 'error'
+                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                }`}
+              >
+                <Server className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-foreground text-sm">Estado del Servidor SMTP</h4>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      smtpStatusBadge.type === 'success'
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                        : smtpStatusBadge.type === 'simulated'
+                        ? 'bg-sky-500/20 text-sky-400 border-sky-500/30'
+                        : smtpStatusBadge.type === 'error'
+                        ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                        : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                    }`}
+                  >
+                    {smtpStatusBadge.label}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {smtpStatusBadge.details ||
+                    (smtpConfig.isEnabled
+                      ? `Conectado a ${smtpConfig.host}:${smtpConfig.port}`
+                      : 'Active el servicio y guarde la configuración para habilitar los envíos.')}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={loadSmtpConfig}
+              disabled={loadingSmtp}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-primary hover:bg-primary/10 border border-primary/20 transition-all cursor-pointer self-start sm:self-auto flex items-center gap-1.5"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingSmtp ? 'animate-spin' : ''}`} />
+              <span>Refrescar</span>
+            </button>
+          </div>
+
+          {/* Formulario Principal de Configuración SMTP */}
+          <form onSubmit={handleSaveSmtp} className="p-6 rounded-2xl bg-card border border-border space-y-5">
+            <div className="flex items-center justify-between pb-4 border-b border-border">
+              <div>
+                <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-primary" />
+                  <span>Parámetros del Servidor Saliente</span>
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Credenciales cifradas con AES-256-GCM y protegidas en reposo.
+                </p>
+              </div>
+
+              {/* Toggle Habilitar Servicio */}
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <span className="text-xs font-bold text-foreground">
+                  {smtpConfig.isEnabled ? 'Servicio Activado' : 'Servicio Desactivado'}
+                </span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(smtpConfig.isEnabled)}
+                  onChange={(e) => setSmtpConfig({ ...smtpConfig, isEnabled: e.target.checked })}
+                  className="sr-only"
+                />
+                <div
+                  className={`w-10 h-6 rounded-full transition-colors relative ${
+                    smtpConfig.isEnabled ? 'bg-primary' : 'bg-muted border border-border'
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                      smtpConfig.isEnabled ? 'right-1' : 'left-1'
+                    }`}
+                  />
+                </div>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="sm:col-span-2 space-y-1">
+                <label className="text-xs font-bold text-foreground uppercase tracking-wider">
+                  Servidor SMTP (Host)
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="ej. smtp.gmail.com o smtp.office365.com"
+                  value={smtpConfig.host || ''}
+                  onChange={(e) => setSmtpConfig({ ...smtpConfig, host: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-foreground uppercase tracking-wider">
+                  Puerto
+                </label>
+                <input
+                  type="number"
+                  required
+                  placeholder="587 o 465"
+                  value={smtpConfig.port || 587}
+                  onChange={(e) => setSmtpConfig({ ...smtpConfig, port: Number(e.target.value) })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-background border border-border flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-foreground">Seguridad SSL / TLS Directo</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Activar para puerto 465 (SSL/TLS implícito). Desactivar para puerto 587 (STARTTLS explícito).
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(smtpConfig.secure)}
+                  onChange={(e) => setSmtpConfig({ ...smtpConfig, secure: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary" />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-foreground uppercase tracking-wider">
+                  Usuario SMTP
+                </label>
+                <input
+                  type="text"
+                  placeholder="ej. notificaciones@eventgrid.com"
+                  value={smtpConfig.user || ''}
+                  onChange={(e) => setSmtpConfig({ ...smtpConfig, user: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-foreground uppercase tracking-wider">
+                    Contraseña SMTP
+                  </label>
+                  {hasStoredPassword && (
+                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                      ✓ Contraseña Guardada
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type={showSmtpPassword ? 'text' : 'password'}
+                    placeholder={hasStoredPassword ? '•••••••• (Dejar en blanco para conservar)' : 'Contraseña o App Password'}
+                    value={smtpConfig.password || ''}
+                    onChange={(e) => setSmtpConfig({ ...smtpConfig, password: e.target.value })}
+                    className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-background border border-border text-foreground text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    {showSmtpPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  {hasStoredPassword
+                    ? 'La clave está cifrada con AES-256-GCM. Si no desea modificarla, mantenga este campo vacío.'
+                    : 'Para Gmail o Microsoft 365, utilice una Contraseña de Aplicación de 16 caracteres.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-border">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-foreground uppercase tracking-wider">
+                  Correo Remitente (From)
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="notificaciones@midominio.com"
+                  value={smtpConfig.fromEmail || ''}
+                  onChange={(e) => setSmtpConfig({ ...smtpConfig, fromEmail: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-foreground uppercase tracking-wider">
+                  Nombre del Remitente
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="EventGrid Notificaciones"
+                  value={smtpConfig.fromName || ''}
+                  onChange={(e) => setSmtpConfig({ ...smtpConfig, fromName: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-foreground uppercase tracking-wider">
+                  Responder A (Reply-To)
+                </label>
+                <input
+                  type="email"
+                  placeholder="contacto@midominio.com (Opcional)"
+                  value={smtpConfig.replyToEmail || ''}
+                  onChange={(e) => setSmtpConfig({ ...smtpConfig, replyToEmail: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-border flex justify-end">
+              <button
+                type="submit"
+                disabled={savingSmtp}
+                className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-2 shadow-md shadow-primary/25 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <span>{savingSmtp ? 'Guardando configuración...' : 'Guardar Configuración SMTP'}</span>
+              </button>
+            </div>
+          </form>
+
+          {/* Panel de Prueba de Conexión */}
+          <div className="p-6 rounded-2xl bg-card border border-border space-y-4">
+            <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
+              <Send className="w-4 h-4 text-primary" />
+              <span>Verificación y Envío de Correo de Prueba</span>
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Comprueba la autenticación SMTP, el protocolo TLS y el enrutamiento de red enviando un correo de diagnóstico.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-2 max-w-lg">
+              <input
+                type="email"
+                placeholder="su-correo@ejemplo.com"
+                value={testEmailRecipient}
+                onChange={(e) => setTestEmailRecipient(e.target.value)}
+                className="flex-1 px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button
+                type="button"
+                onClick={handleTestSmtpConnection}
+                disabled={testingSmtp || !testEmailRecipient}
+                className="px-4 py-2.5 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground font-bold text-xs border border-border transition-all cursor-pointer disabled:opacity-50 shrink-0 flex items-center gap-1.5 justify-center"
+              >
+                <Send className={`w-3.5 h-3.5 ${testingSmtp ? 'animate-spin' : ''}`} />
+                <span>{testingSmtp ? 'Probando...' : 'Probar Conexión'}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

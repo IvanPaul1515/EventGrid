@@ -79,6 +79,56 @@ export class InventoryService {
   }
 
   /**
+   * Obtener lista de tallas permitidas para una edición (QA-06)
+   */
+  static async getAllowedSizes(eventId: string): Promise<string[]> {
+    const activeInventory = await prisma.tshirtInventory.findMany({
+      where: { eventId, isActive: true },
+      select: { size: true },
+    });
+
+    if (activeInventory.length > 0) {
+      return activeInventory.map((i) => i.size);
+    }
+
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { settings: true },
+    });
+
+    let s = event?.settings?.tshirtSizes;
+    if (typeof s === 'string') {
+      try {
+        s = JSON.parse(s);
+      } catch {
+        s = [];
+      }
+    }
+
+    if (Array.isArray(s) && s.length > 0) {
+      return s;
+    }
+
+    return INITIAL_TSHIRT_INVENTORY.map((i) => i.size);
+  }
+
+  /**
+   * Validar que una talla pertenezca a las permitidas de la edición (QA-06)
+   */
+  static async validateSize(eventId: string, size?: string | null): Promise<string | null> {
+    if (!size || !size.trim()) return null;
+    const trimmed = size.trim();
+    const allowed = await this.getAllowedSizes(eventId);
+    if (!allowed.includes(trimmed)) {
+      throw new BadRequestError(
+        `TALLA NO PERMITIDA: La talla "${trimmed}" no es válida para esta edición. Tallas permitidas: ${allowed.join(', ')}`
+      );
+    }
+    return trimmed;
+  }
+
+
+  /**
    * Obtener inventario detallado y estadísticas en tiempo real
    */
   static async getInventory(eventId: string) {

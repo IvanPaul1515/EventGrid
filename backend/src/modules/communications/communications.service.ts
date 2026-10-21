@@ -5,13 +5,18 @@ import {
   SendEmailInput,
   SendBulkEmailInput,
   UpdateTemplateInput,
+  EmailPreviewInput,
+  QueryLogsInput,
 } from './communications.dto.js';
+import { encryptSecret, decryptSecret } from '../../utils/crypto.js';
+import { QrService } from '../qr/qr.service.js';
 import nodemailer from 'nodemailer';
 import QRCode from 'qrcode';
+import crypto from 'crypto';
 
 export class CommunicationsService {
   /**
-   * Obtener configuración SMTP (ocultando credenciales sensibles)
+   * Obtener configuración SMTP (ocultando credenciales sensibles) (QA-12)
    */
   static async getConfig(eventId?: string | null) {
     let config = null;
@@ -22,6 +27,7 @@ export class CommunicationsService {
       });
     }
 
+    // Si no hay configuración específica para la edición, buscar la configuración global
     if (!config) {
       config = await prisma.emailConfig.findFirst({
         where: { eventId: null },
@@ -32,6 +38,7 @@ export class CommunicationsService {
       return {
         isConfigured: false,
         isEnabled: false,
+        isGlobal: true,
         host: '',
         port: 587,
         secure: false,
@@ -48,6 +55,7 @@ export class CommunicationsService {
       eventId: config.eventId,
       isConfigured: true,
       isEnabled: config.isEnabled,
+      isGlobal: !config.eventId,
       host: config.host,
       port: config.port,
       secure: config.secure,
@@ -55,22 +63,24 @@ export class CommunicationsService {
       fromEmail: config.fromEmail,
       fromName: config.fromName,
       replyToEmail: config.replyToEmail || '',
-      hasPassword: !!(config.password && config.password.length > 0),
+      hasPassword: Boolean(config.password && config.password.length > 0),
       updatedAt: config.updatedAt,
     };
   }
 
   /**
-   * Guardar configuración SMTP
+   * Guardar configuración SMTP con cifrado seguro en reposo (QA-12)
    */
   static async saveConfig(input: UpdateSmtpConfigInput) {
     const existing = input.eventId
       ? await prisma.emailConfig.findFirst({ where: { eventId: input.eventId } })
       : await prisma.emailConfig.findFirst({ where: { eventId: null } });
 
-    // Mantener la contraseña anterior si no se envía una nueva
-    let passwordToStore = input.password;
-    if ((!passwordToStore || passwordToStore.trim() === '') && existing?.password) {
+    // Mantener la contraseña cifrada anterior si no se envía una nueva (QA-12)
+    let passwordToStore: string | null = null;
+    if (input.password && input.password.trim() !== '') {
+      passwordToStore = encryptSecret(input.password);
+    } else if (existing?.password) {
       passwordToStore = existing.password;
     }
 
@@ -83,7 +93,7 @@ export class CommunicationsService {
           port: input.port,
           secure: input.secure,
           user: input.user || null,
-          password: passwordToStore || null,
+          password: passwordToStore,
           fromEmail: input.fromEmail,
           fromName: input.fromName,
           replyToEmail: input.replyToEmail || null,
@@ -98,7 +108,7 @@ export class CommunicationsService {
           port: input.port,
           secure: input.secure,
           user: input.user || null,
-          password: passwordToStore || null,
+          password: passwordToStore,
           fromEmail: input.fromEmail,
           fromName: input.fromName,
           replyToEmail: input.replyToEmail || null,
@@ -111,26 +121,40 @@ export class CommunicationsService {
   }
 
   /**
-   * Probar conexión y envío de correo de prueba
+   * Probar conexión y envío de correo de prueba (QA-07, QA-12)
    */
   static async testConnection(recipientEmail: string, eventId?: string | null, userId?: string) {
-    const config = await prisma.emailConfig.findFirst({
-      where: eventId ? { eventId } : { eventId: null },
-    });
+    if (!recipientEmail || !recipientEmail.includes('@')) {
+      throw new BadRequestError('Correo de destinatario de prueba inválido.');
+    }
+
+    // Buscar configuración de la edición o global
+    let config = eventId
+      ? await prisma.emailConfig.findFirst({ where: { eventId } })
+      : null;
+
+    if (!config) {
+      config = await prisma.emailConfig.findFirst({ where: { eventId: null } });
+    }
 
     if (!config || !config.isEnabled) {
-      throw new BadRequestError('El servicio de correos está deshabilitado o no está configurado.');
+      throw new BadRequestError(
+        'El servicio de correos está deshabilitado o no está configurado. Configure y active el servidor SMTP en Administración.'
+      );
     }
+
+    const rawPassword = decryptSecret(config.password);
 
     const isTestOrDemo =
       process.env.NODE_ENV === 'test' ||
       process.env.VITEST === 'true' ||
-      !config.password ||
+      !rawPassword ||
       config.host.includes('mailtrap') ||
-      config.host.includes('example');
+      config.host.includes('example') ||
+      recipientEmail.includes('@eventgrid.test');
 
     if (isTestOrDemo) {
-      // Simulación segura sin envío real en pruebas o entorno demo
+      // Simulación explícita y segura sin envío real en pruebas o entorno demo
       const log = await prisma.emailLog.create({
         data: {
           eventId: eventId || null,
@@ -146,7 +170,7 @@ export class CommunicationsService {
       return {
         success: true,
         simulated: true,
-        message: 'Conexión probada exitosamente (Modo Simulación seguro activo).',
+        message: 'Conexión verificada en modo simulación segura (entorno de pruebas/demo activo).',
         log,
       };
     }
@@ -156,7 +180,7 @@ export class CommunicationsService {
         host: config.host,
         port: config.port,
         secure: config.secure,
-        auth: config.user && config.password ? { user: config.user, pass: config.password } : undefined,
+        auth: config.user && rawPassword ? { user: config.user, pass: rawPassword } : undefined,
       });
 
       await transporter.verify();
@@ -168,10 +192,12 @@ export class CommunicationsService {
         subject: 'Prueba de Configuración de Correo — EventGrid',
         text: 'Este es un correo de prueba generado desde la plataforma EventGrid para verificar la conectividad SMTP.',
         html: `
-          <div style="font-family: sans-serif; padding: 20px; background: #0f172a; color: #fff; border-radius: 12px;">
-            <h2 style="color: #10b981;">Conexión Exitosa con EventGrid</h2>
+          <div style="font-family: sans-serif; padding: 24px; background: #09090b; color: #ffffff; border-radius: 12px; border: 1px solid #27272a;">
+            <h2 style="color: #10b981; margin-top: 0;">Conexión Exitosa con EventGrid</h2>
             <p>La configuración del servidor SMTP está funcionando correctamente.</p>
-            <p style="font-size: 12px; color: #94a3b8;">Servidor: ${config.host}:${config.port}</p>
+            <p style="font-size: 13px; color: #a1a1aa;">Servidor: <strong>${config.host}:${config.port}</strong></p>
+            <p style="font-size: 13px; color: #a1a1aa;">Remitente: <strong>${config.fromEmail}</strong></p>
+            <p style="font-size: 11px; color: #71717a; margin-top: 20px;">EventGrid Platform — Sistema de Gestión de Eventos</p>
           </div>
         `,
       });
@@ -213,15 +239,219 @@ export class CommunicationsService {
   }
 
   /**
-   * Listar plantillas de correo para un evento
+   * Semillas de plantillas estándar del sistema
+   */
+  private static readonly DEFAULT_TEMPLATES = [
+    {
+      code: 'REGISTRATION_CONFIRMATION',
+      name: 'Confirmación de Registro',
+      subject: '¡Registro confirmado para {{eventName}}!',
+      bodyHtml: `
+        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px;">
+          <h2 style="color: #38bdf8;">¡Hola, {{participantName}}!</h2>
+          <p>Tu registro para <strong>{{eventName}}</strong> ha sido completado con éxito.</p>
+          <div style="background: #1e293b; padding: 16px; border-radius: 8px; margin: 20px 0;">
+            <p><strong>Número de Registro:</strong> {{registrationNumber}}</p>
+            <p><strong>Tipo de Entrada:</strong> {{ticketType}}</p>
+            <p><strong>Lugar:</strong> {{eventVenue}}</p>
+            <p><strong>Fecha:</strong> {{eventDate}}</p>
+          </div>
+          {{messageContent}}
+          <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Nos vemos pronto en el evento.</p>
+        </div>
+      `,
+      bodyText: 'Hola {{participantName}}, tu registro para {{eventName}} ha sido completado. Registro: {{registrationNumber}}.',
+      variables: [
+        'participantName',
+        'eventName',
+        'registrationNumber',
+        'ticketType',
+        'eventVenue',
+        'eventDate',
+        'messageContent',
+      ],
+    },
+    {
+      code: 'DIGITAL_TICKET',
+      name: 'Entrada Digital con QR',
+      subject: 'Tu entrada digital para {{eventName}} ({{registrationNumber}})',
+      bodyHtml: `
+        <div style="font-family: Arial, sans-serif; background: #09090b; color: #fafafa; padding: 32px; border-radius: 16px; border: 1px solid #27272a; max-width: 560px; margin: 0 auto;">
+          <h2 style="color: #f43f5e; margin-top: 0;">Entrada Oficial — {{eventName}}</h2>
+          <p>Presenta este código QR en la mesa de recepción al momento de ingresar:</p>
+          <div style="text-align: center; margin: 24px 0; background: #ffffff; padding: 20px; border-radius: 12px; display: inline-block;">
+            <img src="{{qrDataUrl}}" alt="Código QR de Acceso" style="width: 240px; height: 240px; display: block;" />
+            <p style="color: #000000; font-family: monospace; font-weight: bold; margin-top: 8px;">{{registrationNumber}}</p>
+          </div>
+          <div style="background: #18181b; padding: 16px; border-radius: 8px; font-size: 13px;">
+            <p style="margin: 4px 0;"><strong>Participante:</strong> {{participantName}}</p>
+            <p style="margin: 4px 0;"><strong>Entrada:</strong> {{ticketType}}</p>
+            <p style="margin: 4px 0;"><strong>Lugar:</strong> {{eventVenue}}</p>
+            <p style="margin: 4px 0;"><strong>Fecha:</strong> {{eventDate}}</p>
+          </div>
+          {{messageContent}}
+          <p style="color: #71717a; font-size: 11px; margin-top: 24px; text-align: center;">Este código QR es personal e intransferible. Válido para un único acceso.</p>
+        </div>
+      `,
+      bodyText: 'Hola {{participantName}}, aquí tienes tu entrada para {{eventName}}. Código: {{registrationNumber}}. Enlace de acceso: {{qrUrl}}',
+      variables: [
+        'participantName',
+        'eventName',
+        'registrationNumber',
+        'ticketType',
+        'eventVenue',
+        'eventDate',
+        'qrUrl',
+        'qrDataUrl',
+        'messageContent',
+      ],
+    },
+    {
+      code: 'EVENT_REMINDER',
+      name: 'Recordatorio del Evento',
+      subject: 'Recordatorio: ¡{{eventName}} comienza pronto!',
+      bodyHtml: `
+        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px;">
+          <h2 style="color: #fbbf24;">¡Falta poco, {{participantName}}!</h2>
+          <p>Te recordamos que <strong>{{eventName}}</strong> se llevará a cabo en:</p>
+          <p><strong>Lugar:</strong> {{eventVenue}}</p>
+          <p><strong>Fecha:</strong> {{eventDate}}</p>
+          <p>Tu entrada registrada es: <strong>{{registrationNumber}}</strong> ({{ticketType}}).</p>
+          {{messageContent}}
+          <p>¡Esperamos contar con tu presencia!</p>
+        </div>
+      `,
+      bodyText: 'Hola {{participantName}}, te recordamos que {{eventName}} se llevará a cabo en {{eventVenue}} el {{eventDate}}.',
+      variables: [
+        'participantName',
+        'eventName',
+        'registrationNumber',
+        'ticketType',
+        'eventVenue',
+        'eventDate',
+        'messageContent',
+      ],
+    },
+    {
+      code: 'PAYMENT_CONFIRMATION',
+      name: 'Confirmación de Pago',
+      subject: 'Recibo de pago confirmado — {{eventName}}',
+      bodyHtml: `
+        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px;">
+          <h2 style="color: #34d399;">Pago Confirmado</h2>
+          <p>Estimado(a) {{participantName}}, hemos confirmado el pago de tu entrada para <strong>{{eventName}}</strong>.</p>
+          <div style="background: #1e293b; padding: 16px; border-radius: 8px; margin: 16px 0;">
+            <p><strong>Monto Pagado:</strong> {{currencySymbol}} {{amountPaid}}</p>
+            <p><strong>Balance Pendiente:</strong> {{currencySymbol}} {{balanceDue}}</p>
+            <p><strong>Ticket:</strong> {{registrationNumber}}</p>
+          </div>
+          {{messageContent}}
+        </div>
+      `,
+      bodyText: 'Estimado(a) {{participantName}}, confirmamos el pago de {{currencySymbol}} {{amountPaid}} para {{eventName}}.',
+      variables: [
+        'participantName',
+        'eventName',
+        'registrationNumber',
+        'amountPaid',
+        'balanceDue',
+        'currencySymbol',
+        'messageContent',
+      ],
+    },
+    {
+      code: 'PENDING_BALANCE',
+      name: 'Saldo Pendiente',
+      subject: 'Saldo pendiente de pago — {{eventName}}',
+      bodyHtml: `
+        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px;">
+          <h2 style="color: #f87171;">Aviso de Saldo Pendiente</h2>
+          <p>Hola {{participantName}}, tu inscripción para <strong>{{eventName}}</strong> tiene un balance pendiente:</p>
+          <div style="background: #1e293b; padding: 16px; border-radius: 8px; margin: 16px 0;">
+            <p><strong>Tarifa de Entrada:</strong> {{currencySymbol}} {{ticketPrice}}</p>
+            <p><strong>Monto Abonado:</strong> {{currencySymbol}} {{amountPaid}}</p>
+            <p style="color: #f87171; font-size: 16px;"><strong>Balance Pendiente:</strong> {{currencySymbol}} {{balanceDue}}</p>
+          </div>
+          <p>Puedes completar tu pago en taquilla el día del evento o vía transferencia previa.</p>
+          {{messageContent}}
+        </div>
+      `,
+      bodyText: 'Hola {{participantName}}, tu inscripción para {{eventName}} tiene un saldo pendiente de {{currencySymbol}} {{balanceDue}}.',
+      variables: [
+        'participantName',
+        'eventName',
+        'registrationNumber',
+        'ticketPrice',
+        'amountPaid',
+        'balanceDue',
+        'currencySymbol',
+        'messageContent',
+      ],
+    },
+    {
+      code: 'CANCELLATION',
+      name: 'Cancelación de Inscripción',
+      subject: 'Inscripción cancelada — {{eventName}}',
+      bodyHtml: `
+        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px;">
+          <h2 style="color: #94a3b8;">Notificación de Cancelación</h2>
+          <p>Estimado(a) {{participantName}}, te informamos que la inscripción <strong>{{registrationNumber}}</strong> para <strong>{{eventName}}</strong> ha sido cancelada.</p>
+          {{messageContent}}
+          <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Si crees que esto es un error, por favor contáctanos.</p>
+        </div>
+      `,
+      bodyText: 'Hola {{participantName}}, tu inscripción {{registrationNumber}} para {{eventName}} ha sido cancelada.',
+      variables: ['participantName', 'eventName', 'registrationNumber', 'messageContent'],
+    },
+    {
+      code: 'GENERAL_ANNOUNCEMENT',
+      name: 'Comunicado General',
+      subject: 'Aviso importante sobre {{eventName}}',
+      bodyHtml: `
+        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px;">
+          <h2 style="color: #38bdf8;">Comunicado Oficial</h2>
+          <p>Estimado(a) {{participantName}},</p>
+          {{messageContent}}
+          <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #334155; font-size: 12px; color: #94a3b8;">
+            <p>{{eventName}} — {{eventVenue}}</p>
+          </div>
+        </div>
+      `,
+      bodyText: 'Estimado(a) {{participantName}}, comunicado oficial de {{eventName}}.',
+      variables: ['participantName', 'eventName', 'registrationNumber', 'messageContent'],
+    },
+  ];
+
+  /**
+   * Listar plantillas de correo para un evento (garantizando inicialización de las 7 estándar)
    */
   static async getTemplates(eventId?: string | null) {
-    const templates = await prisma.emailTemplate.findMany({
+    const existing = await prisma.emailTemplate.findMany({
       where: eventId ? { OR: [{ eventId }, { eventId: null }] } : undefined,
       orderBy: { createdAt: 'asc' },
     });
 
-    return templates.map((t) => {
+    // Si aún no existen plantillas en la base de datos, inicializar las plantillas predeterminadas
+    if (existing.length === 0) {
+      for (const t of this.DEFAULT_TEMPLATES) {
+        await prisma.emailTemplate.create({
+          data: {
+            eventId: eventId || null,
+            code: t.code,
+            name: t.name,
+            subject: t.subject,
+            bodyHtml: t.bodyHtml.trim(),
+            bodyText: t.bodyText,
+            variables: JSON.stringify(t.variables),
+            isSystem: true,
+          },
+        }).catch(() => {});
+      }
+
+      return this.getTemplates(eventId);
+    }
+
+    return existing.map((t) => {
       let vars: string[] = [];
       if (typeof t.variables === 'string') {
         try {
@@ -264,11 +494,203 @@ export class CommunicationsService {
   }
 
   /**
-   * Enviar correo individual a un participante
+   * Renderizar plantilla sustituyendo variables oficiales (QA-08)
+   */
+  static async renderTemplateContent(
+    template: { subject: string; bodyHtml: string; bodyText?: string | null },
+    registration: any,
+    overrides?: {
+      customSubject?: string | null;
+      customBodyHtml?: string | null;
+      customMessage?: string | null;
+    }
+  ) {
+    // QA-08: Obtener o generar token QR oficial y persistente
+    let qrToken = registration.qrCode;
+    if (!qrToken) {
+      const ticketInfo = await QrService.getTicketQr(registration.id);
+      qrToken = ticketInfo.qrToken;
+    }
+
+    const publicUrlBase = process.env.PUBLIC_APP_URL || 'https://eventgrid.app';
+    const qrUrl = `${publicUrlBase}/t/${qrToken}`;
+
+    const qrDataUrl = await QRCode.toDataURL(qrUrl, {
+      width: 280,
+      margin: 2,
+      errorCorrectionLevel: 'H',
+    });
+
+    const currencySymbol = registration.event?.settings?.currencySymbol || 'RD$';
+
+    const variables: Record<string, string> = {
+      participantName: registration.participant?.fullName || 'Participante',
+      participantFirstName: registration.participant?.firstName || 'Participante',
+      participantEmail: registration.participant?.email || '',
+      eventName: registration.event?.name || 'Evento Oficial',
+      eventYear: String(registration.event?.year || new Date().getFullYear()),
+      eventDate: registration.event?.startDate
+        ? new Date(registration.event.startDate).toLocaleDateString('es-DO', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          })
+        : 'Por anunciar',
+      eventVenue: registration.event?.venue || 'Sede Principal',
+      registrationNumber: registration.registrationNumber || 'REG-0001',
+      ticketType: registration.ticketType?.name || (registration.isCourtesy ? 'Cortesía' : 'General'),
+      ticketPrice: Number(registration.ticketPrice ?? registration.totalAmount ?? 0).toFixed(2),
+      amountPaid: Number(registration.amountPaid ?? registration.totalAmount ?? 0).toFixed(2),
+      balanceDue: Number(registration.balanceDue || 0).toFixed(2),
+      currencySymbol,
+      qrUrl,
+      qrDataUrl,
+      messageContent: overrides?.customMessage
+        ? `<div style="margin: 16px 0; padding: 12px; background: rgba(255,255,255,0.05); border-left: 3px solid #f43f5e; border-radius: 4px;">${overrides.customMessage}</div>`
+        : '',
+    };
+
+    let subject = overrides?.customSubject && overrides.customSubject.trim() !== ''
+      ? overrides.customSubject
+      : template.subject;
+
+    let html = overrides?.customBodyHtml && overrides.customBodyHtml.trim() !== ''
+      ? overrides.customBodyHtml
+      : template.bodyHtml;
+
+    let text = template.bodyText || '';
+
+    // Sustitución de variables
+    for (const [key, val] of Object.entries(variables)) {
+      const regex = new RegExp(`{{${key}}}`, 'g');
+      subject = subject.replace(regex, val);
+      html = html.replace(regex, val);
+      text = text.replace(regex, val);
+    }
+
+    return {
+      subject,
+      html,
+      text,
+      qrUrl,
+      qrDataUrl,
+      variables,
+    };
+  }
+
+  /**
+   * Vista previa real del correo (QA-11: Sin efectos secundarios)
+   */
+  static async previewEmail(input: EmailPreviewInput) {
+    let registration: any = null;
+
+    if (input.registrationId) {
+      registration = await prisma.registration.findUnique({
+        where: { id: input.registrationId },
+        include: {
+          participant: true,
+          ticketType: true,
+          event: { include: { settings: true } },
+        },
+      });
+    }
+
+    if (!registration && input.eventId) {
+      // Tomar una inscripción real de muestra de esa edición si existe
+      registration = await prisma.registration.findFirst({
+        where: { eventId: input.eventId, status: { not: 'CANCELLED' } },
+        include: {
+          participant: true,
+          ticketType: true,
+          event: { include: { settings: true } },
+        },
+      });
+    }
+
+    // Si aún no hay participante real, generar datos de muestra realistas y explícitos
+    if (!registration) {
+      const event = input.eventId
+        ? await prisma.event.findUnique({ where: { id: input.eventId }, include: { settings: true } })
+        : null;
+
+      registration = {
+        id: 'sample-preview-id',
+        registrationNumber: 'EVT-PREV-001',
+        ticketPrice: 1750,
+        amountPaid: 1750,
+        balanceDue: 0,
+        totalAmount: 1750,
+        isCourtesy: false,
+        qrCode: 'sample_qr_token_preview_only',
+        participant: {
+          id: 'sample-participant-id',
+          fullName: 'Juan Pérez (Muestra)',
+          firstName: 'Juan',
+          lastName: 'Pérez',
+          email: 'destinatario.muestra@ejemplo.com',
+          documentId: '001-0000000-0',
+          institution: 'Institución de Muestra',
+        },
+        ticketType: { name: 'Entrada General' },
+        event: event || {
+          name: 'Conferencia Principal 2026',
+          year: 2026,
+          venue: 'Auditorio Central',
+          startDate: new Date(),
+          settings: {
+            currencySymbol: 'RD$',
+            fromName: 'EventGrid Notificaciones',
+            fromEmail: 'notificaciones@eventgrid.com',
+          },
+        },
+      };
+    }
+
+    // Buscar plantilla
+    let template = await prisma.emailTemplate.findFirst({
+      where: {
+        code: input.templateCode,
+        OR: input.eventId ? [{ eventId: input.eventId }, { eventId: null }] : [{ eventId: null }],
+      },
+    });
+
+    if (!template) {
+      template = this.DEFAULT_TEMPLATES.find((t) => t.code === input.templateCode) as any;
+    }
+
+    if (!template) {
+      throw new NotFoundError(`Plantilla '${input.templateCode}' no encontrada.`);
+    }
+
+    const rendered = await this.renderTemplateContent(template, registration, {
+      customSubject: input.customSubject,
+      customBodyHtml: input.customBodyHtml,
+      customMessage: input.customMessage,
+    });
+
+    const config = await this.getConfig(input.eventId || registration.event?.id);
+
+    return {
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      fromName: config.fromName || 'EventGrid Notificaciones',
+      fromEmail: config.fromEmail || 'notificaciones@eventgrid.com',
+      recipientName: registration.participant.fullName,
+      recipientEmail: registration.participant.email,
+      registrationNumber: registration.registrationNumber,
+      eventName: registration.event?.name || 'Evento Oficial',
+      qrUrl: rendered.qrUrl,
+      qrDataUrl: rendered.qrDataUrl,
+    };
+  }
+
+  /**
+   * Enviar correo individual a un participante (QA-07, QA-08)
    */
   static async sendSingleEmail(input: SendEmailInput, userId?: string) {
-    const registration = await prisma.registration.findFirst({
-      where: { id: input.registrationId, eventId: input.eventId },
+    const registration = await prisma.registration.findUnique({
+      where: { id: input.registrationId },
       include: {
         participant: true,
         ticketType: true,
@@ -278,61 +700,42 @@ export class CommunicationsService {
 
     if (!registration) throw new NotFoundError('Inscripción no encontrada');
 
-    const template = await prisma.emailTemplate.findFirst({
+    // QA-07: Si eventId no venía en el payload, usar el de la inscripción
+    const eventId = input.eventId || registration.eventId;
+
+    // Verificar aislamiento de edición si se especificó un eventId discordante
+    if (input.eventId && input.eventId !== registration.eventId) {
+      throw new BadRequestError('La inscripción indicada no pertenece a la edición seleccionada.');
+    }
+
+    // Buscar plantilla
+    let template = await prisma.emailTemplate.findFirst({
       where: {
         code: input.templateCode,
-        OR: [{ eventId: input.eventId }, { eventId: null }],
+        OR: [{ eventId }, { eventId: null }],
       },
     });
 
-    if (!template) throw new NotFoundError(`Plantilla '${input.templateCode}' no encontrada`);
-
-    // Generar código QR en Base64 Data URL para incrustarlo en la plantilla
-    const secureToken = registration.qrCode || `eg_qr_${registration.id}`;
-    const qrDataUrl = await QRCode.toDataURL(`https://eventgrid.app/t/${secureToken}`, {
-      width: 280,
-      margin: 2,
-    });
-
-    // Mapeo dinámico de variables
-    const variables: Record<string, string> = {
-      participantName: registration.participant.fullName,
-      eventName: registration.event.name,
-      eventDate: registration.event.startDate
-        ? new Date(registration.event.startDate).toLocaleDateString('es-DO', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })
-        : 'Por anunciar',
-      eventVenue: registration.event.venue,
-      registrationNumber: registration.registrationNumber,
-      ticketType: registration.ticketType?.name || (registration.isCourtesy ? 'Cortesía' : 'General'),
-      ticketPrice: Number(registration.ticketPrice ?? registration.totalAmount ?? 0).toFixed(2),
-      amountPaid: Number(registration.amountPaid ?? registration.totalAmount ?? 0).toFixed(2),
-      balanceDue: Number(registration.balanceDue || 0).toFixed(2),
-      qrUrl: `https://eventgrid.app/t/${secureToken}`,
-      qrDataUrl,
-      messageContent: input.customMessage || '',
-    };
-
-    let subject = template.subject;
-    let html = template.bodyHtml;
-    let text = template.bodyText || '';
-
-    // Reemplazar variables dinámicas
-    for (const [key, val] of Object.entries(variables)) {
-      const regex = new RegExp(`{{${key}}}`, 'g');
-      subject = subject.replace(regex, val);
-      html = html.replace(regex, val);
-      text = text.replace(regex, val);
+    if (!template) {
+      template = this.DEFAULT_TEMPLATES.find((t) => t.code === input.templateCode) as any;
     }
 
-    const config = await prisma.emailConfig.findFirst({
-      where: { OR: [{ eventId: input.eventId }, { eventId: null }] },
+    if (!template) {
+      throw new NotFoundError(`Plantilla '${input.templateCode}' no encontrada.`);
+    }
+
+    // QA-07, QA-08: Renderizar con customSubject y customBodyHtml si fueron proporcionados
+    const rendered = await this.renderTemplateContent(template, registration, {
+      customSubject: input.customSubject,
+      customBodyHtml: input.customBodyHtml,
+      customMessage: input.customMessage,
     });
 
-    // Regla de seguridad: En modo demo, pruebas unitarias o si el participante es demo, NUNCA enviar a un correo real
+    // Obtener configuración de correo (de la edición o global)
+    const config = await prisma.emailConfig.findFirst({
+      where: { OR: [{ eventId }, { eventId: null }] },
+    });
+
     const isDemo =
       registration.isDemo ||
       registration.event.settings?.demoModeEnabled ||
@@ -340,17 +743,19 @@ export class CommunicationsService {
       process.env.VITEST === 'true' ||
       Boolean(config?.host.includes('mailtrap')) ||
       Boolean(config?.host.includes('example')) ||
-      registration.participant.email.includes('@eventgrid.test');
+      registration.participant.email.includes('@eventgrid.test') ||
+      registration.participant.email.includes('@ejemplo.com');
 
-    if (isDemo || !config?.isEnabled) {
+    // Si está en modo demo o el servicio SMTP no está activado, registrar como SIMULATED
+    if (isDemo || !config || !config.isEnabled) {
       const log = await prisma.emailLog.create({
         data: {
-          eventId: input.eventId,
+          eventId,
           registrationId: registration.id,
           recipientEmail: registration.participant.email,
           recipientName: registration.participant.fullName,
-          templateCode: template.code,
-          subject,
+          templateCode: input.templateCode,
+          subject: rendered.subject,
           status: 'SIMULATED',
           sentByUserId: userId || null,
         },
@@ -358,37 +763,40 @@ export class CommunicationsService {
 
       return {
         success: true,
-        simulated: true,
-        message: `Envío simulado correctamente a ${registration.participant.email} (Modo Demo/Simulación seguro).`,
         log,
+        simulated: true,
+        message: 'Envío simulado correctamente (modo demostración o SMTP no habilitado).',
       };
     }
+
+    // Envío real con nodemailer y contraseña descifrada (QA-12)
+    const rawPassword = decryptSecret(config.password);
 
     try {
       const transporter = nodemailer.createTransport({
         host: config.host,
         port: config.port,
         secure: config.secure,
-        auth: config.user && config.password ? { user: config.user, pass: config.password } : undefined,
+        auth: config.user && rawPassword ? { user: config.user, pass: rawPassword } : undefined,
       });
 
       await transporter.sendMail({
         from: `"${config.fromName}" <${config.fromEmail}>`,
         to: registration.participant.email,
         replyTo: config.replyToEmail || undefined,
-        subject,
-        text,
-        html,
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
       });
 
       const log = await prisma.emailLog.create({
         data: {
-          eventId: input.eventId,
+          eventId,
           registrationId: registration.id,
           recipientEmail: registration.participant.email,
           recipientName: registration.participant.fullName,
-          templateCode: template.code,
-          subject,
+          templateCode: input.templateCode,
+          subject: rendered.subject,
           status: 'SENT',
           sentByUserId: userId || null,
         },
@@ -396,31 +804,31 @@ export class CommunicationsService {
 
       return {
         success: true,
+        log,
         simulated: false,
         message: `Correo enviado exitosamente a ${registration.participant.email}`,
-        log,
       };
     } catch (err: any) {
-      await prisma.emailLog.create({
+      const log = await prisma.emailLog.create({
         data: {
-          eventId: input.eventId,
+          eventId,
           registrationId: registration.id,
           recipientEmail: registration.participant.email,
           recipientName: registration.participant.fullName,
-          templateCode: template.code,
-          subject,
+          templateCode: input.templateCode,
+          subject: rendered.subject,
           status: 'FAILED',
-          errorMessage: err.message,
+          errorMessage: err.message || 'Error de envío',
           sentByUserId: userId || null,
         },
       });
 
-      throw new BadRequestError(`Error al enviar correo: ${err.message}`);
+      throw new BadRequestError(`Fallo al enviar correo: ${err.message}`);
     }
   }
 
   /**
-   * Enviar correos masivos a grupos de participantes
+   * Enviar correos masivos por lotes sin límite silencioso de 200 (QA-09)
    */
   static async sendBulkEmail(input: SendBulkEmailInput, userId?: string) {
     const event = await prisma.event.findUnique({
@@ -430,90 +838,225 @@ export class CommunicationsService {
 
     if (!event) throw new NotFoundError('Edición no encontrada');
 
-    const template = await prisma.emailTemplate.findFirst({
+    // Construir filtro de destinatarios elegibles
+    const where: any = {
+      eventId: input.eventId,
+      status: { not: 'CANCELLED' }, // QA-09: Excluir cancelados por defecto
+    };
+
+    // Excluir registros demo salvo que la edición esté en modo demo
+    if (!event.settings?.demoModeEnabled) {
+      where.isDemo = false;
+    }
+
+    if (input.targetGroup === 'CONFIRMED') {
+      where.status = 'CONFIRMED';
+    } else if (input.targetGroup === 'PAID') {
+      where.paymentStatus = { in: ['PAID', 'COURTESY'] };
+    } else if (input.targetGroup === 'PENDING' || input.targetGroup === 'PENDING_PAYMENT') {
+      where.paymentStatus = { in: ['PENDING', 'PARTIAL'] };
+    } else if (input.targetGroup === 'ATTENDED') {
+      where.attended = true;
+    } else if (input.targetGroup === 'NOT_ATTENDED') {
+      where.attended = false;
+    } else if (input.targetGroup === 'SELECTED' && input.selectedRegistrationIds?.length) {
+      where.id = { in: input.selectedRegistrationIds };
+    }
+
+    // QA-09: Obtener TODOS los destinatarios elegibles (sin límite artificial de 200)
+    const registrations = await prisma.registration.findMany({
+      where,
+      include: {
+        participant: true,
+        ticketType: true,
+        event: { include: { settings: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (registrations.length === 0) {
+      return {
+        batchId: null,
+        totalTargeted: 0,
+        sentCount: 0,
+        simulatedCount: 0,
+        failedCount: 0,
+        excludedCount: 0,
+        message: 'No se encontraron destinatarios que cumplan con los filtros seleccionados.',
+      };
+    }
+
+    // Buscar plantilla
+    let template = await prisma.emailTemplate.findFirst({
       where: {
         code: input.templateCode,
         OR: [{ eventId: input.eventId }, { eventId: null }],
       },
     });
 
-    if (!template) throw new NotFoundError(`Plantilla '${input.templateCode}' no encontrada`);
-
-    // Filtros de grupo destino
-    const whereClause: any = {
-      eventId: input.eventId,
-      status: { not: 'CANCELLED' },
-    };
-
-    if (!event.settings?.demoModeEnabled) {
-      whereClause.isDemo = false;
+    if (!template) {
+      template = this.DEFAULT_TEMPLATES.find((t) => t.code === input.templateCode) as any;
     }
 
-    if (input.targetGroup === 'CONFIRMED') {
-      whereClause.status = 'CONFIRMED';
-    } else if (input.targetGroup === 'PENDING_PAYMENT') {
-      whereClause.balanceDue = { gt: 0 };
-    } else if (input.targetGroup === 'ATTENDED') {
-      whereClause.attended = true;
+    if (!template) {
+      throw new NotFoundError(`Plantilla '${input.templateCode}' no encontrada.`);
     }
 
-    const targetRegistrations = await prisma.registration.findMany({
-      where: whereClause,
-      include: { participant: true, ticketType: true },
-      take: 200, // Límite por lote para estabilidad
+    // Configuración SMTP
+    const config = await prisma.emailConfig.findFirst({
+      where: { OR: [{ eventId: input.eventId }, { eventId: null }] },
     });
 
+    const isGlobalSimulation =
+      !config ||
+      !config.isEnabled ||
+      event.settings?.demoModeEnabled ||
+      process.env.NODE_ENV === 'test' ||
+      process.env.VITEST === 'true' ||
+      Boolean(config.host.includes('mailtrap')) ||
+      Boolean(config.host.includes('example'));
+
+    const rawPassword = config ? decryptSecret(config.password) : '';
+    let transporter: any = null;
+
+    if (!isGlobalSimulation && config && rawPassword) {
+      transporter = nodemailer.createTransport({
+        host: config.host,
+        port: config.port,
+        secure: config.secure,
+        auth: { user: config.user || '', pass: rawPassword },
+      });
+    }
+
+    const batchId = `BATCH-${Date.now()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
     let sentCount = 0;
     let simulatedCount = 0;
     let failedCount = 0;
+    let excludedCount = 0;
 
-    for (const reg of targetRegistrations) {
-      try {
-        const res = await this.sendSingleEmail(
-          {
-            eventId: input.eventId,
-            registrationId: reg.id,
-            templateCode: input.templateCode,
-            customMessage: input.customMessage,
-          },
-          userId
-        );
+    // Procesar en fragmentos (chunks) para no saturar memoria ni conexiones
+    const CHUNK_SIZE = 25;
+    for (let i = 0; i < registrations.length; i += CHUNK_SIZE) {
+      const chunk = registrations.slice(i, i + CHUNK_SIZE);
 
-        if (res.simulated) simulatedCount++;
-        else sentCount++;
-      } catch {
-        failedCount++;
-      }
+      await Promise.all(
+        chunk.map(async (reg) => {
+          const email = reg.participant.email?.trim();
+          if (!email || !email.includes('@')) {
+            excludedCount++;
+            return;
+          }
+
+          try {
+            const rendered = await this.renderTemplateContent(template!, reg, {
+              customSubject: input.customSubject,
+              customBodyHtml: input.customBodyHtml,
+              customMessage: input.customMessage,
+            });
+
+            const isDemoReg = isGlobalSimulation || reg.isDemo || email.includes('@eventgrid.test');
+
+            if (isDemoReg || !transporter) {
+              await prisma.emailLog.create({
+                data: {
+                  eventId: input.eventId,
+                  registrationId: reg.id,
+                  recipientEmail: email,
+                  recipientName: reg.participant.fullName,
+                  templateCode: input.templateCode,
+                  subject: rendered.subject,
+                  status: 'SIMULATED',
+                  batchId,
+                  sentByUserId: userId || null,
+                },
+              });
+              simulatedCount++;
+            } else {
+              await transporter.sendMail({
+                from: `"${config.fromName}" <${config.fromEmail}>`,
+                to: email,
+                replyTo: config.replyToEmail || undefined,
+                subject: rendered.subject,
+                text: rendered.text,
+                html: rendered.html,
+              });
+
+              await prisma.emailLog.create({
+                data: {
+                  eventId: input.eventId,
+                  registrationId: reg.id,
+                  recipientEmail: email,
+                  recipientName: reg.participant.fullName,
+                  templateCode: input.templateCode,
+                  subject: rendered.subject,
+                  status: 'SENT',
+                  batchId,
+                  sentByUserId: userId || null,
+                },
+              });
+              sentCount++;
+            }
+          } catch (err: any) {
+            failedCount++;
+            await prisma.emailLog.create({
+              data: {
+                eventId: input.eventId,
+                registrationId: reg.id,
+                recipientEmail: email,
+                recipientName: reg.participant.fullName,
+                templateCode: input.templateCode,
+                subject: template!.subject,
+                status: 'FAILED',
+                errorMessage: err.message || 'Error en envío',
+                batchId,
+                sentByUserId: userId || null,
+              },
+            }).catch(() => {});
+          }
+        })
+      );
     }
 
     return {
-      totalTargeted: targetRegistrations.length,
+      batchId,
+      totalTargeted: registrations.length,
       sentCount,
       simulatedCount,
       failedCount,
-      targetGroup: input.targetGroup,
-      templateCode: input.templateCode,
+      excludedCount,
+      message: `Procesamiento de lote finalizado: ${sentCount} enviados, ${simulatedCount} simulados, ${failedCount} fallidos, ${excludedCount} excluidos.`,
     };
   }
 
   /**
-   * Consultar historial de correos con paginación y filtros
+   * Obtener historial de comunicaciones con filtros, búsqueda y paginación (QA-10)
    */
-  static async getLogs(eventId?: string | null, query: { page?: number; limit?: number; status?: string; search?: string } = {}) {
-    const page = Number(query.page || 1);
-    const limit = Number(query.limit || 20);
+  static async getLogs(eventId?: string | null, query: QueryLogsInput = { page: 1, limit: 20 }) {
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 20;
     const skip = (page - 1) * limit;
 
     const where: any = {};
-    if (eventId) where.eventId = eventId;
-    if (query.status) where.status = query.status;
+
+    if (eventId) {
+      where.eventId = eventId;
+    }
+
+    if (query.status && query.status !== 'ALL') {
+      where.status = query.status;
+    }
+
+    if (query.batchId) {
+      where.batchId = query.batchId;
+    }
 
     if (query.search && query.search.trim()) {
-      const s = query.search.trim();
+      const term = query.search.trim();
       where.OR = [
-        { recipientEmail: { contains: s } },
-        { recipientName: { contains: s } },
-        { subject: { contains: s } },
+        { recipientEmail: { contains: term } },
+        { recipientName: { contains: term } },
+        { subject: { contains: term } },
+        { templateCode: { contains: term } },
       ];
     }
 
@@ -521,24 +1064,30 @@ export class CommunicationsService {
       prisma.emailLog.count({ where }),
       prisma.emailLog.findMany({
         where,
-        include: {
-          sentByUser: { select: { id: true, fullName: true, email: true } },
-          registration: { select: { id: true, registrationNumber: true } },
-        },
-        orderBy: { sentAt: 'desc' },
         skip,
         take: limit,
+        orderBy: { sentAt: 'desc' },
+        include: {
+          sentByUser: { select: { id: true, fullName: true, email: true } },
+          event: { select: { id: true, name: true, year: true } },
+        },
       }),
     ]);
 
+    const totalPages = Math.ceil(total / limit) || 1;
+
     return {
       data: logs,
+      logs,
       pagination: {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit) || 1,
+        totalPages,
       },
+      total,
+      page,
+      totalPages,
     };
   }
 }

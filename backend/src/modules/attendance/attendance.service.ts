@@ -1,4 +1,5 @@
 import { prisma } from '../../config/db.js';
+import { InventoryService } from '../inventory/inventory.service.js';
 import { BadRequestError, NotFoundError } from '../../utils/errors.js';
 import * as XLSX from 'xlsx';
 import { SearchAttendanceQuery } from './attendance.dto.js';
@@ -127,6 +128,9 @@ export class AttendanceService {
     tshirtSize?: string,
     tshirtDelivered?: boolean
   ) {
+    // QA-06: Validar que la talla pertenezca a la edición
+    const validTshirtSize = tshirtSize ? await InventoryService.validateSize(eventId, tshirtSize) : null;
+
     // Buscar la inscripción en la edición activa
     const registration = await prisma.registration.findFirst({
       where: {
@@ -140,7 +144,7 @@ export class AttendanceService {
     });
 
     if (!registration) {
-      throw new NotFoundError('Inscripción no encontrada en la edición activa de BarCamp RD');
+      throw new NotFoundError('Inscripción no encontrada en la edición activa');
     }
 
     const now = new Date();
@@ -166,7 +170,7 @@ export class AttendanceService {
       throw new BadRequestError('No se puede registrar asistencia de una inscripción cancelada.');
     }
 
-    // Prevención estricta contra registros duplicados
+    // Prevención inicial contra registros duplicados
     if (registration.attended) {
       const arrivedTime = registration.attendedAt
         ? new Date(registration.attendedAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -195,39 +199,57 @@ export class AttendanceService {
       );
     }
 
-    // Validación de inventario si se marca entrega física
-    let inventoryItem: any = null;
-    const shouldDeliver = tshirtDelivered === true && Boolean(tshirtSize);
+    const shouldDeliver = Boolean(tshirtDelivered === true && validTshirtSize);
 
-    if (shouldDeliver && tshirtSize) {
-      inventoryItem = await prisma.tshirtInventory.findUnique({
-        where: { eventId_size: { eventId, size: tshirtSize } },
-      });
+    // QA-01, QA-02, QA-03: Ejecución atómica y condicional en transacción interactiva
+    const updatedRegistration = await prisma.$transaction(async (tx) => {
+      let inventoryItem: any = null;
 
-      if (inventoryItem) {
-        const available = inventoryItem.initialQuantity - inventoryItem.deliveredQuantity;
-        if (available <= 0) {
+      if (shouldDeliver && validTshirtSize) {
+        inventoryItem = await tx.tshirtInventory.findUnique({
+          where: { eventId_size: { eventId, size: validTshirtSize } },
+        });
+
+        // QA-03: No permitir entrega si no existe inventario registrado
+        if (!inventoryItem || !inventoryItem.isActive) {
           throw new BadRequestError(
-            `TALLA AGOTADA: No quedan camisetas disponibles en talla "${tshirtSize}". Puede confirmar la asistencia dejando la entrega pendiente.`
+            `INVENTARIO NO ENCONTRADO: No existe inventario configurado o activo para la talla "${validTshirtSize}". Puede confirmar la asistencia dejando la entrega pendiente.`
+          );
+        }
+
+        // QA-02: Validación atómica de existencias dentro de la transacción
+        const invUpdate = await tx.tshirtInventory.updateMany({
+          where: {
+            id: inventoryItem.id,
+            deliveredQuantity: { lt: inventoryItem.initialQuantity },
+            isActive: true,
+          },
+          data: { deliveredQuantity: { increment: 1 } },
+        });
+
+        if (invUpdate.count === 0) {
+          throw new BadRequestError(
+            `TALLA AGOTADA: No quedan camisetas disponibles en talla "${validTshirtSize}". Puede confirmar la asistencia dejando la entrega pendiente.`
           );
         }
       }
-    }
 
-    // Actualización atómica en la base de datos (Separación de estados: status permanece CONFIRMED/PENDING, attended = true)
-    const newStatus = registration.status === 'PENDING' ? 'CONFIRMED' : registration.status;
-
-    const txOperations: any[] = [
-      prisma.registration.update({
-        where: { id: registrationId },
+      // QA-01: Actualización condicional atómica. Solo actualiza si attended === false.
+      // QA-05: Se preserva status (no se convierte PENDING en CONFIRMED automáticamente).
+      const regUpdate = await tx.registration.updateMany({
+        where: {
+          id: registrationId,
+          eventId,
+          attended: false,
+          status: { not: 'CANCELLED' },
+        },
         data: {
           attended: true,
           attendedAt: now,
           attendedByUserId: operatorUserId,
-          status: newStatus,
           updatedByUserId: operatorUserId,
-          ...(tshirtSize ? {
-            tshirtSize,
+          ...(validTshirtSize ? {
+            tshirtSize: validTshirtSize,
             tshirtSizeUpdatedAt: now,
             tshirtSizeUpdatedByUserId: operatorUserId,
           } : {}),
@@ -239,21 +261,45 @@ export class AttendanceService {
             tshirtDelivered: false,
           }),
         },
-        include: {
-          participant: true,
-          paymentMethod: { select: { id: true, name: true } },
-          attendedByUser: { select: { id: true, fullName: true, email: true } },
-        },
-      }),
-      prisma.attendanceLog.create({
+      });
+
+      if (regUpdate.count === 0) {
+        const current = await tx.registration.findUnique({
+          where: { id: registrationId },
+          include: { participant: true, attendedByUser: true },
+        });
+
+        if (!current) {
+          throw new NotFoundError('Inscripción no encontrada.');
+        }
+
+        if (current.attended) {
+          const arrivedTime = current.attendedAt
+            ? new Date(current.attendedAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            : 'hora desconocida';
+          const registrar = current.attendedByUser?.fullName || 'otro operador';
+          throw new BadRequestError(
+            `ASISTENCIA YA REGISTRADA: ${current.participant.fullName} ya ingresó al evento a las ${arrivedTime} (Registrado por: ${registrar}).`
+          );
+        }
+
+        if (current.status === 'CANCELLED') {
+          throw new BadRequestError('No se puede registrar asistencia de una inscripción cancelada.');
+        }
+
+        throw new BadRequestError('No se pudo registrar la asistencia debido a una operación concurrente.');
+      }
+
+      await tx.attendanceLog.create({
         data: {
           registrationId,
           userId: operatorUserId,
           action: 'CHECK_IN',
           timestamp: now,
         },
-      }),
-      prisma.auditLog.create({
+      });
+
+      await tx.auditLog.create({
         data: {
           userId: operatorUserId,
           action: 'ATTENDANCE_CHECKIN',
@@ -264,26 +310,27 @@ export class AttendanceService {
             result: 'SUCCESS',
             participantName: registration.participant.fullName,
             ticket: registration.registrationNumber,
-            tshirtSize: tshirtSize || null,
+            tshirtSize: validTshirtSize || null,
             tshirtDelivered: shouldDeliver,
             inventoryDeducted: shouldDeliver ? 1 : 0,
-            deliveryPending: Boolean(tshirtSize && !shouldDeliver),
+            deliveryPending: Boolean(validTshirtSize && !shouldDeliver),
             attendedAt: now.toISOString(),
           }) as any,
         },
-      }),
-    ];
+      });
 
-    if (shouldDeliver && inventoryItem) {
-      txOperations.push(
-        prisma.tshirtInventory.update({
-          where: { id: inventoryItem.id },
-          data: { deliveredQuantity: { increment: 1 } },
-        })
-      );
-    }
+      const updated = await tx.registration.findUnique({
+        where: { id: registrationId },
+        include: {
+          participant: true,
+          ticketType: true,
+          paymentMethod: { select: { id: true, name: true } },
+          attendedByUser: { select: { id: true, fullName: true, email: true } },
+        },
+      });
 
-    const [updatedRegistration] = await prisma.$transaction(txOperations);
+      return updated!;
+    });
 
     const counters = await this.getCounters(eventId);
 
@@ -294,9 +341,6 @@ export class AttendanceService {
     };
   }
 
-  /**
-   * Reversión administrativa de asistencia (Solo ADMIN)
-   */
   static async revertAttendance(eventId: string, registrationId: string, adminUserId: string, reason: string) {
     if (!reason || !reason.trim()) {
       throw new BadRequestError('Debe especificar un motivo justificado para revertir la asistencia');

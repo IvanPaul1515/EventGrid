@@ -16,6 +16,9 @@ router.post('/test', requireRole(['ADMIN']), CommunicationsController.testConnec
 router.get('/templates', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.getTemplates);
 router.put('/templates/:templateId', requireRole(['ADMIN']), CommunicationsController.updateTemplate);
 
+// Vista previa real sin efectos secundarios (ADMIN y OPERATOR)
+router.post('/preview', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.previewEmail);
+
 // Envíos de correo (ADMIN y OPERATOR para individual; solo ADMIN para masivo)
 router.post('/send', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.sendSingleEmail);
 router.post('/send-bulk', requireRole(['ADMIN']), CommunicationsController.sendBulkEmail);

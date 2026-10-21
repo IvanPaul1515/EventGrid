@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 import { qrService } from '../../services/qr.service';
 import { attendanceService } from '../../services/attendance.service';
 import { QrScanResult, Registration } from '../../types';
@@ -60,8 +61,8 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
   })();
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const lastScannedTokenRef = useRef<string | null>(null);
 
   // Auto-enfocar el campo de escaneo al abrir
   useEffect(() => {
@@ -69,6 +70,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
       setScanInput('');
       setScanResult(null);
       setCheckInSuccess(null);
+      lastScannedTokenRef.current = null;
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
@@ -80,33 +82,90 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     };
   }, [isOpen]);
 
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
+  const stopCamera = async () => {
+    if (scannerRef.current) {
+      try {
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop();
+        }
+        await scannerRef.current.clear();
+      } catch (err) {
+        // Ignorar errores al limpiar el contenedor
+      }
+      scannerRef.current = null;
     }
     setCameraActive(false);
     setCameraError(null);
   };
 
-  const startCamera = async () => {
+  const processToken = async (token: string) => {
+    const trimmed = token.trim();
+    if (!trimmed) return;
     try {
-      setCameraError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
-      setCameraActive(true);
+      setIsScanning(true);
+      setCheckInSuccess(null);
+      const result = await qrService.scan(trimmed, currentEvent?.id);
+      setScanResult(result);
     } catch (err: any) {
-      setCameraError('No se pudo acceder a la cámara o no está disponible en este dispositivo.');
-      setCameraActive(false);
+      setScanResult({
+        valid: false,
+        status: 'INVALID_CODE',
+        message: err?.response?.data?.message || 'Error al validar el código QR',
+        canCheckIn: false,
+      });
+    } finally {
+      setIsScanning(false);
     }
   };
 
+  const startCamera = async () => {
+    try {
+      setCameraError(null);
+      setCameraActive(true);
+
+      // Esperar a que el DOM monte el elemento contenedor
+      setTimeout(async () => {
+        try {
+          const scanner = new Html5Qrcode('qr-reader-container');
+          scannerRef.current = scanner;
+
+          await scanner.start(
+            { facingMode: 'environment' },
+            {
+              fps: 10,
+              qrbox: { width: 250, height: 250 },
+            },
+            async (decodedText) => {
+              // Prevenir lecturas repetidas instantáneas (QA-04)
+              if (lastScannedTokenRef.current === decodedText) return;
+              lastScannedTokenRef.current = decodedText;
+
+              setScanInput(decodedText);
+              // Pausar el escáner para evitar lecturas consecutivas mientras se revisa la ficha
+              try {
+                scanner.pause(true);
+              } catch {}
+
+              // QA-04: Escanear nunca marca asistencia automáticamente. Solo valida y muestra la ficha.
+              await processToken(decodedText);
+            },
+            () => {
+              // Ignorar errores por frame no reconocido
+            }
+          );
+        } catch (err: any) {
+          console.error('Error al inicializar cámara:', err);
+          setCameraError(
+            'No se pudo acceder a la cámara. Verifique que concedió permisos de cámara en su navegador móvil (Safari/Chrome).'
+          );
+          setCameraActive(false);
+        }
+      }, 150);
+    } catch (err: any) {
+      setCameraError('Error al iniciar la cámara en este dispositivo.');
+      setCameraActive(false);
+    }
+  };
   const handleScanSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const token = scanInput.trim();
@@ -115,8 +174,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     try {
       setIsScanning(true);
       setCheckInSuccess(null);
-      const result = await qrService.scan(token, currentEvent?.id);
-      setScanResult(result);
+      await processToken(token);
     } catch (err: any) {
       setScanResult({
         valid: false,
@@ -165,6 +223,10 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     setScanResult(null);
     setCheckInSuccess(null);
     setSelectedTshirtSize(null);
+    lastScannedTokenRef.current = null;
+    if (scannerRef.current && cameraActive) {
+      try { scannerRef.current.resume(); } catch {}
+    }
     inputRef.current?.focus();
   };
 
@@ -193,8 +255,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
           {cameraActive ? (
             <div className="space-y-2">
               <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-border">
-                <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline />
-                <div className="absolute inset-0 border-2 border-primary/50 m-8 rounded-lg pointer-events-none animate-pulse" />
+                <div id="qr-reader-container" className="w-full h-full [&_video]:w-full [&_video]:h-full [&_video]:object-cover" />
               </div>
               <div className="flex justify-between items-center text-xs">
                 <span className="text-muted-foreground">Apunte la cámara al código QR de la entrada</span>

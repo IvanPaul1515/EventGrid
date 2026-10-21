@@ -1,4 +1,5 @@
 import { prisma } from '../../config/db.js';
+import { InventoryService } from '../inventory/inventory.service.js';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors.js';
 import crypto from 'crypto';
 import {
@@ -1465,6 +1466,9 @@ export class ParticipantsService {
       throw new NotFoundError('Inscripción no encontrada en esta edición');
     }
 
+    if (tshirtSize) {
+      tshirtSize = await InventoryService.validateSize(eventId, tshirtSize);
+    }
     const oldSize = registration.tshirtSize;
     const isDelivered = registration.tshirtDelivered;
 
@@ -1550,25 +1554,48 @@ export class ParticipantsService {
       throw new BadRequestError('La camiseta ya fue entregada previamente a este participante.');
     }
 
-    const targetSize = size || registration.tshirtSize;
-    if (!targetSize) {
+    const rawSize = size || registration.tshirtSize;
+    if (!rawSize) {
       throw new BadRequestError('Debe seleccionar una talla de T-shirt para realizar la entrega.');
     }
 
+    // QA-06: Validar talla
+    const targetSize = await InventoryService.validateSize(eventId, rawSize);
+    if (!targetSize) {
+      throw new BadRequestError('Debe seleccionar una talla válida.');
+    }
+
+    // QA-03: No permitir entregas sin inventario registrado
     const inventoryItem = await prisma.tshirtInventory.findUnique({
       where: { eventId_size: { eventId, size: targetSize } },
     });
 
-    if (inventoryItem) {
-      const available = inventoryItem.initialQuantity - inventoryItem.deliveredQuantity;
-      if (available <= 0) {
-        throw new BadRequestError(`TALLA AGOTADA: No quedan unidades disponibles de la talla "${targetSize}".`);
-      }
+    if (!inventoryItem || !inventoryItem.isActive) {
+      throw new BadRequestError(`INVENTARIO NO ENCONTRADO: No existe inventario configurado o activo para la talla "${targetSize}".`);
+    }
+
+    if (inventoryItem.initialQuantity - inventoryItem.deliveredQuantity <= 0) {
+      throw new BadRequestError(`TALLA AGOTADA: No quedan unidades disponibles de la talla "${targetSize}".`);
     }
 
     const now = new Date();
-    const txOps: any[] = [
-      prisma.registration.update({
+
+    const updated = await prisma.$transaction(async (tx) => {
+      // QA-02: Decremento atómico
+      const invUpdate = await tx.tshirtInventory.updateMany({
+        where: {
+          id: inventoryItem.id,
+          deliveredQuantity: { lt: inventoryItem.initialQuantity },
+          isActive: true,
+        },
+        data: { deliveredQuantity: { increment: 1 } },
+      });
+
+      if (invUpdate.count === 0) {
+        throw new BadRequestError(`TALLA AGOTADA: No quedan unidades disponibles de la talla "${targetSize}".`);
+      }
+
+      const reg = await tx.registration.update({
         where: { id: registrationId },
         data: {
           tshirtSize: targetSize,
@@ -1584,8 +1611,9 @@ export class ParticipantsService {
           ticketType: true,
           paymentMethod: true,
         },
-      }),
-      prisma.auditLog.create({
+      });
+
+      await tx.auditLog.create({
         data: {
           userId,
           action: 'TSHIRT_DELIVERY',
@@ -1602,25 +1630,14 @@ export class ParticipantsService {
             deliveredAt: now.toISOString(),
           }),
         },
-      }),
-    ];
+      });
 
-    if (inventoryItem) {
-      txOps.push(
-        prisma.tshirtInventory.update({
-          where: { id: inventoryItem.id },
-          data: { deliveredQuantity: { increment: 1 } },
-        })
-      );
-    }
+      return reg;
+    });
 
-    const [updated] = await prisma.$transaction(txOps);
     return updated;
   }
 
-  /**
-   * Devolución explícita y auditada de camiseta al inventario
-   */
   static async returnTshirt(eventId: string, registrationId: string, userId: string, reason: string) {
     if (!reason || !reason.trim()) {
       throw new BadRequestError('Debe especificar un motivo justificado para la devolución de la camiseta.');

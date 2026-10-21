@@ -391,6 +391,7 @@ model EmailLog {
   subject        String
   status         String   @default("PENDING") // PENDING, SENT, FAILED, SIMULATED
   errorMessage   String?
+  batchId        String?
   sentByUserId   String?
   sentAt         DateTime @default(now())
 
@@ -402,6 +403,7 @@ model EmailLog {
   @@index([registrationId])
   @@index([recipientEmail])
   @@index([status])
+  @@index([batchId])
   @@index([sentAt])
   @@map("email_logs")
 }
