@@ -22,4 +22,20 @@ export class ActivityController {
       next(err);
     }
   }
+
+  static async export(req: Request, res: Response, next: NextFunction) {
+    try {
+      const parseResult = ListActivityQuerySchema.safeParse(req.query);
+      if (!parseResult.success) {
+        throw new BadRequestError('Parámetros de exportación inválidos');
+      }
+
+      const { buffer, filename, contentType } = await ActivityService.export(parseResult.data);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(buffer);
+    } catch (err) {
+      next(err);
+    }
+  }
 }

@@ -137,7 +137,26 @@ export class AttendanceService {
       throw new NotFoundError('Inscripción no encontrada en la edición activa de BarCamp RD');
     }
 
+    const now = new Date();
+
     if (registration.status === 'CANCELLED') {
+      await prisma.auditLog.create({
+        data: {
+          userId: operatorUserId,
+          action: 'ATTENDANCE_CHECKIN',
+          entity: 'REGISTRATION',
+          entityId: registrationId,
+          changes: JSON.stringify({
+            action: 'CHECK_IN',
+            result: 'REJECTED',
+            reason: 'Inscripción en estado Cancelado',
+            participantName: registration.participant.fullName,
+            ticket: registration.registrationNumber,
+            attemptedAt: now.toISOString(),
+          }),
+        },
+      }).catch(() => {});
+
       throw new BadRequestError('No se puede registrar asistencia de una inscripción cancelada.');
     }
 
@@ -148,12 +167,27 @@ export class AttendanceService {
         : 'hora desconocida';
       const registrar = registration.attendedByUser?.fullName || 'otro operador';
 
+      await prisma.auditLog.create({
+        data: {
+          userId: operatorUserId,
+          action: 'ATTENDANCE_CHECKIN',
+          entity: 'REGISTRATION',
+          entityId: registrationId,
+          changes: JSON.stringify({
+            action: 'CHECK_IN',
+            result: 'REJECTED',
+            reason: `Asistencia ya registrada a las ${arrivedTime} por ${registrar}`,
+            participantName: registration.participant.fullName,
+            ticket: registration.registrationNumber,
+            attemptedAt: now.toISOString(),
+          }),
+        },
+      }).catch(() => {});
+
       throw new BadRequestError(
         `ASISTENCIA YA REGISTRADA: ${registration.participant.fullName} ya ingresó al evento a las ${arrivedTime} (Registrado por: ${registrar}).`
       );
     }
-
-    const now = new Date();
 
     // Actualización atómica en la base de datos (Separación de estados: status permanece CONFIRMED/PENDING, attended = true)
     const newStatus = registration.status === 'PENDING' ? 'CONFIRMED' : registration.status;
@@ -190,13 +224,15 @@ export class AttendanceService {
       prisma.auditLog.create({
         data: {
           userId: operatorUserId,
-          action: 'UPDATE' as any,
-          entity: 'REGISTRATION' as any,
+          action: 'ATTENDANCE_CHECKIN',
+          entity: 'REGISTRATION',
           entityId: registrationId,
           changes: JSON.stringify({
             action: 'CHECK_IN',
+            result: 'SUCCESS',
             participantName: registration.participant.fullName,
             ticket: registration.registrationNumber,
+            tshirtSize: tshirtSize || null,
             attendedAt: now.toISOString(),
           }) as any,
         },
@@ -268,12 +304,15 @@ export class AttendanceService {
       prisma.auditLog.create({
         data: {
           userId: adminUserId,
-          action: 'UPDATE' as any,
-          entity: 'REGISTRATION' as any,
+          action: 'ATTENDANCE_REVERT',
+          entity: 'REGISTRATION',
           entityId: registrationId,
           changes: JSON.stringify({
             action: 'CHECK_IN_REVERT',
+            result: 'SUCCESS',
             reason: reason.trim(),
+            participantName: registration.participant.fullName,
+            ticket: registration.registrationNumber,
             revertedAt: now.toISOString(),
             previousAttendedAt: registration.attendedAt?.toISOString() || null,
             previousAttendedBy: registration.attendedByUser?.fullName || null,

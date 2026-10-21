@@ -88,7 +88,13 @@ export class ParticipantsController {
         action: 'UPDATE',
         entity: 'REGISTRATION',
         entityId: updated.id,
-        changes: validated,
+        changes: {
+          result: 'SUCCESS',
+          participantName: updated.participant?.fullName,
+          ticketNumber: updated.registrationNumber,
+          current: validated,
+          previous: (updated as any).previousValues,
+        },
       });
 
       return res.status(200).json({
@@ -359,6 +365,21 @@ export class ParticipantsController {
       const userId = req.user!.id;
 
       const updated = await ParticipantsService.updateTshirtSize(eventId, registrationId, tshirtSize || null, userId);
+
+      await recordAuditLog({
+        req,
+        action: 'UPDATE',
+        entity: 'REGISTRATION',
+        entityId: registrationId,
+        changes: {
+          action: 'TSHIRT_SIZE_UPDATE',
+          result: 'SUCCESS',
+          participantName: updated.participant?.fullName,
+          ticketNumber: updated.registrationNumber,
+          previousSize: (updated as any).previousTshirtSize || null,
+          newSize: tshirtSize || null,
+        },
+      });
 
       return res.status(200).json({
         status: 'success',

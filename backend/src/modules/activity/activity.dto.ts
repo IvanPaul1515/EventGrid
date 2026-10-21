@@ -9,6 +9,7 @@ export const ListActivityQuerySchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   search: z.string().optional(),
+  result: z.string().optional(),
 });
 
 export type ListActivityQuery = z.infer<typeof ListActivityQuerySchema>;

@@ -7,6 +7,7 @@ export interface ListActivityParams {
   userId?: string;
   action?: string;
   entity?: string;
+  result?: string;
   startDate?: string;
   endDate?: string;
   search?: string;
@@ -24,6 +25,7 @@ export interface ActivityResult {
     users: User[];
     actions: string[];
     entities: string[];
+    results?: string[];
   };
 }
 
@@ -35,5 +37,13 @@ export const activityService = {
       pagination: res.data.pagination,
       filters: res.data.filters,
     };
+  },
+
+  async export(params: ListActivityParams = {}): Promise<Blob> {
+    const res = await api.get('/activity/export', {
+      params,
+      responseType: 'blob',
+    });
+    return res.data;
   },
 };

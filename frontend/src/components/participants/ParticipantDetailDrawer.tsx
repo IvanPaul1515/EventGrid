@@ -9,6 +9,7 @@ import { RecordPaymentModal } from './RecordPaymentModal';
 import { AssignCourtesyModal } from './AssignCourtesyModal';
 import { ReasonModal } from './ReasonModal';
 import { RevertModal } from '../attendance/RevertModal';
+import { CheckInConfirmModal } from '../attendance/CheckInConfirmModal';
 import { DigitalTicketModal } from '../qr/DigitalTicketModal';
 import { SendSingleEmailModal } from '../communications/SendSingleEmailModal';
 import { TshirtSizeSelector } from '../attendance/TshirtSizeSelector';
@@ -80,6 +81,8 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showReactivateModal, setShowReactivateModal] = useState(false);
   const [showRevertModal, setShowRevertModal] = useState(false);
+  const [showCheckInConfirmModal, setShowCheckInConfirmModal] = useState(false);
+  const [showAuditHistory, setShowAuditHistory] = useState(false);
   const [showPaymentsLedger, setShowPaymentsLedger] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -697,31 +700,17 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                       Revise la identidad y datos del participante antes de confirmar su entrada física al recinto.
                     </p>
 
-                    {/* T-shirt size selector (if event has it enabled) */}
-                    {tshirtEnabled && (
-                      <div className="p-3 rounded-xl bg-background border border-border">
-                        <TshirtSizeSelector
-                          sizes={tshirtSizes}
-                          selectedSize={pendingTshirtSize}
-                          onSelect={setPendingTshirtSize}
-                          disabled={markingAttendance}
-                          showSkip={true}
-                          label="Talla de camiseta (opcional)"
-                        />
-                      </div>
-                    )}
-
                     <button
                       type="button"
                       disabled={markingAttendance || registration.status === 'CANCELLED'}
-                      onClick={() => handleMarkAttendance(pendingTshirtSize)}
+                      onClick={() => setShowCheckInConfirmModal(true)}
                       className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-xl shadow-emerald-950/40 transition-all cursor-pointer disabled:opacity-50"
                     >
                       {markingAttendance ? (
                         <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       ) : (
                         <>
-                          <Check className="w-5 h-5 stroke-[3]" />
+                          <UserCheck className="w-5 h-5 stroke-[2.5]" />
                           <span>MARCAR ASISTENCIA</span>
                         </>
                       )}
@@ -1286,6 +1275,128 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                 </div>
               )}
 
+              {/* HISTORIAL CENTRALIZADO DE AUDITORÍA DEL PARTICIPANTE */}
+              {registration.auditLogs && registration.auditLogs.length > 0 && (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between pb-1 border-b border-border">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-primary" />
+                      <span className="text-xs font-black uppercase tracking-wider text-foreground">
+                        Historial de Auditoría ({registration.auditLogs.length})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAuditHistory(!showAuditHistory)}
+                      className="text-xs text-primary hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>{showAuditHistory ? 'Ocultar' : 'Ver actividades'}</span>
+                      {showAuditHistory ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+
+                  {showAuditHistory && (
+                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                      {registration.auditLogs.map((log) => {
+                        const isRejected = log.result === 'REJECTED';
+                        const isSuccess = log.result === 'SUCCESS';
+                        const isFailed = log.result === 'FAILED';
+                        return (
+                          <div
+                            key={log.id}
+                            className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                              isRejected
+                                ? 'bg-amber-500/10 border-amber-500/25'
+                                : isFailed
+                                ? 'bg-rose-500/10 border-rose-500/25'
+                                : 'bg-background border-border'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-muted text-foreground border border-border">
+                                  {log.action}
+                                </span>
+                                {log.result && (
+                                  <span
+                                    className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                                      isSuccess
+                                        ? 'bg-emerald-500/20 text-emerald-400'
+                                        : isRejected
+                                        ? 'bg-amber-500/20 text-amber-400'
+                                        : 'bg-rose-500/20 text-rose-400'
+                                    }`}
+                                  >
+                                    {log.result}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap">
+                                {new Date(log.createdAt).toLocaleString('es-DO', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                              <span>
+                                Operador:{' '}
+                                <strong className="text-foreground">
+                                  {log.user?.fullName || 'Sistema'}
+                                </strong>
+                              </span>
+                              {log.ipAddress && (
+                                <span className="font-mono text-[10px]">{log.ipAddress}</span>
+                              )}
+                            </div>
+
+                            {log.changes && (
+                              <div className="pt-1 border-t border-border/50 text-[11px]">
+                                {log.changes.reason && (
+                                  <p className="text-muted-foreground">
+                                    Motivo: <span className="text-foreground italic font-medium">{log.changes.reason}</span>
+                                  </p>
+                                )}
+                                {log.changes.tshirtSize && (
+                                  <p className="text-muted-foreground">
+                                    Talla de camiseta: <span className="text-primary font-bold">{log.changes.tshirtSize}</span>
+                                  </p>
+                                )}
+                                {log.changes.newSize && (
+                                  <p className="text-muted-foreground">
+                                    Cambio de talla: <span className="text-muted-foreground line-through">{log.changes.previousSize || 'Sin talla'}</span> → <span className="text-primary font-bold">{log.changes.newSize}</span>
+                                  </p>
+                                )}
+                                {log.changes.previous && log.changes.current && (
+                                  <div className="mt-1 p-2 rounded-lg bg-muted/40 font-mono text-[10px] space-y-0.5">
+                                    {Object.keys(log.changes.current).map((key) => {
+                                      const prev = log.changes.previous?.[key];
+                                      const curr = log.changes.current?.[key];
+                                      if (prev === curr) return null;
+                                      return (
+                                        <div key={key} className="flex items-center gap-1">
+                                          <span className="text-muted-foreground">{key}:</span>
+                                          <span className="line-through text-rose-400/80">{String(prev ?? '—')}</span>
+                                          <span>→</span>
+                                          <span className="text-emerald-400 font-bold">{String(curr ?? '—')}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* AUDITORÍA Y TRAZABILIDAD */}
               <div className="p-3 rounded-xl bg-muted/20 border border-border text-[11px] text-muted-foreground flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
@@ -1436,6 +1547,22 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
         eventId={registration.eventId}
         isOpen={showEmailModal}
         onClose={() => setShowEmailModal(false)}
+      />
+
+      <CheckInConfirmModal
+        isOpen={showCheckInConfirmModal}
+        onClose={() => setShowCheckInConfirmModal(false)}
+        onConfirm={async (tshirtSize) => {
+          await handleMarkAttendance(tshirtSize);
+          setShowCheckInConfirmModal(false);
+        }}
+        participantName={p.fullName}
+        registrationNumber={registration.registrationNumber}
+        ticketTypeName={registration.ticketType?.name || 'General'}
+        tshirtEnabled={tshirtEnabled}
+        availableSizes={tshirtSizes}
+        initialTshirtSize={registration.tshirtSize || null}
+        isLoading={markingAttendance}
       />
     </>
   );

@@ -4,6 +4,7 @@ import { attendanceService } from '../../services/attendance.service';
 import { QrScanResult, Registration } from '../../types';
 import { useEdition } from '../../context/EditionContext';
 import { TshirtSizeSelector } from '../attendance/TshirtSizeSelector';
+import { CheckInConfirmModal } from '../attendance/CheckInConfirmModal';
 import {
   X,
   QrCode,
@@ -41,6 +42,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
   const [selectedTshirtSize, setSelectedTshirtSize] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const tshirtEnabled = currentEvent?.settings?.tshirtSizesEnabled === true;
   const tshirtSizes = currentEvent?.settings?.tshirtSizes || ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
@@ -115,11 +117,12 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     }
   };
 
-  const handleConfirmCheckIn = async () => {
+  const handleConfirmCheckIn = async (size?: string | null) => {
     if (!scanResult?.registration) return;
+    const finalSize = size !== undefined ? size : selectedTshirtSize;
     try {
       setIsCheckingIn(true);
-      await attendanceService.checkIn(scanResult.registration.id, selectedTshirtSize);
+      await attendanceService.checkIn(scanResult.registration.id, finalSize || undefined);
       setCheckInSuccess(`¡Llegada confirmada con éxito para ${scanResult.registration.participant.fullName}!`);
       // Actualizar el estado del resultado a asistido
       setScanResult({
@@ -131,9 +134,10 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
           ...scanResult.registration,
           attended: true,
           attendedAt: new Date().toISOString(),
-          tshirtSize: selectedTshirtSize || undefined,
+          tshirtSize: finalSize || undefined,
         },
       });
+      setShowConfirmModal(false);
       if (onAttendanceMarked) onAttendanceMarked();
       window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
     } catch (err: any) {
@@ -355,7 +359,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                     <div className="pt-2">
                       <button
                         type="button"
-                        onClick={handleConfirmCheckIn}
+                        onClick={() => setShowConfirmModal(true)}
                         disabled={isCheckingIn}
                         className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm tracking-wide shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50"
                       >
@@ -399,6 +403,24 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Modal de Confirmación con Selector de Talla */}
+      {scanResult?.registration && (
+        <CheckInConfirmModal
+          isOpen={showConfirmModal}
+          onClose={() => setShowConfirmModal(false)}
+          onConfirm={async (size) => {
+            await handleConfirmCheckIn(size);
+          }}
+          participantName={scanResult.registration.participant.fullName}
+          registrationNumber={scanResult.registration.registrationNumber}
+          ticketTypeName={scanResult.registration.ticketType?.name || 'General'}
+          tshirtEnabled={tshirtEnabled}
+          availableSizes={tshirtSizes}
+          initialTshirtSize={selectedTshirtSize}
+          isLoading={isCheckingIn}
+        />
+      )}
     </div>
   );
 };

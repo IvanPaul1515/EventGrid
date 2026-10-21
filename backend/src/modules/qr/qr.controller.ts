@@ -40,6 +40,34 @@ export class QrController {
       const codeOrToken = (parsed.codeOrToken || parsed.qrToken)!.trim();
       const eventId = parsed.eventId || parsed.activeEventId || (req.headers['x-event-id'] as string) || undefined;
       const result = await QrService.validateAndScan(codeOrToken, eventId);
+
+      if (!result.valid) {
+        await recordAuditLog({
+          req,
+          action: 'QR_VALIDATION_FAILED',
+          entity: 'REGISTRATION',
+          entityId: result.registration?.id || undefined,
+          changes: {
+            result: 'REJECTED',
+            reason: result.message || 'Código QR no válido',
+            error: result.error,
+            ticketScanned: codeOrToken.length > 30 ? codeOrToken.slice(0, 15) + '...' : codeOrToken,
+          },
+        }).catch(() => {});
+      } else {
+        await recordAuditLog({
+          req,
+          action: 'QR_SCAN',
+          entity: 'REGISTRATION',
+          entityId: result.registration?.id,
+          changes: {
+            result: 'SUCCESS',
+            participantName: result.participant?.fullName,
+            ticketNumber: result.registration?.registrationNumber,
+          },
+        }).catch(() => {});
+      }
+
       return res.status(200).json({ status: 'success', data: result });
     } catch (error) {
       next(error);

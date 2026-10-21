@@ -7,7 +7,8 @@ const router = Router();
 
 router.use(authenticateToken);
 
-// Consulta del registro histórico de auditoría y actividades
+// Consulta y exportación del registro histórico de auditoría y actividades
+router.get('/export', requireAnyRole, ActivityController.export);
 router.get('/', requireAnyRole, ActivityController.list);
 
 export default router;

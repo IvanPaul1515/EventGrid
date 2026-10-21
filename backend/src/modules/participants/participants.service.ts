@@ -267,9 +267,36 @@ export class ParticipantsService {
       }
     }
 
+    const auditLogs = await prisma.auditLog.findMany({
+      where: {
+        OR: [
+          { entityId: registration.id },
+          { entityId: registration.participantId },
+        ],
+      },
+      include: {
+        user: { select: { id: true, fullName: true, email: true, role: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    const parsedAuditLogs = auditLogs.map((l) => {
+      let ch = l.changes;
+      if (typeof ch === 'string') {
+        try {
+          ch = JSON.parse(ch);
+        } catch {
+          // Keep as string
+        }
+      }
+      return { ...l, changes: ch };
+    });
+
     return {
       ...registration,
       customFields,
+      auditLogs: parsedAuditLogs,
       editionHistory: otherRegistrations.map((or) => ({
         registrationId: or.id,
         editionId: or.eventId,
@@ -517,6 +544,27 @@ export class ParticipantsService {
       throw new NotFoundError('Inscripción no encontrada en la edición activa');
     }
 
+    const previousValues: Record<string, any> = {
+      firstName: existing.participant.firstName,
+      lastName: existing.participant.lastName,
+      fullName: existing.participant.fullName,
+      email: existing.participant.email,
+      documentId: existing.participant.documentId,
+      phone: existing.participant.phone,
+      alternatePhone: existing.participant.alternatePhone,
+      institution: existing.participant.institution,
+      ticketTypeId: existing.ticketTypeId,
+      ticketTypeName: existing.ticketType?.name,
+      ticketPrice: Number(existing.ticketPrice),
+      amountPaid: Number(existing.amountPaid),
+      balanceDue: Number(existing.balanceDue),
+      isCourtesy: existing.isCourtesy,
+      status: existing.status,
+      paymentStatus: existing.paymentStatus,
+      paymentMethodId: existing.paymentMethodId,
+      notes: existing.notes,
+    };
+
     // Si se enviaron datos de la persona física
     if (
       input.firstName ||
@@ -654,6 +702,7 @@ export class ParticipantsService {
     return {
       ...updated,
       status: input.status === 'ATTENDED' ? 'ATTENDED' : updated.status,
+      previousValues,
     };
   }
 
@@ -956,7 +1005,10 @@ export class ParticipantsService {
       },
     });
 
-    return updated;
+    return {
+      ...updated,
+      previousTshirtSize: registration.tshirtSize || null,
+    };
   }
 
   /**
@@ -994,7 +1046,10 @@ export class ParticipantsService {
       },
     });
 
-    return updated;
+    return {
+      ...updated,
+      previousTshirtSize: registration.tshirtSize || null,
+    };
   }
 
   /**
@@ -1042,7 +1097,10 @@ export class ParticipantsService {
       },
     });
 
-    return updated;
+    return {
+      ...updated,
+      previousTshirtSize: registration.tshirtSize || null,
+    };
   }
 
   /**
@@ -1108,6 +1166,27 @@ export class ParticipantsService {
     if (!existing) {
       throw new NotFoundError('Inscripción no encontrada en la edición activa');
     }
+
+    const previousValues: Record<string, any> = {
+      firstName: existing.participant.firstName,
+      lastName: existing.participant.lastName,
+      fullName: existing.participant.fullName,
+      email: existing.participant.email,
+      documentId: existing.participant.documentId,
+      phone: existing.participant.phone,
+      alternatePhone: existing.participant.alternatePhone,
+      institution: existing.participant.institution,
+      ticketTypeId: existing.ticketTypeId,
+      ticketTypeName: existing.ticketType?.name,
+      ticketPrice: Number(existing.ticketPrice),
+      amountPaid: Number(existing.amountPaid),
+      balanceDue: Number(existing.balanceDue),
+      isCourtesy: existing.isCourtesy,
+      status: existing.status,
+      paymentStatus: existing.paymentStatus,
+      paymentMethodId: existing.paymentMethodId,
+      notes: existing.notes,
+    };
 
     await prisma.registration.delete({
       where: { id: registrationId },
@@ -1402,6 +1481,9 @@ export class ParticipantsService {
       },
     });
 
-    return updated;
+    return {
+      ...updated,
+      previousTshirtSize: registration.tshirtSize || null,
+    };
   }
 }

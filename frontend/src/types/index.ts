@@ -220,6 +220,7 @@ export interface AuditLog {
   action: string;
   entity: string;
   entityId?: string;
+  result?: 'SUCCESS' | 'REJECTED' | 'FAILED' | string;
   changes?: any;
   ipAddress?: string;
   userAgent?: string;
