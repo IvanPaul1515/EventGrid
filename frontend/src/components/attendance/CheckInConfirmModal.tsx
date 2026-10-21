@@ -3,7 +3,7 @@ import { Shirt, CheckCircle2, UserCheck, AlertTriangle, AlertCircle, X, Package,
 import { TshirtSizeSelector } from './TshirtSizeSelector';
 import { inventoryService, TshirtInventoryItem } from '../../services/inventory.service';
 
-export const DEFAULT_BARCAMP_TSHIRT_SIZES = [
+const DEFAULT_BARCAMP_TSHIRT_SIZES = [
   'Medium (M)',
   'XL',
   'L',
