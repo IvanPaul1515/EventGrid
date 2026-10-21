@@ -21,6 +21,7 @@ import demoRoutes from './modules/demo/demo.routes.js';
 import qrRoutes from './modules/qr/qr.routes.js';
 import communicationsRoutes from './modules/communications/communications.routes.js';
 import inventoryRoutes from './modules/inventory/inventory.routes.js';
+import usersRoutes from './modules/users/users.routes.js';
 
 export const app = express();
 
@@ -97,6 +98,7 @@ app.use(`${ENV.API_PREFIX}/qr`, qrRoutes);
 app.use(`${ENV.API_PREFIX}/communications`, communicationsRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/inventory`, inventoryRoutes);
 app.use(`${ENV.API_PREFIX}/inventory`, inventoryRoutes);
+app.use(`${ENV.API_PREFIX}/users`, usersRoutes);
 
 // Manejo central de errores
 app.use(errorHandler);

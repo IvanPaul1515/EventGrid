@@ -639,24 +639,42 @@ export class EventsService {
 
     const isDemoFilter = !event.settings?.demoModeEnabled ? { isDemo: false } : {};
 
-    const registrations = await prisma.registration.findMany({
-      where: { eventId, ...isDemoFilter },
-      select: {
-        id: true,
-        status: true,
-        paymentStatus: true,
-        attended: true,
-        isCourtesy: true,
-        tshirtSize: true,
-        tshirtDelivered: true,
-        saleTimestamp: true,
-        attendedAt: true,
-        createdAt: true,
-        participant: {
-          select: { institution: true },
+    const [registrations, tshirtInventories, staffDeliveriesSum, emailBatchCounts] = await Promise.all([
+      prisma.registration.findMany({
+        where: { eventId, ...isDemoFilter },
+        select: {
+          id: true,
+          status: true,
+          paymentStatus: true,
+          attended: true,
+          isCourtesy: true,
+          ticketPrice: true,
+          amountPaid: true,
+          totalAmount: true,
+          tshirtSize: true,
+          tshirtDelivered: true,
+          saleTimestamp: true,
+          attendedAt: true,
+          createdAt: true,
+          ticketType: { select: { id: true, name: true, price: true } },
+          participant: {
+            select: { institution: true },
+          },
         },
-      },
-    });
+      }),
+      prisma.tshirtInventory.findMany({
+        where: { eventId },
+      }),
+      prisma.staffTshirtDelivery.aggregate({
+        where: { eventId },
+        _sum: { quantity: true },
+      }),
+      prisma.emailBatchJob.groupBy({
+        by: ['status'],
+        where: { eventId },
+        _count: { status: true },
+      }),
+    ]);
 
     const total = registrations.length;
     const confirmed = registrations.filter(r => r.status === 'CONFIRMED').length;
@@ -739,6 +757,69 @@ export class EventsService {
       count: attByHour[h] || 0,
     }));
 
+    // Cálculos Financieros y de Tipos de Entrada
+    let confirmedRevenue = 0;
+    let pendingRevenue = 0;
+    let totalExpected = 0;
+    const ticketMap: Record<string, { name: string; count: number; revenue: number }> = {};
+    const paymentStatusMap = { PAID: 0, PENDING: 0, PARTIAL: 0, COURTESY: 0 };
+
+    for (const reg of registrations) {
+      if (reg.status === 'CANCELLED') continue;
+
+      if (reg.isCourtesy) {
+        paymentStatusMap.COURTESY++;
+      } else {
+        const price = Number(reg.ticketPrice ?? reg.totalAmount ?? 0);
+        const paid = Number(reg.amountPaid ?? 0);
+        totalExpected += price;
+        confirmedRevenue += paid;
+        if (paid < price) {
+          pendingRevenue += (price - paid);
+        }
+
+        if (reg.paymentStatus === 'PAID') paymentStatusMap.PAID++;
+        else if (reg.paymentStatus === 'PARTIAL') paymentStatusMap.PARTIAL++;
+        else paymentStatusMap.PENDING++;
+      }
+
+      const tName = reg.ticketType?.name || 'General';
+      if (!ticketMap[tName]) {
+        ticketMap[tName] = { name: tName, count: 0, revenue: 0 };
+      }
+      ticketMap[tName].count++;
+      ticketMap[tName].revenue += Number(reg.amountPaid ?? 0);
+    }
+
+    const ticketBreakdown = Object.values(ticketMap).sort((a, b) => b.count - a.count);
+
+    // Inventario y Staff T-shirts
+    let totalCapacity = 0;
+    let totalReservedStaff = 0;
+    let totalDeliveredStaff = 0;
+    let totalDeliveredParticipants = 0;
+
+    for (const inv of tshirtInventories) {
+      totalCapacity += inv.initialQuantity;
+      totalReservedStaff += inv.staffReservedQuantity;
+      totalDeliveredStaff += inv.staffDeliveredQuantity;
+      totalDeliveredParticipants += inv.deliveredQuantity;
+    }
+    const availableInventory = Math.max(0, totalCapacity - totalReservedStaff - totalDeliveredParticipants);
+
+    // Comunicaciones
+    let totalBatches = 0;
+    let completedBatches = 0;
+    let failedBatches = 0;
+    let pendingBatches = 0;
+
+    for (const b of emailBatchCounts) {
+      totalBatches += b._count.status;
+      if (b.status === 'COMPLETED' || b.status === 'SIMULATED') completedBatches += b._count.status;
+      else if (b.status === 'FAILED') failedBatches += b._count.status;
+      else pendingBatches += b._count.status;
+    }
+
     return {
       participants: {
         total,
@@ -748,6 +829,27 @@ export class EventsService {
         attended,
         notAttended,
         attendanceRate,
+      },
+      finances: {
+        confirmedRevenue,
+        pendingRevenue,
+        totalExpected,
+        currencySymbol: event.settings?.currencySymbol || 'RD$',
+      },
+      tickets: ticketBreakdown,
+      paymentBreakdown: paymentStatusMap,
+      inventory: {
+        totalCapacity,
+        available: availableInventory,
+        reservedStaff: totalReservedStaff,
+        deliveredStaff: totalDeliveredStaff,
+        deliveredParticipants: totalDeliveredParticipants,
+      },
+      communications: {
+        totalBatches,
+        completedBatches,
+        failedBatches,
+        pendingBatches,
       },
       tshirts: {
         total: total - withoutSize,

@@ -1263,33 +1263,14 @@ export class CommunicationsService {
   /**
    * Reintentar envíos fallidos de un lote persistente (Fase 4 / QA-31)
    */
+  /**
+   * QA-33: El endpoint genérico retryBatchJob solo reintenta fallos confirmados (status: 'FAILED').
+   * Bajo NINGUNA circunstancia autoriza o reintenta envíos con estado incierto (UNKNOWN_DELIVERY_STATUS).
+   * Los envíos ambiguos requieren obligatoriamente el endpoint específico retryUncertainBatchJob con
+   * confirmación explícita de riesgo, motivo justificado y registro transaccional en auditoría.
+   */
   static async retryBatchJob(jobId: string, eventId?: string) {
-    const job = await prisma.emailBatchJob.findUnique({ where: { id: jobId } });
-    if (!job) throw new NotFoundError('Lote no encontrado');
-    if (eventId && job.eventId !== eventId) {
-      throw new NotFoundError('Lote no encontrado en esta edición');
-    }
-
-    const failedCount = await prisma.emailBatchItem.count({
-      where: { jobId, status: 'FAILED' },
-    });
-
-    if (failedCount > 0) {
-      return this.retryFailedBatchJob(jobId, eventId);
-    }
-
-    const uncertainCount = await prisma.emailBatchItem.count({
-      where: { jobId, status: 'UNKNOWN_DELIVERY_STATUS' },
-    });
-
-    if (uncertainCount > 0) {
-      return EmailQueueWorker.retryUncertain(jobId, eventId, {
-        confirmedDuplicateRisk: true,
-        reason: 'Reintento autorizado mediante retryBatchJob',
-      });
-    }
-
-    return job;
+    return this.retryFailedBatchJob(jobId, eventId);
   }
 
   /**

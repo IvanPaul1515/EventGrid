@@ -267,13 +267,14 @@ export class EmailQueueWorker {
         while (hasMore) {
           // QA-29: Reclamación atómica de destinatarios verificando de forma consistente el estado del lote
           const claimedItems = await prisma.$transaction(async (tx) => {
+            // QA-35: Coordinación consistente y atómica entre trabajadores y cancelaciones
             const parentJob = await tx.emailBatchJob.findUnique({
               where: { id: jobId },
               select: { status: true },
             });
 
             if (!parentJob || parentJob.status === 'CANCELLED' || parentJob.status === 'CANCELLATION_REQUESTED') {
-              // Cancelar de inmediato cualquier ítem que aún esté PENDING
+              // Cancelar de inmediato cualquier ítem remanente y abortar reclamo
               await tx.emailBatchItem.updateMany({
                 where: { jobId, status: 'PENDING' },
                 data: { status: 'CANCELLED' },
@@ -281,13 +282,14 @@ export class EmailQueueWorker {
               return [];
             }
 
+            const now = new Date();
             const candidates = await tx.emailBatchItem.findMany({
               where: {
                 jobId,
                 status: 'PENDING',
                 OR: [
                   { leaseUntil: null },
-                  { leaseUntil: { lte: new Date() } },
+                  { leaseUntil: { lte: now } },
                 ],
               },
               take: CHUNK_SIZE,
@@ -298,20 +300,32 @@ export class EmailQueueWorker {
               return [];
             }
 
-            const leaseUntil = new Date(Date.now() + LEASE_DURATION_MS);
+            const leaseUntil = new Date(now.getTime() + LEASE_DURATION_MS);
             const candidateIds = candidates.map((c) => c.id);
 
+            // Reclamación atómica condicionada sobre el estado PENDING
             await tx.emailBatchItem.updateMany({
-              where: { id: { in: candidateIds }, status: 'PENDING' },
+              where: {
+                id: { in: candidateIds },
+                status: 'PENDING',
+              },
               data: {
                 status: 'PROCESSING',
                 leaseUntil,
-                lastAttemptAt: new Date(),
+                lastAttemptAt: now,
                 attempts: { increment: 1 },
               },
             });
 
-            return candidates;
+            // Seleccionar exclusivamente las filas actualizadas bajo este lease activo
+            const actuallyClaimed = await tx.emailBatchItem.findMany({
+              where: {
+                id: { in: candidateIds },
+                status: 'PROCESSING',
+              },
+            });
+
+            return actuallyClaimed;
           });
 
           if (claimedItems.length === 0) {
@@ -440,17 +454,21 @@ export class EmailQueueWorker {
                     html: rendered.html,
                   });
 
-                  // QA-27: Registrar ACCEPTED_BY_SMTP SOLAMENTE tras aceptación verificable de SMTP
-                  const isAccepted = Boolean(
-                    sendResult &&
-                    (
-                      (Array.isArray(sendResult.accepted) && sendResult.accepted.length > 0) ||
-                      (typeof sendResult.response === 'string' && sendResult.response.startsWith('250')) ||
-                      sendResult.messageId
-                    )
-                  );
+                  // QA-34: Validación verificable de aceptación SMTP (excluye messageId como prueba suficiente)
+                  const cleanRecipient = email.toLowerCase().trim();
+                  const acceptedList = Array.isArray(sendResult?.accepted)
+                    ? sendResult.accepted.map((e: any) => String(e).toLowerCase().trim())
+                    : [];
+                  const rejectedList = Array.isArray(sendResult?.rejected)
+                    ? sendResult.rejected.map((e: any) => String(e).toLowerCase().trim())
+                    : [];
 
-                  if (isAccepted) {
+                  const hasExplicitAccepted = acceptedList.includes(cleanRecipient);
+                  const has250Response = typeof sendResult?.response === 'string' && sendResult.response.trim().startsWith('250');
+                  const isExplicitRejected = rejectedList.includes(cleanRecipient);
+
+                  if (hasExplicitAccepted || has250Response) {
+                    // Aceptado efectivamente por SMTP
                     await prisma.emailBatchItem.update({
                       where: { id: item.id },
                       data: {
@@ -473,8 +491,56 @@ export class EmailQueueWorker {
                         sentByUserId: job.createdById || null,
                       },
                     }).catch(() => {});
+                  } else if (isExplicitRejected) {
+                    // Rechazado explícitamente por el servidor SMTP
+                    await prisma.emailBatchItem.update({
+                      where: { id: item.id },
+                      data: {
+                        status: 'FAILED',
+                        leaseUntil: null,
+                        errorMessage: `Destinatario rechazado por SMTP: ${JSON.stringify(sendResult?.rejected)}`,
+                      },
+                    });
+
+                    await prisma.emailLog.create({
+                      data: {
+                        eventId: job.eventId,
+                        registrationId: item.registrationId || null,
+                        recipientEmail: email,
+                        recipientName: item.recipientName || email,
+                        templateCode: job.templateCode || 'CUSTOM',
+                        subject: rendered.subject,
+                        status: 'FAILED',
+                        errorMessage: `Rechazo SMTP confirmado: ${JSON.stringify(sendResult?.rejected)}`,
+                        batchId: job.id,
+                        sentByUserId: job.createdById || null,
+                      },
+                    }).catch(() => {});
                   } else {
-                    throw new Error(`SMTP no confirmó aceptación para ${email}: ${JSON.stringify(sendResult?.rejected || sendResult)}`);
+                    // Resultado INCIERTO: No hay aceptación 250 ni confirmación en accepted
+                    await prisma.emailBatchItem.update({
+                      where: { id: item.id },
+                      data: {
+                        status: 'UNKNOWN_DELIVERY_STATUS',
+                        leaseUntil: null,
+                        errorMessage: `Resultado incierto: Sin confirmación 250 ni aceptación en transporte (Respuesta: ${JSON.stringify(sendResult?.response || sendResult)})`,
+                      },
+                    });
+
+                    await prisma.emailLog.create({
+                      data: {
+                        eventId: job.eventId,
+                        registrationId: item.registrationId || null,
+                        recipientEmail: email,
+                        recipientName: item.recipientName || email,
+                        templateCode: job.templateCode || 'CUSTOM',
+                        subject: rendered.subject,
+                        status: 'FAILED',
+                        errorMessage: 'Resultado incierto: Ausencia de confirmación SMTP verificable',
+                        batchId: job.id,
+                        sentByUserId: job.createdById || null,
+                      },
+                    }).catch(() => {});
                   }
                 }
               } catch (err: any) {
@@ -829,18 +895,23 @@ export class EmailQueueWorker {
       );
     }
 
-    const resetCount = await prisma.emailBatchItem.updateMany({
-      where: { jobId, status: 'UNKNOWN_DELIVERY_STATUS' },
-      data: {
-        status: 'PENDING',
-        attempts: 0,
-        errorMessage: null,
-        leaseUntil: null,
-      },
-    });
+    // QA-37: Reintento transaccional obligatorio con registro estricto en auditoría
+    const result = await prisma.$transaction(async (tx) => {
+      const resetCount = await tx.emailBatchItem.updateMany({
+        where: { jobId, status: 'UNKNOWN_DELIVERY_STATUS' },
+        data: {
+          status: 'PENDING',
+          attempts: 0,
+          errorMessage: null,
+          leaseUntil: null,
+        },
+      });
 
-    if (resetCount.count > 0) {
-      await prisma.emailBatchJob.update({
+      if (resetCount.count === 0) {
+        return { count: 0 };
+      }
+
+      await tx.emailBatchJob.update({
         where: { id: jobId },
         data: {
           status: 'PENDING',
@@ -848,21 +919,29 @@ export class EmailQueueWorker {
         },
       });
 
-      // Registrar auditoría de autorización explícita
-      await prisma.auditLog.create({
+      // Auditoría sin .catch: si la auditoría falla, se anula el reenvío completo
+      await tx.auditLog.create({
         data: {
           userId: confirmation.userId || null,
           action: 'RETRY_UNCERTAIN_BATCH',
           entity: 'EmailBatchJob',
           entityId: jobId,
           changes: JSON.stringify({
-            reason: confirmation.reason.trim(),
-            uncertainCount: resetCount.count,
-            confirmedAt: new Date().toISOString(),
+            adminUserId: confirmation.userId || null,
+            eventId: job.eventId,
+            batchId: jobId,
+            recipientCount: resetCount.count,
+            reason: (confirmation.reason || '').trim(),
+            confirmedRisk: true,
+            authorizedAt: new Date().toISOString(),
           }),
         },
-      }).catch(() => {});
+      });
 
+      return { count: resetCount.count };
+    });
+
+    if (result.count > 0) {
       setImmediate(() => {
         this.processBatch(jobId).catch(() => {});
       });

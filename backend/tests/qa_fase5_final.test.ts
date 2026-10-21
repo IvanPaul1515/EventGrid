@@ -366,8 +366,20 @@ describe('EventGrid Fase 5: QA-20 a QA-26 — Estabilización Final y Resilienci
       // El ítem sin intentos puede volver con seguridad a PENDING
       expect(refreshed2!.status).toBe('PENDING');
 
-      // Probar reintento manual explícito por el administrador (retryFailed)
-      const retried = await CommunicationsService.retryBatchJob(staleJob.id, testEvent.id);
+      // QA-33: El reintento estándar retryBatchJob NO debe resetear ítems inciertos
+      await CommunicationsService.retryBatchJob(staleJob.id, testEvent.id);
+      const recheckedUnchanged = await prisma.emailBatchItem.findUnique({
+        where: { id: itemWithAttempt.id },
+      });
+      expect(recheckedUnchanged!.status).toBe('UNKNOWN_DELIVERY_STATUS');
+
+      // Reintento explícito autorizado para envíos inciertos (QA-31 / QA-33)
+      const retried = await CommunicationsService.retryUncertainBatchJob(
+        staleJob.id,
+        testEvent.id,
+        { confirmedDuplicateRisk: true, reason: 'Confirmación explícita de riesgo en recuperación de huérfano' },
+        adminUser.id
+      );
       expect(retried.status).toBe('PENDING');
 
       const rechecked1 = await prisma.emailBatchItem.findUnique({

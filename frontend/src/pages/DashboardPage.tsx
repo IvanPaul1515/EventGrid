@@ -53,11 +53,39 @@ interface EventStats {
     notAttended: number;
     attendanceRate: number;
   };
+  finances?: {
+    confirmedRevenue: number;
+    pendingRevenue: number;
+    totalExpected: number;
+    currencySymbol: string;
+  };
+  tickets?: Array<{ name: string; count: number; revenue: number }>;
+  paymentBreakdown?: {
+    PAID: number;
+    PENDING: number;
+    PARTIAL: number;
+    COURTESY: number;
+  };
+  inventory?: {
+    totalCapacity: number;
+    available: number;
+    reservedStaff: number;
+    deliveredStaff: number;
+    deliveredParticipants: number;
+  };
+  communications?: {
+    totalBatches: number;
+    completedBatches: number;
+    failedBatches: number;
+    pendingBatches: number;
+  };
   tshirts: {
     total: number;
+    totalDelivered?: number;
+    totalPendingDelivery?: number;
     mostPopular: string | null;
     withoutSize: number;
-    breakdown: Array<{ size: string; count: number }>;
+    breakdown: Array<{ size: string; count: number; delivered?: number; pending?: number }>;
   };
   institutions: {
     total: number;
@@ -309,6 +337,76 @@ export const DashboardPage: React.FC = () => {
             <span>Talla más solicitada:</span>
             <span className="font-mono text-xs text-primary font-bold">{stats?.tshirts.mostPopular || 'N/A'}</span>
           </p>
+        </div>
+      </div>
+
+      {/* Fila 2 de KPIs Operativos: Inventario Físico, Staff y Comunicaciones */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* KPI 5: Stock Disponible vs Capacidad */}
+        <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
+              Inventario T-Shirts
+            </span>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-2xl font-black text-emerald-400 font-mono">
+                {stats?.inventory?.available ?? 0}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                disp. de {stats?.inventory?.totalCapacity ?? 0}
+              </span>
+            </div>
+            <span className="text-[10px] text-muted-foreground mt-1 block">
+              Participantes: {stats?.inventory?.deliveredParticipants ?? 0} entregadas
+            </span>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+            <Shirt className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* KPI 6: Camisetas Staff */}
+        <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
+              Camisetas del Staff
+            </span>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-2xl font-black text-indigo-400 font-mono">
+                {stats?.inventory?.deliveredStaff ?? 0}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                entregadas de {stats?.inventory?.reservedStaff ?? 0} res.
+              </span>
+            </div>
+            <span className="text-[10px] text-muted-foreground mt-1 block">
+              Pendientes entrega: {Math.max(0, (stats?.inventory?.reservedStaff ?? 0) - (stats?.inventory?.deliveredStaff ?? 0))}
+            </span>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+            <Users className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* KPI 7: Campañas de Comunicación */}
+        <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
+              Campañas de Correo
+            </span>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-2xl font-black text-foreground font-mono">
+                {stats?.communications?.totalBatches ?? 0}
+              </span>
+              <span className="text-xs text-muted-foreground">lotes registrados</span>
+            </div>
+            <span className="text-[10px] text-emerald-400 mt-1 block">
+              {stats?.communications?.completedBatches ?? 0} completados • {stats?.communications?.failedBatches ?? 0} con incidencias
+            </span>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+            <Activity className="w-5 h-5" />
+          </div>
         </div>
       </div>
 

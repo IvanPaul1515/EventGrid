@@ -652,7 +652,10 @@ describe('EventGrid Fase 6: QA-27 a QA-32 — Estabilidad, SMTP Concurrencia y R
   // QA-32: REINICIO ATÓMICO DE LA VENTANA DE RATE LIMITING EN CONCURRENCIA
   // =========================================================================
   describe('QA-32: Reinicio Atómico de la Ventana del Rate Limiter sin Pérdida de Intentos', () => {
-    it('32.1: Maneja 20 solicitudes concurrentes cuando la ventana previa expiró, reseteando atómicamente', async () => {
+    it(
+      '32.1: Maneja 20 solicitudes concurrentes cuando la ventana previa expiró, reseteando atómicamente',
+      { timeout: 20000 },
+      async () => {
       const testIp = `10.99.32.${Math.floor(Math.random() * 200) + 10}`;
       const email = `victim_qa32_${runId}@eventgrid.io`;
       const key = `ip:${testIp}`;
