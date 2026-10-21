@@ -40,12 +40,20 @@ export const attendanceService = {
     };
   },
 
-  async checkIn(registrationId: string, tshirtSize?: string | null): Promise<{
+  async checkIn(
+    registrationId: string,
+    tshirtSize?: string | null,
+    tshirtDelivered?: boolean
+  ): Promise<{
     message: string;
     registration: Registration;
     counters: AttendanceCounters;
   }> {
-    const res = await api.post('/attendance/check-in', { registrationId, ...(tshirtSize ? { tshirtSize } : {}) });
+    const res = await api.post('/attendance/check-in', {
+      registrationId,
+      ...(tshirtSize ? { tshirtSize } : {}),
+      ...(tshirtDelivered !== undefined ? { tshirtDelivered } : {}),
+    });
     return {
       message: res.data.message,
       registration: res.data.data,

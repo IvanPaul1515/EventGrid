@@ -390,4 +390,42 @@ export class ParticipantsController {
       next(error);
     }
   }
+
+  static async deliverTshirt(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { registrationId } = req.params;
+      const { size } = req.body;
+      const eventId = req.eventId!;
+      const userId = req.user!.id;
+
+      const updated = await ParticipantsService.deliverTshirt(eventId, registrationId, userId, size);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Camiseta entregada y descontada del inventario exitosamente.',
+        data: updated,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async returnTshirt(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { registrationId } = req.params;
+      const { reason } = req.body;
+      const eventId = req.eventId!;
+      const userId = req.user!.id;
+
+      const updated = await ParticipantsService.returnTshirt(eventId, registrationId, userId, reason);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Camiseta devuelta al inventario exitosamente.',
+        data: updated,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

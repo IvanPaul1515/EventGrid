@@ -20,6 +20,7 @@ import activityRoutes from './modules/activity/activity.routes.js';
 import demoRoutes from './modules/demo/demo.routes.js';
 import qrRoutes from './modules/qr/qr.routes.js';
 import communicationsRoutes from './modules/communications/communications.routes.js';
+import inventoryRoutes from './modules/inventory/inventory.routes.js';
 
 export const app = express();
 
@@ -78,6 +79,8 @@ app.use(`${ENV.API_PREFIX}/activity`, activityRoutes);
 app.use(`${ENV.API_PREFIX}/demo`, demoRoutes);
 app.use(`${ENV.API_PREFIX}/qr`, qrRoutes);
 app.use(`${ENV.API_PREFIX}/communications`, communicationsRoutes);
+app.use(`${ENV.API_PREFIX}/events/:eventId/inventory`, inventoryRoutes);
+app.use(`${ENV.API_PREFIX}/inventory`, inventoryRoutes);
 
 // Manejo central de errores
 app.use(errorHandler);

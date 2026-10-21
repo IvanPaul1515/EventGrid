@@ -648,6 +648,7 @@ export class EventsService {
         attended: true,
         isCourtesy: true,
         tshirtSize: true,
+        tshirtDelivered: true,
         saleTimestamp: true,
         attendedAt: true,
         createdAt: true,
@@ -666,17 +667,36 @@ export class EventsService {
     const attendanceRate = total > 0 ? Math.round((attended / Math.max(1, total - cancelled)) * 100) : 0;
 
     // T-shirt breakdown
-    const tshirtMap: Record<string, number> = {};
+    const tshirtMap: Record<string, { total: number; delivered: number; pending: number }> = {};
     let withoutSize = 0;
+    let totalDelivered = 0;
+    let totalPendingDelivery = 0;
+
     for (const reg of registrations) {
       if (reg.tshirtSize) {
-        tshirtMap[reg.tshirtSize] = (tshirtMap[reg.tshirtSize] || 0) + 1;
+        if (!tshirtMap[reg.tshirtSize]) {
+          tshirtMap[reg.tshirtSize] = { total: 0, delivered: 0, pending: 0 };
+        }
+        tshirtMap[reg.tshirtSize].total += 1;
+        if (reg.tshirtDelivered) {
+          tshirtMap[reg.tshirtSize].delivered += 1;
+          totalDelivered += 1;
+        } else {
+          tshirtMap[reg.tshirtSize].pending += 1;
+          totalPendingDelivery += 1;
+        }
       } else {
         withoutSize++;
       }
     }
+
     const tshirtBreakdown = Object.entries(tshirtMap)
-      .map(([size, count]) => ({ size, count }))
+      .map(([size, counts]) => ({
+        size,
+        count: counts.total,
+        delivered: counts.delivered,
+        pending: counts.pending,
+      }))
       .sort((a, b) => b.count - a.count);
     const mostPopularSize = tshirtBreakdown[0]?.size || null;
 
@@ -731,6 +751,8 @@ export class EventsService {
       },
       tshirts: {
         total: total - withoutSize,
+        totalDelivered,
+        totalPendingDelivery,
         mostPopular: mostPopularSize,
         withoutSize,
         breakdown: tshirtBreakdown,

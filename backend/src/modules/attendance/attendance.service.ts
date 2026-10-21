@@ -120,7 +120,13 @@ export class AttendanceService {
   /**
    * Registrar asistencia física (Check-in)
    */
-  static async checkIn(eventId: string, registrationId: string, operatorUserId: string, tshirtSize?: string) {
+  static async checkIn(
+    eventId: string,
+    registrationId: string,
+    operatorUserId: string,
+    tshirtSize?: string,
+    tshirtDelivered?: boolean
+  ) {
     // Buscar la inscripción en la edición activa
     const registration = await prisma.registration.findFirst({
       where: {
@@ -189,10 +195,29 @@ export class AttendanceService {
       );
     }
 
+    // Validación de inventario si se marca entrega física
+    let inventoryItem: any = null;
+    const shouldDeliver = tshirtDelivered === true && Boolean(tshirtSize);
+
+    if (shouldDeliver && tshirtSize) {
+      inventoryItem = await prisma.tshirtInventory.findUnique({
+        where: { eventId_size: { eventId, size: tshirtSize } },
+      });
+
+      if (inventoryItem) {
+        const available = inventoryItem.initialQuantity - inventoryItem.deliveredQuantity;
+        if (available <= 0) {
+          throw new BadRequestError(
+            `TALLA AGOTADA: No quedan camisetas disponibles en talla "${tshirtSize}". Puede confirmar la asistencia dejando la entrega pendiente.`
+          );
+        }
+      }
+    }
+
     // Actualización atómica en la base de datos (Separación de estados: status permanece CONFIRMED/PENDING, attended = true)
     const newStatus = registration.status === 'PENDING' ? 'CONFIRMED' : registration.status;
 
-    const [updatedRegistration] = await prisma.$transaction([
+    const txOperations: any[] = [
       prisma.registration.update({
         where: { id: registrationId },
         data: {
@@ -206,6 +231,13 @@ export class AttendanceService {
             tshirtSizeUpdatedAt: now,
             tshirtSizeUpdatedByUserId: operatorUserId,
           } : {}),
+          ...(shouldDeliver ? {
+            tshirtDelivered: true,
+            tshirtDeliveredAt: now,
+            tshirtDeliveredByUserId: operatorUserId,
+          } : {
+            tshirtDelivered: false,
+          }),
         },
         include: {
           participant: true,
@@ -233,11 +265,25 @@ export class AttendanceService {
             participantName: registration.participant.fullName,
             ticket: registration.registrationNumber,
             tshirtSize: tshirtSize || null,
+            tshirtDelivered: shouldDeliver,
+            inventoryDeducted: shouldDeliver ? 1 : 0,
+            deliveryPending: Boolean(tshirtSize && !shouldDeliver),
             attendedAt: now.toISOString(),
           }) as any,
         },
       }),
-    ]);
+    ];
+
+    if (shouldDeliver && inventoryItem) {
+      txOperations.push(
+        prisma.tshirtInventory.update({
+          where: { id: inventoryItem.id },
+          data: { deliveredQuantity: { increment: 1 } },
+        })
+      );
+    }
+
+    const [updatedRegistration] = await prisma.$transaction(txOperations);
 
     const counters = await this.getCounters(eventId);
 
@@ -313,6 +359,8 @@ export class AttendanceService {
             reason: reason.trim(),
             participantName: registration.participant.fullName,
             ticket: registration.registrationNumber,
+            tshirtDeliveredRetained: Boolean((registration as any).tshirtDelivered),
+            tshirtSize: registration.tshirtSize,
             revertedAt: now.toISOString(),
             previousAttendedAt: registration.attendedAt?.toISOString() || null,
             previousAttendedBy: registration.attendedByUser?.fullName || null,

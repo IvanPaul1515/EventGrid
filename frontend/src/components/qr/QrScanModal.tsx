@@ -117,12 +117,12 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     }
   };
 
-  const handleConfirmCheckIn = async (size?: string | null) => {
+  const handleConfirmCheckIn = async (size?: string | null, tshirtDelivered?: boolean) => {
     if (!scanResult?.registration) return;
     const finalSize = size !== undefined ? size : selectedTshirtSize;
     try {
       setIsCheckingIn(true);
-      await attendanceService.checkIn(scanResult.registration.id, finalSize || undefined);
+      await attendanceService.checkIn(scanResult.registration.id, finalSize || undefined, tshirtDelivered);
       setCheckInSuccess(`¡Llegada confirmada con éxito para ${scanResult.registration.participant.fullName}!`);
       // Actualizar el estado del resultado a asistido
       setScanResult({
@@ -135,6 +135,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
           attended: true,
           attendedAt: new Date().toISOString(),
           tshirtSize: finalSize || undefined,
+          tshirtDelivered: tshirtDelivered ?? false,
         },
       });
       setShowConfirmModal(false);
@@ -409,14 +410,15 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
         <CheckInConfirmModal
           isOpen={showConfirmModal}
           onClose={() => setShowConfirmModal(false)}
-          onConfirm={async (size) => {
-            await handleConfirmCheckIn(size);
+          onConfirm={async (size, delivered) => {
+            await handleConfirmCheckIn(size, delivered);
           }}
           participantName={scanResult.registration.participant.fullName}
           registrationNumber={scanResult.registration.registrationNumber}
           ticketTypeName={scanResult.registration.ticketType?.name || 'General'}
           tshirtEnabled={tshirtEnabled}
           availableSizes={tshirtSizes}
+          eventId={currentEvent?.id}
           initialTshirtSize={selectedTshirtSize}
           isLoading={isCheckingIn}
         />

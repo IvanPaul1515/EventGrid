@@ -130,6 +130,7 @@ model Event {
   emailConfig            EmailConfig?
   emailTemplates         EmailTemplate[]
   emailLogs              EmailLog[]
+  tshirtInventories      TshirtInventory[]
 
   @@index([year])
   @@index([status])
@@ -218,6 +219,9 @@ model Registration {
   tshirtSize           String?            // Talla de camiseta registrada en check-in
   tshirtSizeUpdatedAt  DateTime?
   tshirtSizeUpdatedByUserId String?
+  tshirtDelivered      Boolean            @default(false)
+  tshirtDeliveredAt    DateTime?
+  tshirtDeliveredByUserId String?
   updatedByUserId      String?
   qrCode               String?            @unique
   qrGeneratedAt        DateTime?
@@ -476,4 +480,20 @@ model EmailLog {
   @@index([status])
   @@index([sentAt])
   @@map("email_logs")
+}
+
+model TshirtInventory {
+  id                String   @id @default(uuid())
+  eventId           String
+  size              String
+  initialQuantity   Int      @default(0)
+  deliveredQuantity Int      @default(0)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, size])
+  @@map("tshirt_inventories")
 }

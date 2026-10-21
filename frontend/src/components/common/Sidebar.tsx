@@ -17,6 +17,7 @@ import {
   Flame,
   Grid,
   Mail,
+  Shirt,
   X,
 } from 'lucide-react';
 
@@ -61,6 +62,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       to: '/sales',
       label: 'Ventas y Pagos',
       icon: BadgeDollarSign,
+      roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
+    },
+    {
+      to: '/inventory',
+      label: 'Inventario T-shirts',
+      icon: Shirt,
+      badge: 'Stock',
       roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
     },
     {

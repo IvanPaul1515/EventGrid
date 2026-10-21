@@ -162,6 +162,14 @@ export interface Registration {
   tshirtSize?: string;
   tshirtSizeUpdatedAt?: string;
   tshirtSizeUpdatedByUserId?: string;
+  tshirtDelivered?: boolean;
+  tshirtDeliveredAt?: string;
+  tshirtDeliveredByUserId?: string;
+  tshirtDeliveredByUser?: {
+    id: string;
+    fullName: string;
+    email: string;
+  };
   attendedByUser?: {
     id: string;
     fullName: string;

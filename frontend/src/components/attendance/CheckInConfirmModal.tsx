@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
-import { Shirt, CheckCircle2, UserCheck, AlertCircle, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Shirt, CheckCircle2, UserCheck, AlertTriangle, AlertCircle, X, Package, Check } from 'lucide-react';
 import { TshirtSizeSelector } from './TshirtSizeSelector';
+import { inventoryService, TshirtInventoryItem } from '../../services/inventory.service';
 
 interface CheckInConfirmModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (tshirtSize: string | null) => Promise<void>;
+  onConfirm: (tshirtSize: string | null, tshirtDelivered: boolean) => Promise<void>;
   participantName: string;
   registrationNumber: string;
   ticketTypeName: string;
   tshirtEnabled: boolean;
   availableSizes: string[];
+  eventId?: string;
   initialTshirtSize?: string | null;
   isLoading?: boolean;
 }
@@ -24,20 +26,67 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
   ticketTypeName,
   tshirtEnabled,
   availableSizes,
+  eventId,
   initialTshirtSize = null,
   isLoading = false,
 }) => {
   const [selectedSize, setSelectedSize] = useState<string | null>(initialTshirtSize);
+  const [deliverTshirt, setDeliverTshirt] = useState<boolean>(true);
+  const [inventoryItems, setInventoryItems] = useState<TshirtInventoryItem[]>([]);
+  const [loadingInventory, setLoadingInventory] = useState(false);
+
+  // Cargar existencias en tiempo real de la edición
+  useEffect(() => {
+    if (isOpen && tshirtEnabled) {
+      setLoadingInventory(true);
+      inventoryService
+        .getInventory(eventId)
+        .then((res) => {
+          setInventoryItems(res.items);
+        })
+        .catch((err) => {
+          console.error('Error al cargar existencias de inventario:', err);
+        })
+        .finally(() => {
+          setLoadingInventory(false);
+        });
+    }
+  }, [isOpen, tshirtEnabled, eventId]);
+
+  // Mapa de disponibilidad por talla
+  const stockMap: Record<string, number> = {};
+  for (const item of inventoryItems) {
+    stockMap[item.size] = item.availableQuantity;
+  }
+
+  const currentAvailable = selectedSize ? (stockMap[selectedSize] ?? 999) : 0;
+  const isSelectedOutOfStock = selectedSize ? currentAvailable <= 0 : false;
+
+  // Si la talla seleccionada está agotada, no permitir marcar entrega física
+  useEffect(() => {
+    if (isSelectedOutOfStock) {
+      setDeliverTshirt(false);
+    } else if (selectedSize && !isSelectedOutOfStock) {
+      setDeliverTshirt(true);
+    }
+  }, [selectedSize, isSelectedOutOfStock]);
 
   if (!isOpen) return null;
 
   const handleConfirm = async () => {
-    await onConfirm(selectedSize);
+    const finalDelivered = Boolean(selectedSize && !isSelectedOutOfStock && deliverTshirt);
+    await onConfirm(selectedSize, finalDelivered);
   };
+
+  // Si availableSizes está vacío o por defecto, usar las tallas de inventario si están disponibles
+  const sizesToDisplay =
+    inventoryItems.length > 0
+      ? inventoryItems.filter((i) => i.isActive).map((i) => i.size)
+      : availableSizes;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-md bg-card rounded-2xl border border-border shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+      <div className="relative w-full max-w-lg bg-card rounded-2xl border border-border shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
         {/* Cabecera */}
         <div className="flex items-center justify-between p-4 border-b border-border bg-muted/40">
           <div className="flex items-center gap-2">
@@ -46,7 +95,7 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-foreground text-sm">Confirmar Asistencia Física</h3>
-              <p className="text-[11px] text-muted-foreground font-mono">Control de Entrada (Check-in)</p>
+              <p className="text-[11px] text-muted-foreground font-mono">Control de Entrada & Entrega de T-shirt</p>
             </div>
           </div>
           <button
@@ -60,7 +109,7 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
         </div>
 
         {/* Contenido */}
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
           {/* Ficha Resumida del Participante */}
           <div className="p-3.5 rounded-xl bg-background border border-border space-y-1.5">
             <div className="flex items-center justify-between">
@@ -74,46 +123,143 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
             <h4 className="text-base font-bold text-foreground truncate">{participantName}</h4>
           </div>
 
-          {/* Selector de Talla de T-shirt (si está habilitado para la edición) */}
+          {/* Selector de Talla de T-shirt */}
           {tshirtEnabled ? (
             <div className="p-4 rounded-xl bg-background border border-border space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Shirt className="w-4 h-4 text-primary" />
                   <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-                    Talla de Camiseta (T-Shirt)
+                    Tamaño de T-Shirt
                   </span>
                 </div>
                 {selectedSize ? (
-                  <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-primary/20 text-primary border border-primary/30">
-                    Talla: {selectedSize}
+                  <span
+                    className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                      isSelectedOutOfStock
+                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                        : 'bg-primary/20 text-primary border border-primary/30'
+                    }`}
+                  >
+                    Talla: {selectedSize} ({isSelectedOutOfStock ? 'Agotada' : `${currentAvailable} disp.`})
                   </span>
                 ) : (
-                  <span className="text-[11px] text-amber-400 font-semibold">Pendiente / Sin talla</span>
+                  <span className="text-[11px] text-amber-400 font-semibold">Sin registrar / Pendiente</span>
                 )}
               </div>
+
               <p className="text-[11px] text-muted-foreground">
-                Seleccione la talla entregada en la recepción física o deje pendiente si se desconoce.
+                Seleccione el tamaño solicitado por el participante.
               </p>
-              <TshirtSizeSelector
-                sizes={availableSizes}
-                selectedSize={selectedSize}
-                onSelect={setSelectedSize}
-                disabled={isLoading}
-                showSkip={true}
-                label="Seleccione la talla:"
-              />
+
+              {/* Selector de Tallas con indicador de disponibilidad */}
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {sizesToDisplay.map((size) => {
+                    const avail = stockMap[size];
+                    const outOfStock = avail !== undefined && avail <= 0;
+                    const isSelected = selectedSize === size;
+
+                    return (
+                      <button
+                        key={size}
+                        type="button"
+                        disabled={isLoading}
+                        onClick={() => setSelectedSize(isSelected ? null : size)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                          isSelected
+                            ? outOfStock
+                              ? 'bg-rose-600 text-white border-rose-500 shadow-md'
+                              : 'bg-primary text-white border-primary shadow-md'
+                            : outOfStock
+                            ? 'bg-rose-500/10 text-rose-400/80 border-rose-500/20 hover:border-rose-500/40'
+                            : 'bg-card text-foreground border-border hover:border-primary/50 hover:bg-muted'
+                        }`}
+                      >
+                        <span>{size}</span>
+                        {avail !== undefined && (
+                          <span
+                            className={`text-[10px] px-1 py-0.2 rounded font-mono ${
+                              isSelected
+                                ? 'bg-black/30 text-white'
+                                : outOfStock
+                                ? 'bg-rose-500/20 text-rose-400'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {outOfStock ? '0' : avail}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() => setSelectedSize(null)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                      selectedSize === null
+                        ? 'bg-zinc-700 text-zinc-200 border-zinc-600'
+                        : 'bg-transparent text-muted-foreground border-border hover:border-zinc-600'
+                    }`}
+                  >
+                    Dejar pendiente
+                  </button>
+                </div>
+              </div>
+
+              {/* Alerta de Talla Agotada */}
+              {selectedSize && isSelectedOutOfStock && (
+                <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs flex items-start gap-2 animate-in fade-in">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Talla "{selectedSize}" agotada en inventario</span>
+                    <p className="text-[11px] text-rose-300 mt-0.5">
+                      No hay existencias para entregar en este momento. La asistencia se confirmará y la talla quedará guardada como <strong>pendiente de entrega</strong> sin descontar inventario.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Control de Entrega Física (Solo si hay talla y existencias) */}
+              {selectedSize && !isSelectedOutOfStock && (
+                <div className="p-3 rounded-xl bg-muted/40 border border-border space-y-2">
+                  <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={deliverTshirt}
+                      onChange={(e) => setDeliverTshirt(e.target.checked)}
+                      disabled={isLoading}
+                      className="mt-0.5 w-4 h-4 rounded text-primary focus:ring-primary border-border bg-background"
+                    />
+                    <div className="text-xs">
+                      <span className="font-bold text-foreground block">
+                        Entregar camiseta físicamente en este momento
+                      </span>
+                      <span className="text-[11px] text-muted-foreground block">
+                        {deliverTshirt
+                          ? `Descontará exactamente 1 unidad de la talla "${selectedSize}" del inventario oficial (${currentAvailable} disponibles).`
+                          : 'Solo registrará la talla elegida. La camiseta quedará PENDIENTE de entrega y NO se descontará del inventario.'}
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Al confirmar, se registrará la hora de llegada y el operador responsable de la entrada.
+              Al confirmar, se registrará la hora de llegada física y el operador responsable.
             </p>
           )}
 
           <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-400 flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
             <span>
-              La asistencia y la talla se guardarán simultáneamente en la inscripción oficial y en el historial de auditoría.
+              {deliverTshirt && selectedSize && !isSelectedOutOfStock
+                ? `Se confirmará la asistencia y se descontará 1 unidad de la talla "${selectedSize}" del inventario.`
+                : selectedSize
+                ? `Se confirmará la asistencia. La talla "${selectedSize}" quedará registrada como PENDIENTE de entrega.`
+                : 'Se confirmará la asistencia del participante.'}
             </span>
           </div>
         </div>

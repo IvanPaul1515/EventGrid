@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DetailedRegistration, participantsService } from '../../services/participants.service';
 import { attendanceService } from '../../services/attendance.service';
+import { inventoryService } from '../../services/inventory.service';
 import { useAuth } from '../../context/AuthContext';
 import { useEdition } from '../../context/EditionContext';
 import { api } from '../../services/api';
@@ -41,6 +42,7 @@ import {
   QrCode,
   Send,
   Shirt,
+  Package,
 } from 'lucide-react';
 
 interface ParticipantDetailDrawerProps {
@@ -82,6 +84,8 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   const [showReactivateModal, setShowReactivateModal] = useState(false);
   const [showRevertModal, setShowRevertModal] = useState(false);
   const [showCheckInConfirmModal, setShowCheckInConfirmModal] = useState(false);
+  const [showReturnTshirtModal, setShowReturnTshirtModal] = useState(false);
+  const [deliveringTshirt, setDeliveringTshirt] = useState(false);
   const [showAuditHistory, setShowAuditHistory] = useState(false);
   const [showPaymentsLedger, setShowPaymentsLedger] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
@@ -225,14 +229,14 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   };
 
   // Check-in directo desde la Ficha
-  const handleMarkAttendance = async (tshirtSize?: string | null) => {
+  const handleMarkAttendance = async (tshirtSize?: string | null, tshirtDelivered?: boolean) => {
     if (markingAttendance || registration.attended) return;
 
     setMarkingAttendance(true);
     setFeedbackMsg(null);
     setShowTshirtSelector(false);
     try {
-      const res = await attendanceService.checkIn(registration.id, tshirtSize || undefined);
+      const res = await attendanceService.checkIn(registration.id, tshirtSize || undefined, tshirtDelivered);
       const updatedDetailed: DetailedRegistration = {
         ...registration,
         ...res.registration,
@@ -247,6 +251,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
         },
         status: res.registration.status,
         tshirtSize: (res.registration as any).tshirtSize || tshirtSize || undefined,
+        tshirtDelivered: (res.registration as any).tshirtDelivered ?? tshirtDelivered ?? false,
       };
 
       if (onUpdated) onUpdated(updatedDetailed);
@@ -255,7 +260,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
 
       setFeedbackMsg({
         type: 'success',
-        text: `¡Asistencia confirmada para ${p.fullName}!`,
+        text: `¡Asistencia confirmada para ${p.fullName}!${tshirtDelivered ? ' Camiseta entregada y descontada de inventario.' : ''}`,
       });
     } catch (err: any) {
       setFeedbackMsg({
@@ -264,6 +269,61 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       });
     } finally {
       setMarkingAttendance(false);
+    }
+  };
+
+  // Entrega física posterior de camiseta
+  const handleDeliverTshirt = async (size?: string) => {
+    if (!registration || deliveringTshirt) return;
+    setDeliveringTshirt(true);
+    setFeedbackMsg(null);
+    try {
+      const updated = await inventoryService.deliverTshirt(registration.id, size);
+      const updatedDetailed: DetailedRegistration = {
+        ...registration,
+        ...updated,
+        tshirtDelivered: true,
+        tshirtDeliveredAt: new Date().toISOString(),
+      };
+      if (onUpdated) onUpdated(updatedDetailed);
+      window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
+      setFeedbackMsg({
+        type: 'success',
+        text: `Camiseta (${updated.tshirtSize || size}) entregada exitosamente y descontada del inventario.`,
+      });
+    } catch (err: any) {
+      setFeedbackMsg({
+        type: 'error',
+        text: err.response?.data?.message || 'Error al registrar entrega de camiseta',
+      });
+    } finally {
+      setDeliveringTshirt(false);
+    }
+  };
+
+  // Devolución explícita y auditada de camiseta al inventario (Admin)
+  const handleReturnTshirt = async (reason: string) => {
+    if (!registration) return;
+    try {
+      const updated = await inventoryService.returnTshirt(registration.id, reason);
+      const updatedDetailed: DetailedRegistration = {
+        ...registration,
+        ...updated,
+        tshirtDelivered: false,
+        tshirtDeliveredAt: undefined,
+      };
+      if (onUpdated) onUpdated(updatedDetailed);
+      window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
+      setShowReturnTshirtModal(false);
+      setFeedbackMsg({
+        type: 'success',
+        text: 'Camiseta devuelta al inventario exitosamente (1 unidad repuesta).',
+      });
+    } catch (err: any) {
+      setFeedbackMsg({
+        type: 'error',
+        text: err.response?.data?.message || 'Error al devolver camiseta al inventario',
+      });
     }
   };
 
@@ -668,26 +728,76 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                             </div>
                           </div>
                         ) : (
-                          <div className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-1.5">
-                              <Shirt className="w-3.5 h-3.5 text-muted-foreground" />
-                              <span className="text-muted-foreground">Camiseta:</span>
-                              {registration.tshirtSize ? (
-                                <span className="px-2 py-0.5 rounded font-bold bg-primary/20 text-primary border border-primary/30">
-                                  {registration.tshirtSize}
-                                </span>
-                              ) : (
-                                <span className="text-zinc-500 italic">Sin registrar</span>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-1.5">
+                                <Shirt className="w-3.5 h-3.5 text-muted-foreground" />
+                                <span className="text-muted-foreground">Camiseta:</span>
+                                {registration.tshirtSize ? (
+                                  <span className="px-2 py-0.5 rounded font-bold bg-primary/20 text-primary border border-primary/30">
+                                    {registration.tshirtSize}
+                                  </span>
+                                ) : (
+                                  <span className="text-zinc-500 italic">Sin registrar</span>
+                                )}
+                              </div>
+                              {isOperatorOrAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setEditingTshirt(true); setTshirtEditSize(registration.tshirtSize || null); }}
+                                  className="text-[11px] text-primary hover:underline cursor-pointer"
+                                >
+                                  {registration.tshirtSize ? 'Cambiar talla' : 'Registrar talla'}
+                                </button>
                               )}
                             </div>
-                            {isOperatorOrAdmin && (
-                              <button
-                                type="button"
-                                onClick={() => { setEditingTshirt(true); setTshirtEditSize(registration.tshirtSize || null); }}
-                                className="text-[11px] text-primary hover:underline cursor-pointer"
-                              >
-                                {registration.tshirtSize ? 'Cambiar' : 'Registrar talla'}
-                              </button>
+
+                            {/* Estado de Entrega Física */}
+                            <div className="flex items-center justify-between text-xs p-2 rounded-lg bg-background border border-border">
+                              <div className="flex items-center gap-1.5">
+                                <Package className="w-3.5 h-3.5 text-zinc-400" />
+                                <span className="text-muted-foreground text-[11px]">Entrega física:</span>
+                                {registration.tshirtDelivered ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                    <Check className="w-3 h-3" /> Entregada
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                    <Clock className="w-3 h-3" /> Pendiente
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {!registration.tshirtDelivered && registration.tshirtSize && isOperatorOrAdmin && (
+                                  <button
+                                    type="button"
+                                    disabled={deliveringTshirt}
+                                    onClick={() => handleDeliverTshirt(registration.tshirtSize || undefined)}
+                                    className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                                  >
+                                    <Package className="w-3 h-3" />
+                                    <span>{deliveringTshirt ? 'Entregando...' : 'Entregar ahora'}</span>
+                                  </button>
+                                )}
+
+                                {registration.tshirtDelivered && isAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowReturnTshirtModal(true)}
+                                    className="text-[10px] text-rose-400 hover:underline font-semibold cursor-pointer"
+                                    title="Devolver camiseta física al inventario oficial"
+                                  >
+                                    Devolver (Admin)
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {registration.tshirtDelivered && registration.tshirtDeliveredAt && (
+                              <p className="text-[10px] text-muted-foreground italic px-1">
+                                Entregada el {new Date(registration.tshirtDeliveredAt).toLocaleString('es-DO')}
+                              </p>
                             )}
                           </div>
                         )}
@@ -1552,8 +1662,8 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       <CheckInConfirmModal
         isOpen={showCheckInConfirmModal}
         onClose={() => setShowCheckInConfirmModal(false)}
-        onConfirm={async (tshirtSize) => {
-          await handleMarkAttendance(tshirtSize);
+        onConfirm={async (tshirtSize, tshirtDelivered) => {
+          await handleMarkAttendance(tshirtSize, tshirtDelivered);
           setShowCheckInConfirmModal(false);
         }}
         participantName={p.fullName}
@@ -1561,8 +1671,19 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
         ticketTypeName={registration.ticketType?.name || 'General'}
         tshirtEnabled={tshirtEnabled}
         availableSizes={tshirtSizes}
+        eventId={currentEvent?.id}
         initialTshirtSize={registration.tshirtSize || null}
         isLoading={markingAttendance}
+      />
+
+      <ReasonModal
+        isOpen={showReturnTshirtModal}
+        title="Devolver Camiseta al Inventario Oficial"
+        description={`Se registrará la devolución formal de la camiseta (${registration.tshirtSize || 'Sin talla'}) entregada a ${p.fullName} (${registration.registrationNumber}) y se repondrá exactamente 1 unidad al inventario disponible de la edición.`}
+        confirmLabel="Confirmar Reposición al Inventario"
+        isDestructive={false}
+        onClose={() => setShowReturnTshirtModal(false)}
+        onConfirm={handleReturnTshirt}
       />
     </>
   );

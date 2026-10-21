@@ -31,5 +31,7 @@ router.post('/', requireOperatorOrAdmin, ParticipantsController.create);
 router.put('/:id', requireOperatorOrAdmin, ParticipantsController.update);
 router.delete('/:id', requireOperatorOrAdmin, ParticipantsController.delete);
 router.put('/:registrationId/tshirt-size', requirePermission('CHECKIN'), ParticipantsController.updateTshirtSize);
+router.post('/:registrationId/deliver-tshirt', requirePermission('CHECKIN'), ParticipantsController.deliverTshirt);
+router.post('/:registrationId/return-tshirt', requirePermission('CHECKIN'), ParticipantsController.returnTshirt);
 
 export default router;

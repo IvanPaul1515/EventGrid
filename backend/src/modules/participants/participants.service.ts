@@ -1465,25 +1465,235 @@ export class ParticipantsService {
       throw new NotFoundError('Inscripción no encontrada en esta edición');
     }
 
+    const oldSize = registration.tshirtSize;
+    const isDelivered = registration.tshirtDelivered;
+
+    // Si ya fue entregada y cambia de talla, ajustar inventario
+    let oldInv: any = null;
+    let newInv: any = null;
+
+    if (isDelivered && tshirtSize !== oldSize) {
+      if (tshirtSize) {
+        newInv = await prisma.tshirtInventory.findUnique({
+          where: { eventId_size: { eventId, size: tshirtSize } },
+        });
+        if (newInv && newInv.initialQuantity - newInv.deliveredQuantity <= 0) {
+          throw new BadRequestError(`TALLA AGOTADA: No quedan unidades disponibles de la talla "${tshirtSize}".`);
+        }
+      }
+      if (oldSize) {
+        oldInv = await prisma.tshirtInventory.findUnique({
+          where: { eventId_size: { eventId, size: oldSize } },
+        });
+      }
+    }
+
     const now = new Date();
-    const updated = await prisma.registration.update({
-      where: { id: registrationId },
-      data: {
-        tshirtSize: tshirtSize || null,
-        tshirtSizeUpdatedAt: now,
-        tshirtSizeUpdatedByUserId: userId,
-        updatedByUserId: userId,
-      },
-      include: {
-        participant: true,
-        ticketType: true,
-        paymentMethod: true,
-      },
-    });
+    const txOps: any[] = [
+      prisma.registration.update({
+        where: { id: registrationId },
+        data: {
+          tshirtSize: tshirtSize || null,
+          tshirtSizeUpdatedAt: now,
+          tshirtSizeUpdatedByUserId: userId,
+          updatedByUserId: userId,
+        },
+        include: {
+          participant: true,
+          ticketType: true,
+          paymentMethod: true,
+        },
+      }),
+    ];
+
+    if (isDelivered && tshirtSize !== oldSize) {
+      if (oldInv && oldInv.deliveredQuantity > 0) {
+        txOps.push(
+          prisma.tshirtInventory.update({
+            where: { id: oldInv.id },
+            data: { deliveredQuantity: { decrement: 1 } },
+          })
+        );
+      }
+      if (newInv) {
+        txOps.push(
+          prisma.tshirtInventory.update({
+            where: { id: newInv.id },
+            data: { deliveredQuantity: { increment: 1 } },
+          })
+        );
+      }
+    }
+
+    const [updated] = await prisma.$transaction(txOps);
 
     return {
       ...updated,
-      previousTshirtSize: registration.tshirtSize || null,
+      previousTshirtSize: oldSize || null,
     };
+  }
+
+  /**
+   * Entrega física explícita de camiseta
+   */
+  static async deliverTshirt(eventId: string, registrationId: string, userId: string, size?: string) {
+    const registration = await prisma.registration.findFirst({
+      where: { id: registrationId, eventId },
+      include: { participant: true },
+    });
+
+    if (!registration) {
+      throw new NotFoundError('Inscripción no encontrada');
+    }
+
+    if (registration.tshirtDelivered) {
+      throw new BadRequestError('La camiseta ya fue entregada previamente a este participante.');
+    }
+
+    const targetSize = size || registration.tshirtSize;
+    if (!targetSize) {
+      throw new BadRequestError('Debe seleccionar una talla de T-shirt para realizar la entrega.');
+    }
+
+    const inventoryItem = await prisma.tshirtInventory.findUnique({
+      where: { eventId_size: { eventId, size: targetSize } },
+    });
+
+    if (inventoryItem) {
+      const available = inventoryItem.initialQuantity - inventoryItem.deliveredQuantity;
+      if (available <= 0) {
+        throw new BadRequestError(`TALLA AGOTADA: No quedan unidades disponibles de la talla "${targetSize}".`);
+      }
+    }
+
+    const now = new Date();
+    const txOps: any[] = [
+      prisma.registration.update({
+        where: { id: registrationId },
+        data: {
+          tshirtSize: targetSize,
+          tshirtSizeUpdatedAt: now,
+          tshirtSizeUpdatedByUserId: userId,
+          tshirtDelivered: true,
+          tshirtDeliveredAt: now,
+          tshirtDeliveredByUserId: userId,
+          updatedByUserId: userId,
+        },
+        include: {
+          participant: true,
+          ticketType: true,
+          paymentMethod: true,
+        },
+      }),
+      prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'TSHIRT_DELIVERY',
+          entity: 'REGISTRATION',
+          entityId: registrationId,
+          changes: JSON.stringify({
+            action: 'DELIVER_TSHIRT',
+            result: 'SUCCESS',
+            participantName: registration.participant.fullName,
+            ticket: registration.registrationNumber,
+            size: targetSize,
+            delivered: true,
+            inventoryDeducted: 1,
+            deliveredAt: now.toISOString(),
+          }),
+        },
+      }),
+    ];
+
+    if (inventoryItem) {
+      txOps.push(
+        prisma.tshirtInventory.update({
+          where: { id: inventoryItem.id },
+          data: { deliveredQuantity: { increment: 1 } },
+        })
+      );
+    }
+
+    const [updated] = await prisma.$transaction(txOps);
+    return updated;
+  }
+
+  /**
+   * Devolución explícita y auditada de camiseta al inventario
+   */
+  static async returnTshirt(eventId: string, registrationId: string, userId: string, reason: string) {
+    if (!reason || !reason.trim()) {
+      throw new BadRequestError('Debe especificar un motivo justificado para la devolución de la camiseta.');
+    }
+
+    const registration = await prisma.registration.findFirst({
+      where: { id: registrationId, eventId },
+      include: { participant: true },
+    });
+
+    if (!registration) {
+      throw new NotFoundError('Inscripción no encontrada');
+    }
+
+    if (!registration.tshirtDelivered) {
+      throw new BadRequestError('El participante no tiene una camiseta registrada como entregada.');
+    }
+
+    const size = registration.tshirtSize;
+    let inventoryItem: any = null;
+    if (size) {
+      inventoryItem = await prisma.tshirtInventory.findUnique({
+        where: { eventId_size: { eventId, size } },
+      });
+    }
+
+    const now = new Date();
+    const txOps: any[] = [
+      prisma.registration.update({
+        where: { id: registrationId },
+        data: {
+          tshirtDelivered: false,
+          tshirtDeliveredAt: null,
+          tshirtDeliveredByUserId: null,
+          updatedByUserId: userId,
+        },
+        include: {
+          participant: true,
+          ticketType: true,
+          paymentMethod: true,
+        },
+      }),
+      prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'TSHIRT_RETURN',
+          entity: 'REGISTRATION',
+          entityId: registrationId,
+          changes: JSON.stringify({
+            action: 'RETURN_TSHIRT',
+            result: 'SUCCESS',
+            participantName: registration.participant.fullName,
+            ticket: registration.registrationNumber,
+            size,
+            reason: reason.trim(),
+            returned: true,
+            inventoryRestored: 1,
+            returnedAt: now.toISOString(),
+          }),
+        },
+      }),
+    ];
+
+    if (inventoryItem && inventoryItem.deliveredQuantity > 0) {
+      txOps.push(
+        prisma.tshirtInventory.update({
+          where: { id: inventoryItem.id },
+          data: { deliveredQuantity: { decrement: 1 } },
+        })
+      );
+    }
+
+    const [updated] = await prisma.$transaction(txOps);
+    return updated;
   }
 }
