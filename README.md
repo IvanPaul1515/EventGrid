@@ -1,11 +1,11 @@
 # EventGrid — Plataforma de Gestión de Eventos y Participantes
 
-**EventGrid** es una plataforma de software independiente, multifuncional y adaptable diseñada para la gestión integral de eventos de diferentes tipos, formatos y tamaños: conferencias académicas, desconferencias tecnológicas, congresos empresariales, festivales y talleres prácticos.
+**EventGrid** es una plataforma de software independiente, multifuncional y adaptable diseñada para la gestión integral de eventos de diferentes tipos, formatos y dimensiones: conferencias tecnológicas, congresos empresariales, cumbres profesionales, simposios académicos, talleres y festivales.
 
-La plataforma centraliza en un único entorno modular y seguro la administración de participantes, inscripciones, taquilla y ventas presenciales, conciliación de pagos, importación masiva de datos, control de asistencia en tiempo real (Check-in), auditoría de operaciones y gestión multievento.
+La plataforma centraliza en un único entorno modular y seguro la administración de participantes, inscripciones, taquilla y ventas presenciales, inventario de artículos conmemorativos (T-shirts), conciliación de pagos, importación masiva de datos, control de asistencia en tiempo real (Check-in), auditoría completa de operaciones y gestión multievento.
 
 > [!NOTE]
-> **EventGrid** es un software neutral e independiente. Puede alojar simultáneamente múltiples ediciones y eventos independientes (como **BarCamp RD**, cumbres técnicas o simposios institucionales), manteniendo para cada uno su propia identidad visual, catálogos, tarifas, participantes y libros contables de forma estrictamente aislada.
+> **EventGrid** es un software neutral e independiente. Puede alojar simultáneamente múltiples ediciones y eventos independientes, manteniendo para cada uno su propia identidad visual, catálogos de entradas, tarifas, participantes, existencias de inventario y libros contables de forma estrictamente aislada.
 
 ---
 
@@ -13,50 +13,56 @@ La plataforma centraliza en un único entorno modular y seguro la administració
 
 ### 1. Control de Asistencia y Recepción en Vivo (Check-in)
 * **Flujo Seguro en Dos Pasos**: Búsqueda universal por nombre, documento, correo, teléfono o código de ticket. La selección abre la **Ficha Oficial 360°** del participante, eliminando marcajes accidentales desde listas o mediante teclas rápidas.
+* **Confirmación con Selector de Tallas**: Al pulsar «Marcar asistencia», la plataforma solicita la confirmación de la talla de camiseta requerida y permite indicar si fue entregada físicamente en ese instante o si queda pendiente.
 * **Ficha Oficial 360°**: Visualización integral organizada en:
   1. *Identidad*: Nombres, apellidos, documento de identidad, empresa/institución y vías de contacto.
   2. *Inscripción*: Edición activa, tipo de entrada asignada, fecha de registro y notas.
   3. *Finanzas*: Tarifa oficial, monto pagado, balance pendiente y libro de pagos.
-  4. *Control de Acceso*: Marcaje físico de llegada con registro de fecha, hora exacta y operador responsable.
-* **Edición Directa en Ficha**: Capacidad de actualizar datos de contacto directamente en la ficha lateral con botones de navegación rápida (`Anterior` / `Siguiente`) entre asistentes.
+  4. *Artículos / T-shirt*: Talla registrada, estado de entrega física y trazabilidad de cambios.
+  5. *Control de Acceso*: Marcaje físico de llegada con registro de fecha, hora exacta y operador responsable.
 * **Separación Estricta de Estados**: Tres dimensiones independientes por registro:
   - **Estado de Inscripción**: `CONFIRMED`, `PENDING`, `CANCELLED`.
   - **Estado de Pago**: `PAID`, `PARTIAL`, `PENDING`, `COURTESY`.
   - **Estado de Asistencia**: `attended: boolean` con fecha y auditoría.
-* **Reversión Administrativa**: Reversión controlada de asistencia exclusiva para administradores con justificación obligatoria en la bitácora de seguridad.
-* **Mesa de Recepción**: Widget en vivo de ventas del día y monitoreo de conectividad con el servidor (*En línea / Sin conexión*).
+* **Prevención de Duplicados y Reversión**: Detección de intentos de reingreso y reversión controlada de asistencia exclusiva para administradores con justificación obligatoria en la bitácora de seguridad.
 
-### 2. Directorio de Participantes y Gestión Multievento
+### 2. Inventario de Camisetas y Control de Entrega
+* **Gestión por Tallas y Edición**: Inventario independiente por evento para el seguimiento de cantidades iniciales, entregadas y disponibles.
+* **Validación de Existencias en Tiempo Real**: Notificación inmediata si una talla seleccionada se encuentra agotada, impidiendo entregas físicas sin existencias disponibles pero permitiendo registrar la asistencia.
+* **Descuento Atómico**: El inventario solo se descuenta cuando se confirma la entrega física efectiva. Si únicamente se anota la talla, las existencias permanecen intactas.
+* **Módulo Administrativo**: Panel dedicado para agregar nuevas tallas, modificar cantidades, desactivar opciones y consultar estadísticas de rotación.
+
+### 3. Directorio de Participantes y Gestión Multievento
 * **Aislamiento Multiedición**: Cada evento o edición conserva su base de datos de inscripciones de forma independiente, posibilitando el análisis del historial multianual de asistencia por persona.
-* **Tabla Administrativa Avanzada**: Búsqueda global, filtros combinados por estado de inscripción, estado de pago o cortesías, ordenación multicriterio, paginación en servidor y personalización de columnas visibles.
+* **Tabla Administrativa Avanzada**: Búsqueda global instantánea, filtros combinados por estado de inscripción, estado de pago o cortesías, ordenación multicriterio, paginación en servidor y diseño 100% responsivo adaptable a cualquier pantalla.
 * **Exportación de Reportes**: Generación de reportes tabulares en formato Microsoft Excel (`.xlsx`) y CSV con formato profesional y encabezados tipados.
 
-### 3. Taquilla y Ventas Presenciales (Punto de Venta)
-* **Venta en Puerta**: Emisión de tickets correlativos con prefijo personalizable por evento (ej. `BC26-0001`, `CONF-0042`).
+### 4. Taquilla y Ventas Presenciales (Punto de Venta)
+* **Venta en Puerta**: Emisión de tickets correlativos con prefijo personalizable por evento (ej. `EVT-0001`, `CONF-0042`).
 * **Tarifas y Congelación de Precios**: Tipos de entrada con captura de precios históricos en el momento de la venta, garantizando que cambios posteriores de tarifas no alteren ventas previas.
 * **Cálculo Financiero Dinámico**: Cálculo instantáneo de tarifa, monto recibido, cambio a devolver y balance pendiente.
 * **Gestión de Abonos**: Registro progresivo de pagos parciales hasta liquidar la totalidad de la entrada.
 
-### 4. Políticas de Cortesías y Cancelaciones
-* **Cortesías Oficiales**: Entradas exentas de pago (RD$ 0.00), excluidas de la recaudación neta del evento, con registro mandatorio del autorizador y motivo de otorgamiento.
+### 5. Políticas de Cortesías y Cancelaciones
+* **Cortesías Oficiales**: Entradas exentas de pago, excluidas de la recaudación neta del evento, con registro mandatorio del autorizador y motivo de otorgamiento.
 * **Cancelación No Destructiva**: Los registros cancelados conservan su trazabilidad histórica sin borrado físico ni alteraciones injustificadas en la contabilidad.
 
-### 5. Motor de Importación Inteligente de Datos (6 Pasos)
+### 6. Motor de Importación Inteligente de Datos
 * Compatible con formatos `.xlsx`, `.xls` y `.csv`.
 * Diccionario lingüístico de alias para autodetección inteligente de encabezados de columnas.
 * Asignación visual e interactiva de campos, validación estructural de tipos de datos e informe de errores previo a la inserción.
 * Estrategias configurables de resolución de duplicados (*Omitir*, *Actualizar datos* o *Importar únicamente registros nuevos*).
 
-### 6. Personalización de Identidad Visual y Logos
-* **Logotipos por Evento**: Carga directa de imágenes oficiales (PNG, JPG, WEBP, SVG hasta 2MB) con previsualización en caliente y eliminación segura.
-* **Motor Temático Dinámico**: Personalización de colores primarios, secundarios, color de acento, fondos, prefijos de tickets y subtítulos institucionales aplicados en tiempo real a la interfaz sin necesidad de recompilar.
+### 7. Personalización de Identidad Visual y Logos
+* **Logotipos por Evento**: Carga directa de imágenes oficiales (PNG, JPG, WEBP, SVG) con previsualización inmediata.
+* **Motor Temático Dinámico**: Personalización de colores primarios, secundarios, color de acento, fondos, prefijos de tickets y subtítulos aplicados en tiempo real a la interfaz sin necesidad de recompilar.
 
-### 7. Historial de Actividad, Auditoría y Seguridad (RBAC)
+### 8. Historial de Actividad, Auditoría y Seguridad (RBAC)
 * **Control de Acceso Basado en Roles (RBAC)**:
   - **Administrador (`ADMIN`)**: Control operativo y de configuración total.
   - **Operador (`OPERATOR`)**: Operación de taquilla, registro, check-in e importación.
   - **Consulta (`VIEWER`)**: Supervisión de estadísticas y reportes en modo de solo lectura.
-* **Bitácora Inmutable (`/audit` y `/activity`)**: Registro detallado de acciones, usuario responsable, dirección IP, entidad afectada y diff en formato JSON de los cambios efectuados.
+* **Bitácora Inmutable (`/audit`)**: Registro detallado de acciones, usuario responsable, dirección IP, entidad afectada y diff en formato JSON de los cambios efectuados.
 * **Herramientas de Respaldo**: Scripts automatizados de backup y restauración de base de datos para entornos Windows (`.bat`) y Linux/macOS (`.sh`).
 
 ---
@@ -70,7 +76,7 @@ La plataforma centraliza en un único entorno modular y seguro la administració
 | **Base de Datos** | PostgreSQL 16 (Producción / Docker) y SQLite (Entorno local de desarrollo) |
 | **ORM** | Prisma ORM 6 (Migraciones, esquema relacional, cliente fuertemente tipado) |
 | **Hojas de Cálculo** | SheetJS (`xlsx`) para lectura y generación de archivos binarios |
-| **Pruebas Automatizadas** | Vitest (58 pruebas unitarias y de integración) |
+| **Pruebas Automatizadas** | Vitest (90 pruebas automatizadas unitarias y de integración) |
 | **Despliegue** | Docker & Docker Compose |
 
 ---
@@ -145,7 +151,7 @@ docker compose down
 
 ## 🧪 Pruebas Automatizadas
 
-El proyecto cuenta con 8 suites de pruebas que validan autenticación, RBAC, control de asistencia, ventas presenciales, balances contables y el motor de importación:
+El proyecto cuenta con suites de pruebas que validan autenticación, RBAC, control de asistencia, confirmación con T-shirts, inventario, ventas presenciales, balances contables y el motor de importación:
 
 ```bash
 npm test --prefix backend
@@ -162,7 +168,7 @@ EventGrid/
 │   │   ├── schema.prisma          # Esquema relacional PostgreSQL
 │   │   ├── schema.sqlite.prisma   # Esquema local SQLite
 │   │   └── seed.ts                # Semilla de datos y usuarios iniciales
-│   ├── scripts/                   # Scripts de migración interna
+│   ├── scripts/                   # Scripts de migración interna y utilidades
 │   ├── src/
 │   │   ├── config/                # Base de datos y entorno
 │   │   ├── middleware/            # JWT, RBAC, auditoría y errores
@@ -170,9 +176,13 @@ EventGrid/
 │   │   │   ├── activity/          # Bitácora de actividad y auditoría
 │   │   │   ├── attendance/        # Lógica de Check-in y reversión
 │   │   │   ├── auth/              # Autenticación y credenciales
-│   │   │   ├── events/            # Gestión de eventos, tarifas y logos
+│   │   │   ├── communications/    # Envío de correos y credenciales digitales
+│   │   │   ├── demo/              # Gestión de entorno de demostración
+│   │   │   ├── events/            # Gestión de eventos, tarifas y personalización
 │   │   │   ├── import/            # Motor de importación de Excel
-│   │   │   └── participants/      # Directorio, fichas 360° y taquilla
+│   │   │   ├── inventory/         # Inventario y control de entrega de camisetas
+│   │   │   ├── participants/      # Directorio, fichas 360° y taquilla
+│   │   │   └── qr/                # Generación y validación de entradas QR
 │   │   └── server.ts              # Servidor Express
 │   └── tests/                     # Suites de pruebas con Vitest
 ├── frontend/
@@ -191,13 +201,13 @@ EventGrid/
 
 ---
 
-## 🔐 ACCESO AL SISTEMA (Entorno de Desarrollo)
+## 🔐 Acceso al Sistema (Entorno de Desarrollo)
 
 | Rol | Correo Electrónico | Contraseña de Prueba | Permisos Principales |
 | :--- | :--- | :--- | :--- |
-| **Administrador** | `admin@barcamp.org.do` | `BarCamp2026!Admin` | Control total, configuración de eventos, tarifas, cortesías, cancelaciones, reversión de asistencia y auditoría. |
-| **Operador** | `operador@barcamp.org.do` | `BarCamp2026!Op` | Check-in en recepción, ventas en taquilla, cobro de abonos, importación de Excel y registro de participantes. |
-| **Consulta** | `consulta@barcamp.org.do` | `BarCamp2026!View` | Supervisión del tablero de métricas (Dashboard), listados de asistencia y consulta de participantes en modo de solo lectura. |
+| **Administrador** | `admin@eventgrid.io` | `EventGrid2026!Admin` | Control total, configuración de eventos, tarifas, inventario, cortesías, cancelaciones, reversión de asistencia y auditoría. |
+| **Operador** | `operador@eventgrid.io` | `EventGrid2026!Op` | Check-in en recepción con registro de tallas, entregas de camisetas, ventas en taquilla, cobro de abonos, importación de Excel y registro de participantes. |
+| **Consulta** | `consulta@eventgrid.io` | `EventGrid2026!View` | Supervisión del tablero de métricas (Dashboard), listados de asistencia y consulta de participantes en modo de solo lectura. |
 
 ---
 

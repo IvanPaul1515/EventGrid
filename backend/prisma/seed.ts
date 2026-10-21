@@ -51,6 +51,46 @@ async function main() {
     },
   });
 
+  const egAdminHash = await bcrypt.hash('EventGrid2026!Admin', 10);
+  const egOpHash = await bcrypt.hash('EventGrid2026!Op', 10);
+  const egViewHash = await bcrypt.hash('EventGrid2026!View', 10);
+
+  await prisma.user.upsert({
+    where: { email: 'admin@eventgrid.io' },
+    update: {},
+    create: {
+      email: 'admin@eventgrid.io',
+      passwordHash: egAdminHash,
+      fullName: 'Administrador EventGrid',
+      role: 'ADMIN' as any,
+      isActive: true,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'operador@eventgrid.io' },
+    update: {},
+    create: {
+      email: 'operador@eventgrid.io',
+      passwordHash: egOpHash,
+      fullName: 'Operador EventGrid',
+      role: 'OPERATOR' as any,
+      isActive: true,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'consulta@eventgrid.io' },
+    update: {},
+    create: {
+      email: 'consulta@eventgrid.io',
+      passwordHash: egViewHash,
+      fullName: 'Auditor EventGrid',
+      role: 'VIEWER' as any,
+      isActive: true,
+    },
+  });
+
   console.log('✅ Usuarios del sistema verificados:');
   console.log(`   - Administrador: ${adminUser.email}`);
   console.log(`   - Operador:      ${operatorUser.email}`);
