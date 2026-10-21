@@ -7,7 +7,12 @@ export interface TshirtInventoryItem {
   initialQuantity: number;
   deliveredQuantity: number;
   availableQuantity: number;
+  availableForParticipants?: number;
   pendingDelivery: number;
+  staffReservedQuantity?: number;
+  staffDeliveredQuantity?: number;
+  staffPendingQuantity?: number;
+  totalCommitted?: number;
   isOutOfStock: boolean;
   isLowStock: boolean;
   isActive: boolean;
@@ -28,6 +33,46 @@ export interface InventoryStats {
 export interface InventoryResponse {
   stats: InventoryStats;
   items: TshirtInventoryItem[];
+}
+
+export interface StaffInventoryItem {
+  id: string;
+  size: string;
+  total: number;
+  deliveredParticipants: number;
+  staffReserved: number;
+  staffDelivered: number;
+  staffPending: number;
+  availableForParticipants: number;
+  isActive: boolean;
+}
+
+export interface StaffTshirtDeliveryRecord {
+  id: string;
+  eventId: string;
+  size: string;
+  quantity: number;
+  recipientName?: string;
+  notes?: string;
+  deliveredAt: string;
+  deliveredByUser?: {
+    id: string;
+    fullName: string;
+    email: string;
+  };
+}
+
+export interface StaffInventoryResponse {
+  summary: {
+    total: number;
+    deliveredParticipants: number;
+    staffReserved: number;
+    staffDelivered: number;
+    staffPending: number;
+    availableForParticipants: number;
+  };
+  items: StaffInventoryItem[];
+  recentDeliveries: StaffTshirtDeliveryRecord[];
 }
 
 export const inventoryService = {
@@ -71,6 +116,41 @@ export const inventoryService = {
 
   async returnTshirt(registrationId: string, reason: string) {
     const res = await api.post(`/participants/${registrationId}/return-tshirt`, { reason });
+    return res.data.data;
+  },
+
+  // --- MÉTODOS DE T-SHIRTS DEL STAFF ---
+
+  async getStaffInventory(eventId?: string): Promise<StaffInventoryResponse> {
+    const url = eventId ? `/events/${eventId}/inventory/staff` : '/inventory/staff';
+    const res = await api.get(url);
+    return res.data.data;
+  },
+
+  async reserveStaffTshirts(data: { size: string; reservedQuantity: number }, eventId?: string) {
+    const url = eventId ? `/events/${eventId}/inventory/staff/reserve` : '/inventory/staff/reserve';
+    const res = await api.put(url, data);
+    return res.data;
+  },
+
+  async deliverStaffTshirts(
+    data: { size: string; quantity?: number; recipientName?: string; notes?: string },
+    eventId?: string
+  ) {
+    const url = eventId ? `/events/${eventId}/inventory/staff/deliver` : '/inventory/staff/deliver';
+    const res = await api.post(url, data);
+    return res.data;
+  },
+
+  async releaseStaffTshirts(data: { size: string; quantityToRelease: number }, eventId?: string) {
+    const url = eventId ? `/events/${eventId}/inventory/staff/release` : '/inventory/staff/release';
+    const res = await api.post(url, data);
+    return res.data;
+  },
+
+  async getStaffDeliveries(eventId?: string): Promise<StaffTshirtDeliveryRecord[]> {
+    const url = eventId ? `/events/${eventId}/inventory/staff/deliveries` : '/inventory/staff/deliveries';
+    const res = await api.get(url);
     return res.data.data;
   },
 };

@@ -15,7 +15,7 @@ const DOMINICAN_LAST_NAMES = [
 ];
 
 const DOMINICAN_INSTITUTIONS = [
-  'PUCMM — Pontificia Universidad Católica Madre y Maestra',
+  'Universidad Central de Tecnología',
   'UASD — Universidad Autónoma de Santo Domingo',
   'INTEC — Instituto Tecnológico de Santo Domingo',
   'UNIBE — Universidad Iberoamericana',
@@ -302,47 +302,54 @@ export class DemoService {
 
     if (!event) throw new NotFoundError('Edición no encontrada');
 
-    // 1. Obtener los IDs de registros demo
-    const demoRegs = await prisma.registration.findMany({
-      where: { eventId, isDemo: true },
-      select: { id: true, participantId: true },
-    });
+    // QA-18: Transacción atómica para evitar estados inconsistentes o registros huérfanos
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Obtener los IDs de registros demo
+      const demoRegs = await tx.registration.findMany({
+        where: { eventId, isDemo: true },
+        select: { id: true, participantId: true },
+      });
 
-    const demoRegIds = demoRegs.map((r) => r.id);
-    const participantIds = Array.from(new Set(demoRegs.map((r) => r.participantId)));
+      const demoRegIds = demoRegs.map((r) => r.id);
+      const participantIds = Array.from(new Set(demoRegs.map((r) => r.participantId)));
 
-    // 2. Eliminar pagos y logs vinculados a registros demo
-    if (demoRegIds.length > 0) {
-      await prisma.payment.deleteMany({
-        where: { registrationId: { in: demoRegIds } },
-      });
-      await prisma.attendanceLog.deleteMany({
-        where: { registrationId: { in: demoRegIds } },
-      });
-      await prisma.emailLog.deleteMany({
-        where: { registrationId: { in: demoRegIds } },
-      });
-      await prisma.registration.deleteMany({
-        where: { id: { in: demoRegIds } },
-      });
-    }
-
-    // 3. Eliminar participantes demo que no tengan ninguna otra inscripción
-    if (participantIds.length > 0) {
-      for (const pId of participantIds) {
-        const remaining = await prisma.registration.count({
-          where: { participantId: pId },
+      // 2. Eliminar pagos y logs vinculados a registros demo
+      if (demoRegIds.length > 0) {
+        await tx.payment.deleteMany({
+          where: { registrationId: { in: demoRegIds } },
         });
-        if (remaining === 0) {
-          await prisma.participant.deleteMany({
-            where: { id: pId, isDemo: true },
+        await tx.attendanceLog.deleteMany({
+          where: { registrationId: { in: demoRegIds } },
+        });
+        await tx.emailLog.deleteMany({
+          where: { registrationId: { in: demoRegIds } },
+        });
+        await tx.registration.deleteMany({
+          where: { id: { in: demoRegIds } },
+        });
+      }
+
+      // 3. Eliminar participantes demo que no tengan ninguna otra inscripción
+      if (participantIds.length > 0) {
+        for (const pId of participantIds) {
+          const remaining = await tx.registration.count({
+            where: { participantId: pId },
           });
+          if (remaining === 0) {
+            await tx.participant.deleteMany({
+              where: { id: pId, isDemo: true },
+            });
+          }
         }
       }
-    }
+
+      return {
+        deletedRegistrationsCount: demoRegIds.length,
+      };
+    });
 
     return {
-      deletedRegistrationsCount: demoRegIds.length,
+      deletedRegistrationsCount: result.deletedRegistrationsCount,
       status: await this.getStatus(eventId),
     };
   }

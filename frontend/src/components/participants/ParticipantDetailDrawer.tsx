@@ -962,7 +962,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                           type="text"
                           value={editInstitution}
                           onChange={(e) => setEditInstitution(e.target.value)}
-                          placeholder="PUCMM / Empresa"
+                          placeholder="Institución / Empresa"
                           className="w-full px-2.5 py-1.5 bg-card border border-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                       </div>

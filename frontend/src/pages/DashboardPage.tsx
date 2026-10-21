@@ -172,7 +172,7 @@ export const DashboardPage: React.FC = () => {
             <div className="flex flex-wrap items-center gap-4 mt-4 text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-primary" />
-                {currentEvent?.venue || 'PUCMM Santiago'}
+                {currentEvent?.venue || 'Sede del Evento'}
               </span>
               <span className="flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-primary" />
@@ -540,7 +540,7 @@ export const DashboardPage: React.FC = () => {
                   Ediciones Históricas y Futuras
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Aislamiento estricto de participantes y métricas por año en la PUCMM.
+                  Aislamiento estricto de participantes y métricas por cada edición.
                 </p>
               </div>
               <button

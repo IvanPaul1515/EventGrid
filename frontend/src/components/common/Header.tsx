@@ -145,10 +145,10 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
           )}
         </div>
 
-        {/* Lugar e Indicador de PUCMM */}
+        {/* Lugar e Indicador de Sede */}
         <div className="hidden lg:flex items-center text-xs text-muted-foreground gap-1.5 pl-2 border-l border-border">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" />
-          <span>PUCMM — Santiago de los Caballeros</span>
+          <span>{currentEvent?.venue || 'Sede del Evento'}</span>
         </div>
       </div>
 

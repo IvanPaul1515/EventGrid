@@ -376,7 +376,7 @@ export const OnsiteSaleModal: React.FC<OnsiteSaleModalProps> = ({
                     type="text"
                     value={institution}
                     onChange={(e) => setInstitution(e.target.value)}
-                    placeholder="ej. PUCMM, ITLA, Claro, Independiente"
+                    placeholder="ej. Empresa, Organización, Independiente"
                     className="w-full px-3 py-1.5 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
@@ -498,7 +498,7 @@ export const OnsiteSaleModal: React.FC<OnsiteSaleModalProps> = ({
                       required
                       value={courtesyReason}
                       onChange={(e) => setCourtesyReason(e.target.value)}
-                      placeholder="ej. Ponente, Beca PUCMM..."
+                      placeholder="ej. Ponente, Beca corporativa..."
                       className="w-full px-2.5 py-1.5 bg-background border border-amber-500/30 rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500"
                     />
                   </div>

@@ -3,7 +3,7 @@ import request from 'supertest';
 import { app } from '../src/app.js';
 import { prisma } from '../src/config/db.js';
 
-describe('Actualización de Tarifas, Fechas Previas y Saldo a Favor', () => {
+describe('QA-15: Protección de Precios Históricos, Fechas Previas y Ajustes Manuales', () => {
   let adminToken: string;
   let eventId: string;
   let testTicketTypeId: string;
@@ -17,7 +17,7 @@ describe('Actualización de Tarifas, Fechas Previas y Saldo a Favor', () => {
       .send({ email: 'admin@barcamp.org.do', password: 'BarCamp2026!Admin' });
     adminToken = loginRes.body.data.token;
 
-    // Obtener edición predeterminada (BarCamp RD 2026)
+    // Obtener edición predeterminada
     const eventsRes = await request(app)
       .get('/api/v1/events')
       .set('Authorization', `Bearer ${adminToken}`);
@@ -28,9 +28,9 @@ describe('Actualización de Tarifas, Fechas Previas y Saldo a Favor', () => {
     const tt = await prisma.ticketType.create({
       data: {
         eventId,
-        name: 'Tarifa Test General',
+        name: 'Tarifa Test General QA-15',
         price: 2000,
-        description: 'Boleto general para prueba de cambio de tarifa',
+        description: 'Boleto general para prueba de preservación de precio histórico',
       },
     });
     testTicketTypeId = tt.id;
@@ -39,8 +39,8 @@ describe('Actualización de Tarifas, Fechas Previas y Saldo a Favor', () => {
     const p1 = await prisma.participant.create({
       data: {
         firstName: 'Carlos',
-        lastName: 'Prueba Tarifa',
-        fullName: 'Carlos Prueba Tarifa',
+        lastName: 'Prueba Tarifa QA15',
+        fullName: 'Carlos Prueba Tarifa QA15',
         email: `carlos.tarifa.${Date.now()}@test.com`,
       },
     });
@@ -66,8 +66,8 @@ describe('Actualización de Tarifas, Fechas Previas y Saldo a Favor', () => {
     const p2 = await prisma.participant.create({
       data: {
         firstName: 'Laura',
-        lastName: 'Prueba Parcial',
-        fullName: 'Laura Prueba Parcial',
+        lastName: 'Prueba Parcial QA15',
+        fullName: 'Laura Prueba Parcial QA15',
         email: `laura.tarifa.${Date.now()}@test.com`,
       },
     });
@@ -93,9 +93,11 @@ describe('Actualización de Tarifas, Fechas Previas y Saldo a Favor', () => {
   afterAll(async () => {
     // Limpieza de datos de prueba
     if (registrationPaidMoreId) {
+      await prisma.auditLog.deleteMany({ where: { entityId: registrationPaidMoreId } }).catch(() => {});
       await prisma.registration.delete({ where: { id: registrationPaidMoreId } }).catch(() => {});
     }
     if (registrationPartialId) {
+      await prisma.auditLog.deleteMany({ where: { entityId: registrationPartialId } }).catch(() => {});
       await prisma.registration.delete({ where: { id: registrationPartialId } }).catch(() => {});
     }
     if (testTicketTypeId) {
@@ -106,7 +108,7 @@ describe('Actualización de Tarifas, Fechas Previas y Saldo a Favor', () => {
     }).catch(() => {});
   });
 
-  it('1. Debe actualizar la tarifa de RD$ 2,000 a RD$ 1,750 y propagarla a los participantes', async () => {
+  it('1. QA-15: Modificar la tarifa en el evento NO debe alterar precios ni saldos de inscripciones existentes', async () => {
     const updateRes = await request(app)
       .put(`/api/v1/events/${eventId}/ticket-types/${testTicketTypeId}`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -118,32 +120,31 @@ describe('Actualización de Tarifas, Fechas Previas y Saldo a Favor', () => {
     expect(updateRes.status).toBe(200);
     expect(Number(updateRes.body.data.price)).toBe(1750);
 
-    // Verificar participante que pagó 2,000:
-    // Su tarifa ahora es 1,750, pagó 2,000, balanceDue es 0 (pagó RD$ 250 de más)
+    // QA-15: Participante que pagó 2,000 CONSERVA su precio histórico intacto (2,000), no se altera
     const check1 = await prisma.registration.findUnique({
       where: { id: registrationPaidMoreId },
     });
-    expect(Number(check1?.ticketPrice)).toBe(1750);
+    expect(Number(check1?.ticketPrice)).toBe(2000);
     expect(Number(check1?.amountPaid)).toBe(2000);
     expect(Number(check1?.balanceDue)).toBe(0);
     expect(check1?.paymentStatus).toBe('PAID');
 
-    // Verificar participante que pagó parcial 1,000:
-    // Su tarifa ahora es 1,750, pagó 1,000, balanceDue ahora es 750 (en vez de 1,000)
+    // QA-15: Participante con pago parcial de 1,000 CONSERVA su tarifa histórica de 2,000 y deuda de 1,000 intacta
     const check2 = await prisma.registration.findUnique({
       where: { id: registrationPartialId },
     });
-    expect(Number(check2?.ticketPrice)).toBe(1750);
+    expect(Number(check2?.ticketPrice)).toBe(2000);
     expect(Number(check2?.amountPaid)).toBe(1000);
-    expect(Number(check2?.balanceDue)).toBe(750);
+    expect(Number(check2?.balanceDue)).toBe(1000);
     expect(check2?.paymentStatus).toBe('PARTIAL');
   });
 
-  it('2. Debe permitir ajustar el monto pagado de quien pagó de más a la nueva tarifa exacta (1,750)', async () => {
+  it('2. QA-15: Debe permitir ajustes manuales individuales autorizados con registro en auditoría', async () => {
     const updateRegRes = await request(app)
       .put(`/api/v1/participants/${registrationPaidMoreId}`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
+        ticketPrice: 1750,
         amountPaid: 1750,
         totalAmount: 1750,
       });
@@ -152,6 +153,13 @@ describe('Actualización de Tarifas, Fechas Previas y Saldo a Favor', () => {
     expect(Number(updateRegRes.body.data.amountPaid)).toBe(1750);
     expect(Number(updateRegRes.body.data.ticketPrice)).toBe(1750);
     expect(Number(updateRegRes.body.data.balanceDue)).toBe(0);
+
+    // Verificar que quedó registrado en auditoría
+    const auditLogs = await prisma.auditLog.findMany({
+      where: { entityId: registrationPaidMoreId },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(auditLogs.length).toBeGreaterThan(0);
   });
 
   it('3. Debe registrar y persistir que una boleta fue comprada con fecha previa (saleTimestamp)', async () => {

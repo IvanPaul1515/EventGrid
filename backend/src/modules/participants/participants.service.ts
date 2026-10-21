@@ -432,7 +432,7 @@ export class ParticipantsService {
     // 4. Generar número de registro único si no fue suministrado
     let regNumber = input.registrationNumber?.trim();
     if (!regNumber) {
-      const prefix = event.settings?.registrationPrefix || `BC${String(event.year).slice(-2)}-`;
+      const prefix = event.settings?.registrationPrefix || `EV${String(event.year).slice(-2)}-`;
       const count = await prisma.registration.count({ where: { eventId } });
       let candidateNum = count + 1;
       let isUnique = false;
@@ -813,7 +813,7 @@ export class ParticipantsService {
     }
 
     // 3. Generar número de registro único
-    const prefix = event.settings?.registrationPrefix || `BC${String(event.year).slice(-2)}-`;
+    const prefix = event.settings?.registrationPrefix || `EV${String(event.year).slice(-2)}-`;
     const count = await prisma.registration.count({ where: { eventId } });
     let candidateNum = count + 1;
     let regNumber = `${prefix}${String(candidateNum).padStart(4, '0')}`;
@@ -1212,7 +1212,7 @@ export class ParticipantsService {
     // Nombres realistas dominicanos y empresas / universidades
     const firstNames = ['Carlos', 'Ana', 'María', 'José', 'Laura', 'Pedro', 'Rosa', 'Juan', 'Emely', 'David', 'Sofía', 'Luis', 'Gabriela', 'Manuel', 'Patricia', 'Alejandro', 'Nicole', 'Francis'];
     const lastNames = ['Rodríguez', 'Pérez', 'García', 'Martínez', 'Hernández', 'Sánchez', 'Díaz', 'Morales', 'Reyes', 'Cruz', 'Jiménez', 'Gómez', 'Almonte', 'Vargas', 'Peña'];
-    const institutions = ['PUCMM', 'ITLA', 'INTEC', 'UASD', 'Banco BHD', 'Claro Dominicana', 'Altice', 'Popular', 'Freelance / Dev'];
+    const institutions = ['Tech Corp', 'Global Solutions', 'Innovación Digital', 'Instituto Tecnológico', 'Universidad Nacional', 'Freelance / Dev'];
 
     const prefix = event.settings?.registrationPrefix || `BC${String(event.year).slice(-2)}-`;
     const startCount = await prisma.registration.count({ where: { eventId } });
@@ -1269,7 +1269,7 @@ export class ParticipantsService {
           isVerified: true,
           isCourtesy,
           courtesyAuthorizedBy: isCourtesy ? 'Dirección BarCamp RD' : null,
-          courtesyReason: isCourtesy ? 'Beca institucional PUCMM' : null,
+          courtesyReason: isCourtesy ? 'Beca de excelencia académica' : null,
           courtesyDate: isCourtesy ? new Date() : null,
           isDemo: true,
           paymentMethodId: isCourtesy ? null : (pm ? pm.id : null),

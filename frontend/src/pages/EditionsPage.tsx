@@ -27,7 +27,7 @@ export const EditionsPage: React.FC = () => {
   const [year, setYear] = useState(2027);
   const [startDate, setStartDate] = useState('2027-11-06T08:00');
   const [endDate, setEndDate] = useState('2027-11-06T18:00');
-  const [venue, setVenue] = useState('PUCMM — Campus Santiago de los Caballeros, RD');
+  const [venue, setVenue] = useState('Centro de Convenciones Principal');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 

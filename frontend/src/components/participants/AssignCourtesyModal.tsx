@@ -93,7 +93,7 @@ export const AssignCourtesyModal: React.FC<AssignCourtesyModalProps> = ({
               value={authorizedBy}
               onChange={(e) => setAuthorizedBy(e.target.value)}
               required
-              placeholder="ej. Dirección BarCamp RD, Decanato PUCMM"
+              placeholder="ej. Dirección del Evento, Patrocinador Oficial"
               className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
           </div>

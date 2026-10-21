@@ -169,7 +169,7 @@ export const LoginPage: React.FC = () => {
 
         {/* Pie de página */}
         <p className="text-center text-[11px] text-zinc-600 mt-6">
-          EventGrid &bull; BarCamp República Dominicana &copy; 2026. PUCMM Campus Santiago.
+          EventGrid &bull; Plataforma Integral de Gestión de Eventos &copy; 2026.
         </p>
       </div>
     </div>

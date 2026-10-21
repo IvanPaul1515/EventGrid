@@ -27,6 +27,7 @@ model User {
   modifiedRegistrations Registration[]  @relation("RegistrationModifier")
   modifiedParticipants  Participant[]   @relation("ParticipantModifier")
   sentEmails            EmailLog[]      @relation("EmailSender")
+  staffTshirtDeliveries StaffTshirtDelivery[]
 
   @@map("users")
 }
@@ -38,7 +39,7 @@ model Event {
   year        Int
   startDate   DateTime
   endDate     DateTime
-  venue       String   @default("PUCMM, Santiago de los Caballeros, RD")
+  venue       String   @default("Sede Principal del Evento")
   description String?
   maxCapacity Int?
   status      String   @default("PLANNING") // PLANNING, ACTIVE, COMPLETED, ARCHIVED
@@ -57,6 +58,7 @@ model Event {
   emailTemplates         EmailTemplate[]
   emailLogs              EmailLog[]
   tshirtInventories      TshirtInventory[]
+  staffTshirtDeliveries  StaffTshirtDelivery[]
 
   @@index([year])
   @@index([status])
@@ -78,7 +80,7 @@ model EventSettings {
   faviconUrl         String?
   coverImageUrl      String?
   subtitle           String   @default("Tecnología, Innovación y Comunidad")
-  registrationPrefix String   @default("BC-")
+  registrationPrefix String   @default("EV-")
   demoModeEnabled    Boolean  @default(false)
   tshirtSizesEnabled Boolean  @default(false)
   tshirtSizes        String?  // JSON string: ["XS","S","M","L","XL","XXL","XXXL"]
@@ -409,17 +411,37 @@ model EmailLog {
 }
 
 model TshirtInventory {
-  id                String   @id @default(uuid())
-  eventId           String
-  size              String
-  initialQuantity   Int      @default(0)
-  deliveredQuantity Int      @default(0)
-  isActive          Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                     String   @id @default(uuid())
+  eventId                String
+  size                   String
+  initialQuantity        Int      @default(0)
+  deliveredQuantity      Int      @default(0)
+  staffReservedQuantity  Int      @default(0)
+  staffDeliveredQuantity Int      @default(0)
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, size])
   @@map("tshirt_inventories")
+}
+
+model StaffTshirtDelivery {
+  id                String   @id @default(uuid())
+  eventId           String
+  size              String
+  quantity          Int      @default(1)
+  recipientName     String?
+  notes             String?
+  deliveredByUserId String?
+  deliveredAt       DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  event           Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  deliveredByUser User? @relation(fields: [deliveredByUserId], references: [id], onDelete: SetNull)
+
+  @@index([eventId])
+  @@map("staff_tshirt_deliveries")
 }

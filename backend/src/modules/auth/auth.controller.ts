@@ -2,12 +2,18 @@ import { Request, Response, NextFunction } from 'express';
 import { AuthService } from './auth.service.js';
 import { LoginSchema, ChangePasswordSchema, UpdateProfileSchema } from './auth.dto.js';
 import { recordAuditLog } from '../../middleware/audit.js';
+import { clearFailedLogin, recordFailedLogin } from '../../middleware/rateLimiter.js';
 
 export class AuthController {
   static async login(req: Request, res: Response, next: NextFunction) {
+    let attemptedEmail: string | undefined = undefined;
     try {
       const validated = LoginSchema.parse(req.body);
+      attemptedEmail = validated.email;
       const result = await AuthService.login(validated.email, validated.password);
+
+      // Limpiar intentos fallidos acumulados
+      clearFailedLogin(req, validated.email);
 
       // Guardar token en cookie HttpOnly segura
       res.cookie('barcamp_token', result.token, {
@@ -32,6 +38,8 @@ export class AuthController {
         data: result,
       });
     } catch (error) {
+      // Registrar intento fallido para rate-limiting y auditoría segura
+      recordFailedLogin(req, attemptedEmail || (req.body?.email ? String(req.body.email) : undefined));
       next(error);
     }
   }

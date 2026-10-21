@@ -202,16 +202,26 @@ export class InventoryService {
         if (isLowStock) lowStockCount++;
       }
 
+      const staffReserved = item.staffReservedQuantity || 0;
+      const staffDelivered = item.staffDeliveredQuantity || 0;
+      const staffPending = Math.max(0, staffReserved - staffDelivered);
+      const availableParticipants = Math.max(0, item.initialQuantity - delivered - staffReserved);
+
       return {
         id: item.id,
         eventId: item.eventId,
         size: item.size,
         initialQuantity: item.initialQuantity,
         deliveredQuantity: delivered,
-        availableQuantity: available,
+        availableQuantity: availableParticipants,
+        availableForParticipants: availableParticipants,
         pendingDelivery: pending,
-        isOutOfStock,
-        isLowStock,
+        staffReservedQuantity: staffReserved,
+        staffDeliveredQuantity: staffDelivered,
+        staffPendingQuantity: staffPending,
+        totalCommitted: delivered + staffReserved,
+        isOutOfStock: availableParticipants <= 0,
+        isLowStock: availableParticipants > 0 && availableParticipants <= 5,
         isActive: item.isActive,
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
@@ -388,4 +398,352 @@ export class InventoryService {
       },
     }).catch(() => {});
   }
+
+  /**
+   * Obtener inventario detallado para T-shirts del Staff (Parte 2)
+   */
+  static async getStaffInventory(eventId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+    });
+    if (!event) throw new NotFoundError('Edición no encontrada');
+
+    const count = await prisma.tshirtInventory.count({ where: { eventId } });
+    if (count === 0) {
+      await this.initDefaultInventory(eventId);
+    }
+
+    const rawItems = await prisma.tshirtInventory.findMany({
+      where: { eventId, isActive: true },
+      orderBy: { size: 'asc' },
+    });
+
+    // Conteo de entregas a participantes
+    const participantDeliveries = await prisma.registration.groupBy({
+      by: ['tshirtSize'],
+      where: {
+        eventId,
+        status: { not: 'CANCELLED' },
+        tshirtDelivered: true,
+        tshirtSize: { not: null },
+      },
+      _count: { id: true },
+    });
+
+    const deliveredToParticipantsMap: Record<string, number> = {};
+    for (const group of participantDeliveries) {
+      if (group.tshirtSize) {
+        deliveredToParticipantsMap[group.tshirtSize] = group._count.id;
+      }
+    }
+
+    let summaryTotal = 0;
+    let summaryDeliveredParticipants = 0;
+    let summaryStaffReserved = 0;
+    let summaryStaffDelivered = 0;
+    let summaryStaffPending = 0;
+    let summaryAvailableParticipants = 0;
+
+    const items = rawItems.map((item) => {
+      const deliveredParticipants = deliveredToParticipantsMap[item.size] || item.deliveredQuantity || 0;
+      const staffReserved = item.staffReservedQuantity || 0;
+      const staffDelivered = item.staffDeliveredQuantity || 0;
+      const staffPending = Math.max(0, staffReserved - staffDelivered);
+      const availableForParticipants = Math.max(0, item.initialQuantity - deliveredParticipants - staffReserved);
+
+      summaryTotal += item.initialQuantity;
+      summaryDeliveredParticipants += deliveredParticipants;
+      summaryStaffReserved += staffReserved;
+      summaryStaffDelivered += staffDelivered;
+      summaryStaffPending += staffPending;
+      summaryAvailableParticipants += availableForParticipants;
+
+      return {
+        id: item.id,
+        size: item.size,
+        total: item.initialQuantity,
+        deliveredParticipants,
+        staffReserved,
+        staffDelivered,
+        staffPending,
+        availableForParticipants,
+        isActive: item.isActive,
+      };
+    });
+
+    const recentDeliveries = await prisma.staffTshirtDelivery.findMany({
+      where: { eventId },
+      orderBy: { deliveredAt: 'desc' },
+      take: 50,
+      include: {
+        deliveredByUser: {
+          select: { id: true, fullName: true, email: true },
+        },
+      },
+    });
+
+    return {
+      summary: {
+        total: summaryTotal,
+        deliveredParticipants: summaryDeliveredParticipants,
+        staffReserved: summaryStaffReserved,
+        staffDelivered: summaryStaffDelivered,
+        staffPending: summaryStaffPending,
+        availableForParticipants: summaryAvailableParticipants,
+      },
+      items,
+      recentDeliveries,
+    };
+  }
+
+  /**
+   * Configurar o modificar la reserva de camisetas para staff por talla (Admin)
+   */
+  static async reserveStaffTshirts(
+    eventId: string,
+    size: string,
+    reservedQuantity: number,
+    userId: string
+  ) {
+    const trimmedSize = size.trim();
+    if (reservedQuantity < 0) {
+      throw new BadRequestError('La cantidad a reservar no puede ser negativa');
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      const item = await tx.tshirtInventory.findUnique({
+        where: { eventId_size: { eventId, size: trimmedSize } },
+      });
+
+      if (!item || !item.isActive) {
+        throw new NotFoundError(`Talla "${trimmedSize}" no encontrada en el inventario activo de esta edición`);
+      }
+
+      // Regla: No permitir reducir la reserva por debajo de lo ya entregado al staff
+      if (reservedQuantity < item.staffDeliveredQuantity) {
+        throw new BadRequestError(
+          `No puede reducir la reserva (${reservedQuantity}) por debajo de la cantidad ya entregada al personal (${item.staffDeliveredQuantity}).`
+        );
+      }
+
+      // Regla: No permitir reservar más camisetas que las físicamente disponibles
+      // Disponibles antes de modificar reserva = initialQuantity - deliveredQuantity - staffDeliveredQuantity
+      const maxAvailableForStaff = item.initialQuantity - item.deliveredQuantity;
+      if (reservedQuantity > maxAvailableForStaff) {
+        const availableNow = Math.max(0, item.initialQuantity - item.deliveredQuantity - item.staffReservedQuantity);
+        throw new BadRequestError(
+          `No hay suficientes camisetas disponibles para reservar esa cantidad. Disponibles libres para participantes: ${availableNow}, Máximo reservable para staff: ${maxAvailableForStaff}.`
+        );
+      }
+
+      const updated = await tx.tshirtInventory.update({
+        where: { id: item.id },
+        data: {
+          staffReservedQuantity: reservedQuantity,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'STAFF_TSHIRT_RESERVE',
+          entity: 'TSHIRT_INVENTORY',
+          entityId: item.id,
+          changes: JSON.stringify({
+            action: 'STAFF_RESERVE_UPDATE',
+            size: trimmedSize,
+            previousReserved: item.staffReservedQuantity,
+            newReserved: reservedQuantity,
+            deliveredStaff: item.staffDeliveredQuantity,
+            availableForParticipants: Math.max(0, updated.initialQuantity - updated.deliveredQuantity - updated.staffReservedQuantity),
+          }),
+        },
+      });
+
+      return {
+        id: updated.id,
+        size: updated.size,
+        total: updated.initialQuantity,
+        deliveredParticipants: updated.deliveredQuantity,
+        staffReserved: updated.staffReservedQuantity,
+        staffDelivered: updated.staffDeliveredQuantity,
+        staffPending: Math.max(0, updated.staffReservedQuantity - updated.staffDeliveredQuantity),
+        availableForParticipants: Math.max(0, updated.initialQuantity - updated.deliveredQuantity - updated.staffReservedQuantity),
+      };
+    });
+  }
+
+  /**
+   * Registrar entrega física de camisetas a un miembro del staff (Admin)
+   */
+  static async deliverStaffTshirts(
+    eventId: string,
+    data: { size: string; quantity?: number; recipientName?: string; notes?: string },
+    userId: string
+  ) {
+    const trimmedSize = data.size.trim();
+    const quantity = Math.max(1, data.quantity || 1);
+
+    return await prisma.$transaction(async (tx) => {
+      const item = await tx.tshirtInventory.findUnique({
+        where: { eventId_size: { eventId, size: trimmedSize } },
+      });
+
+      if (!item || !item.isActive) {
+        throw new NotFoundError(`Talla "${trimmedSize}" no encontrada en el inventario activo de esta edición`);
+      }
+
+      // Validar existencias físicas reales no entregadas a nadie
+      const totalDeliveredAll = item.deliveredQuantity + item.staffDeliveredQuantity;
+      const physicalRemaining = item.initialQuantity - totalDeliveredAll;
+      if (physicalRemaining < quantity) {
+        throw new BadRequestError(
+          `No hay suficientes camisetas físicas disponibles para entregar al personal. Físicas libres: ${physicalRemaining}, solicitadas: ${quantity}.`
+        );
+      }
+
+      const newStaffDelivered = item.staffDeliveredQuantity + quantity;
+      // Si se entrega con reserva previa, consume de la reserva.
+      // Si se entrega directo sin reserva suficiente, se asegura que staffReservedQuantity cubra al menos lo entregado.
+      const newStaffReserved = Math.max(item.staffReservedQuantity, newStaffDelivered);
+
+      const updatedInventory = await tx.tshirtInventory.update({
+        where: { id: item.id },
+        data: {
+          staffDeliveredQuantity: newStaffDelivered,
+          staffReservedQuantity: newStaffReserved,
+        },
+      });
+
+      const delivery = await tx.staffTshirtDelivery.create({
+        data: {
+          eventId,
+          size: trimmedSize,
+          quantity,
+          recipientName: data.recipientName ? data.recipientName.trim() : null,
+          notes: data.notes ? data.notes.trim() : null,
+          deliveredByUserId: userId,
+          deliveredAt: new Date(),
+        },
+        include: {
+          deliveredByUser: {
+            select: { id: true, fullName: true, email: true },
+          },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'STAFF_TSHIRT_DELIVER',
+          entity: 'STAFF_TSHIRT_DELIVERY',
+          entityId: delivery.id,
+          changes: JSON.stringify({
+            action: 'STAFF_DELIVERY',
+            size: trimmedSize,
+            quantity,
+            recipientName: data.recipientName || 'Sin especificar',
+            deliveredStaffTotal: newStaffDelivered,
+            staffReserved: newStaffReserved,
+            availableForParticipants: Math.max(0, updatedInventory.initialQuantity - updatedInventory.deliveredQuantity - updatedInventory.staffReservedQuantity),
+          }),
+        },
+      });
+
+      return {
+        delivery,
+        inventory: {
+          size: updatedInventory.size,
+          total: updatedInventory.initialQuantity,
+          deliveredParticipants: updatedInventory.deliveredQuantity,
+          staffReserved: updatedInventory.staffReservedQuantity,
+          staffDelivered: updatedInventory.staffDeliveredQuantity,
+          staffPending: Math.max(0, updatedInventory.staffReservedQuantity - updatedInventory.staffDeliveredQuantity),
+          availableForParticipants: Math.max(0, updatedInventory.initialQuantity - updatedInventory.deliveredQuantity - updatedInventory.staffReservedQuantity),
+        },
+      };
+    });
+  }
+
+  /**
+   * Liberar camisetas no entregadas de la reserva del staff (Admin)
+   */
+  static async releaseStaffTshirts(
+    eventId: string,
+    size: string,
+    quantityToRelease: number,
+    userId: string
+  ) {
+    const trimmedSize = size.trim();
+    if (quantityToRelease <= 0) {
+      throw new BadRequestError('La cantidad a liberar debe ser mayor a 0');
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      const item = await tx.tshirtInventory.findUnique({
+        where: { eventId_size: { eventId, size: trimmedSize } },
+      });
+
+      if (!item || !item.isActive) {
+        throw new NotFoundError(`Talla "${trimmedSize}" no encontrada en el inventario activo de esta edición`);
+      }
+
+      const pendingReserve = Math.max(0, item.staffReservedQuantity - item.staffDeliveredQuantity);
+      if (pendingReserve <= 0) {
+        throw new BadRequestError(`No hay camisetas pendientes de entrega en la reserva de la talla "${trimmedSize}" para liberar.`);
+      }
+
+      const actualRelease = Math.min(quantityToRelease, pendingReserve);
+      const newStaffReserved = item.staffReservedQuantity - actualRelease;
+
+      const updated = await tx.tshirtInventory.update({
+        where: { id: item.id },
+        data: {
+          staffReservedQuantity: newStaffReserved,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'STAFF_TSHIRT_RELEASE',
+          entity: 'TSHIRT_INVENTORY',
+          entityId: item.id,
+          changes: JSON.stringify({
+            action: 'STAFF_RELEASE',
+            size: trimmedSize,
+            releasedQuantity: actualRelease,
+            previousReserved: item.staffReservedQuantity,
+            newReserved: newStaffReserved,
+            availableForParticipants: Math.max(0, updated.initialQuantity - updated.deliveredQuantity - updated.staffReservedQuantity),
+          }),
+        },
+      });
+
+      return {
+        size: updated.size,
+        releasedQuantity: actualRelease,
+        staffReserved: updated.staffReservedQuantity,
+        staffDelivered: updated.staffDeliveredQuantity,
+        staffPending: Math.max(0, updated.staffReservedQuantity - updated.staffDeliveredQuantity),
+        availableForParticipants: Math.max(0, updated.initialQuantity - updated.deliveredQuantity - updated.staffReservedQuantity),
+      };
+    });
+  }
+
+  /**
+   * Consultar historial de entregas al staff
+   */
+  static async getStaffDeliveries(eventId: string) {
+    return await prisma.staffTshirtDelivery.findMany({
+      where: { eventId },
+      orderBy: { deliveredAt: 'desc' },
+      include: {
+        deliveredByUser: {
+          select: { id: true, fullName: true, email: true },
+        },
+      },
+    });
+  }
+
 }

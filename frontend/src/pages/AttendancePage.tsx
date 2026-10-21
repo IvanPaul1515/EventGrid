@@ -397,7 +397,7 @@ export const AttendancePage: React.FC = () => {
               </span>
               <span className="text-xs text-emerald-300/80">presentes</span>
             </div>
-            <span className="text-[11px] text-emerald-400/80 mt-1 block">Asistencias confirmadas en PUCMM</span>
+            <span className="text-[11px] text-emerald-400/80 mt-1 block">Asistencias confirmadas en sala</span>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
             <CheckCircle2 className="w-6 h-6" />

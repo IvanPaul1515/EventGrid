@@ -5,6 +5,7 @@ import { eventsService } from '../services/events.service';
 import { demoService } from '../services/demo.service';
 import { TicketType, DemoStatus, EmailConfig } from '../types';
 import { communicationsService } from '../services/communications.service';
+import { StaffTshirtsTab } from '../components/inventory/StaffTshirtsTab';
 import {
   Palette,
   Sparkles,
@@ -45,7 +46,7 @@ export const SettingsPage: React.FC = () => {
   const { applyCustomPalette, resetDefaultTheme } = useTheme();
 
   // Pestaña activa
-  const [activeTab, setActiveTab] = useState<'visual' | 'edition' | 'tickets' | 'reception' | 'email' | 'demo'>('visual');
+  const [activeTab, setActiveTab] = useState<'visual' | 'edition' | 'tickets' | 'reception' | 'staff-tshirts' | 'email' | 'demo'>('visual');
 
   // Identidad Visual y Colores
   const [primaryColor, setPrimaryColor] = useState('#e11d48');
@@ -164,7 +165,7 @@ export const SettingsPage: React.FC = () => {
         setSecondaryColor(currentEvent.settings.secondaryColor || '#881337');
         setAccentColor(currentEvent.settings.accentColor || '#f43f5e');
         setBackgroundColor(currentEvent.settings.backgroundColor || '#09090b');
-        setSubtitle(currentEvent.settings.subtitle || 'PUCMM — Santiago de los Caballeros');
+        setSubtitle(currentEvent.settings.subtitle || '');
         setPrefix(currentEvent.settings.registrationPrefix || 'BC26-');
         setCurrencySymbol(currentEvent.settings.currencySymbol || 'RD$');
         setLogoUrl(currentEvent.settings.logoUrl || null);
@@ -568,7 +569,7 @@ export const SettingsPage: React.FC = () => {
     { name: 'Carmesí Profundo', primary: '#be123c', secondary: '#4c0519', bg: '#09090b' },
     { name: 'Cibao Tech Naranja', primary: '#ea580c', secondary: '#7c2d12', bg: '#0c0a09' },
     { name: 'Índigo Hacker', primary: '#6366f1', secondary: '#312e81', bg: '#09090b' },
-    { name: 'Verde PUCMM Campus', primary: '#10b981', secondary: '#064e3b', bg: '#09090b' },
+    { name: 'Verde Esmeralda Corporativo', primary: '#10b981', secondary: '#064e3b', bg: '#09090b' },
   ];
 
   return (
@@ -924,7 +925,7 @@ export const SettingsPage: React.FC = () => {
                   <span className="text-[10px] uppercase font-mono tracking-wider opacity-80">Credencial Oficial</span>
                   <div className="font-bold text-sm">Participante BarCamp</div>
                   <span className="block text-[11px] opacity-90">
-                    {subtitle || 'PUCMM Santiago'} • {currencySymbol} 2,000.00
+                    {subtitle || currentEvent?.name || 'Evento Oficial'} • {currencySymbol} 2,000.00
                   </span>
                 </div>
 
@@ -975,7 +976,7 @@ export const SettingsPage: React.FC = () => {
                 required
                 value={editionVenue}
                 onChange={(e) => setEditionVenue(e.target.value)}
-                placeholder="PUCMM — Campus Santiago de los Caballeros, RD"
+                placeholder="ej. Centro de Convenciones Principal, Gran Salón"
                 className="w-full px-3 py-2 bg-background border border-border rounded-lg text-xs"
               />
             </div>
@@ -1023,7 +1024,7 @@ export const SettingsPage: React.FC = () => {
                 rows={3}
                 value={editionDescription}
                 onChange={(e) => setEditionDescription(e.target.value)}
-                placeholder="Edición anual de desconferencia tecnológica en PUCMM Santiago..."
+                placeholder="Descripción general del evento o conferencia..."
                 className="w-full px-3 py-2 bg-background border border-border rounded-lg text-xs resize-none"
               />
             </div>

@@ -9,13 +9,21 @@ const router = Router({ mergeParams: true });
 router.use(authenticateToken);
 router.use(editionContext);
 
-// Consulta de inventario y estadísticas (Cualquier rol autenticado)
+// 1. T-shirts del Staff (Parte 2)
+// NOTA: Deben registrarse ANTES de las rutas con parámetro /:id para evitar colisiones
+router.get('/staff', requireAnyRole, InventoryController.getStaffInventory);
+router.put('/staff/reserve', requireAdmin, InventoryController.reserveStaffTshirts);
+router.post('/staff/deliver', requireAdmin, InventoryController.deliverStaffTshirts);
+router.post('/staff/release', requireAdmin, InventoryController.releaseStaffTshirts);
+router.get('/staff/deliveries', requireAnyRole, InventoryController.getStaffDeliveries);
+
+// 2. Consulta de inventario general y estadísticas
 router.get('/', requireAnyRole, InventoryController.getInventory);
 
-// Inicialización del inventario de 282 unidades (Solo Admin)
+// 3. Inicialización del inventario de 282 unidades (Solo Admin)
 router.post('/init', requireAdmin, InventoryController.initInventory);
 
-// Modificación administrativa del inventario (Solo Admin)
+// 4. Modificación administrativa del inventario (Solo Admin)
 router.post('/', requireAdmin, InventoryController.createItem);
 router.put('/:id', requireAdmin, InventoryController.updateItem);
 router.delete('/:id', requireAdmin, InventoryController.deleteItem);

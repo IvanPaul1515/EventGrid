@@ -307,7 +307,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="m.taveras@pucmm.edu.do"
+                placeholder="nombre@empresa.com"
                 required
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               />
@@ -348,7 +348,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                 type="text"
                 value={institution}
                 onChange={(e) => setInstitution(e.target.value)}
-                placeholder="ej. PUCMM, ITLA, Claro"
+                placeholder="ej. Empresa, Instituto, Universidad"
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>

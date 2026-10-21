@@ -104,7 +104,7 @@ export class EventsService {
         year: data.year,
         startDate: new Date(data.startDate),
         endDate: new Date(data.endDate),
-        venue: data.venue || 'PUCMM — Campus Santiago de los Caballeros, RD',
+        venue: data.venue || 'Centro de Convenciones Principal',
         description: data.description,
         status: data.status || 'PLANNING',
         isDefault: data.isDefault || false,
@@ -116,8 +116,8 @@ export class EventsService {
             themeMode: 'dark',
             currencyCode: 'DOP',
             currencySymbol: 'RD$',
-            subtitle: 'PUCMM — Santiago de los Caballeros',
-            registrationPrefix: `BC${String(data.year).slice(-2)}-`,
+            subtitle: data.subtitle || 'Tecnología, Innovación y Comunidad',
+            registrationPrefix: `EV${String(data.year).slice(-2)}-`,
           },
         },
       },
@@ -372,40 +372,7 @@ export class EventsService {
       },
     });
 
-    // Si cambió el precio de la tarifa, propagar a las inscripciones no cortesía vinculadas
-    if (data.price !== undefined && Number(data.price) !== Number(existing.price)) {
-      const newPrice = Number(data.price);
-      const affectedRegistrations = await prisma.registration.findMany({
-        where: {
-          eventId,
-          ticketTypeId,
-          isCourtesy: false,
-        },
-      });
-
-      for (const reg of affectedRegistrations) {
-        const paid = Number(reg.amountPaid ?? reg.totalAmount ?? 0);
-        const newBalanceDue = Math.max(0, newPrice - paid);
-        let newPaymentStatus = 'PENDING';
-        if (paid >= newPrice && newPrice > 0) {
-          newPaymentStatus = 'PAID';
-        } else if (paid > 0 && newBalanceDue > 0) {
-          newPaymentStatus = 'PARTIAL';
-        } else if (paid === 0) {
-          newPaymentStatus = 'PENDING';
-        }
-
-        await prisma.registration.update({
-          where: { id: reg.id },
-          data: {
-            ticketPrice: newPrice,
-            balanceDue: newBalanceDue,
-            paymentStatus: newPaymentStatus as any,
-          },
-        });
-      }
-    }
-
+    // QA-15: Precios historicos protegidos
     return updated;
   }
 
@@ -623,7 +590,7 @@ export class EventsService {
           timestamp: reg.saleTimestamp || reg.createdAt,
           participantName: reg.participant.fullName,
           ticketNumber: reg.registrationNumber,
-          operator: reg.salesResponsible?.name || 'Comité BarCamp',
+          operator: reg.salesResponsible?.name || 'Comité Organizador',
           isDirectPayment: false,
         });
       }

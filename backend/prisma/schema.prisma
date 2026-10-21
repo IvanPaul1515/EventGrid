@@ -101,6 +101,7 @@ model User {
   modifiedRegistrations Registration[]  @relation("RegistrationModifier")
   modifiedParticipants  Participant[]   @relation("ParticipantModifier")
   sentEmails            EmailLog[]      @relation("EmailSender")
+  staffTshirtDeliveries StaffTshirtDelivery[]
 
   @@map("users")
 }
@@ -112,7 +113,7 @@ model Event {
   year        Int
   startDate   DateTime
   endDate     DateTime
-  venue       String      @default("PUCMM, Santiago de los Caballeros, RD")
+  venue       String      @default("Sede Principal del Evento")
   description String?
   maxCapacity Int?
   status      EventStatus @default(PLANNING)
@@ -131,6 +132,7 @@ model Event {
   emailTemplates         EmailTemplate[]
   emailLogs              EmailLog[]
   tshirtInventories      TshirtInventory[]
+  staffTshirtDeliveries  StaffTshirtDelivery[]
 
   @@index([year])
   @@index([status])
@@ -152,7 +154,7 @@ model EventSettings {
   faviconUrl         String?
   coverImageUrl      String?
   subtitle           String   @default("Tecnología, Innovación y Comunidad")
-  registrationPrefix String   @default("BC-")
+  registrationPrefix String   @default("EV-")
   demoModeEnabled      Boolean  @default(false)
   tshirtSizesEnabled   Boolean  @default(false)
   tshirtSizes          Json?    // e.g. ["XS","S","M","L","XL","XXL","XXXL"]
