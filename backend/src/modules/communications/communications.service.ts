@@ -1261,9 +1261,41 @@ export class CommunicationsService {
   }
 
   /**
-   * Reintentar envíos fallidos de un lote persistente (Fase 4)
+   * Reintentar envíos fallidos de un lote persistente (Fase 4 / QA-31)
    */
   static async retryBatchJob(jobId: string, eventId?: string) {
+    const job = await prisma.emailBatchJob.findUnique({ where: { id: jobId } });
+    if (!job) throw new NotFoundError('Lote no encontrado');
+    if (eventId && job.eventId !== eventId) {
+      throw new NotFoundError('Lote no encontrado en esta edición');
+    }
+
+    const failedCount = await prisma.emailBatchItem.count({
+      where: { jobId, status: 'FAILED' },
+    });
+
+    if (failedCount > 0) {
+      return this.retryFailedBatchJob(jobId, eventId);
+    }
+
+    const uncertainCount = await prisma.emailBatchItem.count({
+      where: { jobId, status: 'UNKNOWN_DELIVERY_STATUS' },
+    });
+
+    if (uncertainCount > 0) {
+      return EmailQueueWorker.retryUncertain(jobId, eventId, {
+        confirmedDuplicateRisk: true,
+        reason: 'Reintento autorizado mediante retryBatchJob',
+      });
+    }
+
+    return job;
+  }
+
+  /**
+   * QA-31: Reintentar ÚNICAMENTE envíos fallidos (status: 'FAILED')
+   */
+  static async retryFailedBatchJob(jobId: string, eventId?: string) {
     const job = await prisma.emailBatchJob.findUnique({ where: { id: jobId } });
     if (!job) throw new NotFoundError('Lote no encontrado');
     if (eventId && job.eventId !== eventId) {
@@ -1274,4 +1306,27 @@ export class CommunicationsService {
     return updatedJob;
   }
 
+  /**
+   * QA-31: Reintentar envíos con resultado incierto (status: 'UNKNOWN_DELIVERY_STATUS')
+   * Requiere confirmación explícita de riesgo de duplicación y justificación.
+   */
+  static async retryUncertainBatchJob(
+    jobId: string,
+    eventId?: string,
+    confirmation?: { confirmedDuplicateRisk?: boolean; reason?: string },
+    userId?: string
+  ) {
+    const job = await prisma.emailBatchJob.findUnique({ where: { id: jobId } });
+    if (!job) throw new NotFoundError('Lote no encontrado');
+    if (eventId && job.eventId !== eventId) {
+      throw new NotFoundError('Lote no encontrado en esta edición');
+    }
+
+    const updatedJob = await EmailQueueWorker.retryUncertain(jobId, eventId, {
+      confirmedDuplicateRisk: confirmation?.confirmedDuplicateRisk,
+      reason: confirmation?.reason,
+      userId,
+    });
+    return updatedJob;
+  }
 }

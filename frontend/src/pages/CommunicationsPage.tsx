@@ -57,6 +57,12 @@ export const CommunicationsPage: React.FC = () => {
   const [selectedBatchJob, setSelectedBatchJob] = useState<(EmailBatchJobInfo & { items: any[] }) | null>(null);
   const [cancellingBatchId, setCancellingBatchId] = useState<string | null>(null);
   const [retryingBatchId, setRetryingBatchId] = useState<string | null>(null);
+  const [uncertainModalOpen, setUncertainModalOpen] = useState(false);
+  const [uncertainTargetBatchId, setUncertainTargetBatchId] = useState<string | null>(null);
+  const [uncertainCount, setUncertainCount] = useState<number>(0);
+  const [confirmedDuplicateRisk, setConfirmedDuplicateRisk] = useState(false);
+  const [uncertainReason, setUncertainReason] = useState("");
+  const [retryingUncertain, setRetryingUncertain] = useState(false);
 
   // ==========================================
   // ESTADO 1: REDACTAR Y ENVIAR (INDIVIDUAL)
@@ -185,19 +191,59 @@ export const CommunicationsPage: React.FC = () => {
     }
   };
 
-  const handleRetryBatch = async (jobId: string) => {
+  const handleRetryFailedBatch = async (jobId: string) => {
     try {
       setRetryingBatchId(jobId);
-      await communicationsService.retryBatchJob(jobId);
+      await communicationsService.retryFailedBatchJob(jobId);
       await loadBatchJobs();
       if (selectedBatchJob?.id === jobId) {
         const updated = await communicationsService.getBatchJob(jobId);
         setSelectedBatchJob(updated);
       }
+      alert('Reintento de correos fallidos programado correctamente.');
     } catch (err: any) {
       alert(err.response?.data?.message || err.message || 'Error al reintentar envíos fallidos');
     } finally {
       setRetryingBatchId(null);
+    }
+  };
+
+  const handleOpenRetryUncertainModal = (job: any) => {
+    const uncertain = job.items ? job.items.filter((i: any) => i.status === 'UNKNOWN_DELIVERY_STATUS').length : (job.failedCount || 0);
+    setUncertainTargetBatchId(job.id);
+    setUncertainCount(uncertain);
+    setConfirmedDuplicateRisk(false);
+    setUncertainReason('');
+    setUncertainModalOpen(true);
+  };
+
+  const handleConfirmRetryUncertain = async () => {
+    if (!uncertainTargetBatchId) return;
+    if (!confirmedDuplicateRisk) {
+      alert('Debe confirmar explícitamente que comprende y acepta el riesgo de enviar correos duplicados.');
+      return;
+    }
+    if (!uncertainReason.trim() || uncertainReason.trim().length < 5) {
+      alert('Debe especificar un motivo justificado (mínimo 5 caracteres).');
+      return;
+    }
+    try {
+      setRetryingUncertain(true)
+      await communicationsService.retryUncertainBatchJob(uncertainTargetBatchId, {
+        confirmedDuplicateRisk: true,
+        reason: uncertainReason.trim(),
+      });
+      setUncertainModalOpen(false);
+      await loadBatchJobs();
+      if (selectedBatchJob?.id === uncertainTargetBatchId) {
+        const updated = await communicationsService.getBatchJob(uncertainTargetBatchId);
+        setSelectedBatchJob(updated);
+      }
+      alert('Reintento de envíos inciertos autorizado y programado correctamente.');
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Error al autorizar reintento de inciertos');
+    } finally {
+      setRetryingUncertain(false);
     }
   };
 
@@ -540,6 +586,21 @@ export const CommunicationsPage: React.FC = () => {
         <button
           onClick={() => {
             setActiveTab('batches');
+            loadBatchJobs();
+          }}
+          className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
+            activeTab === 'batches'
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>Cola de Lotes</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('logs');
             loadLogs(1);
           }}
           className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
@@ -1264,6 +1325,130 @@ export const CommunicationsPage: React.FC = () => {
       )}
 
       {/* ========================================================
+          PESTAÑA: COLA DE LOTES PERSISTENTES (Fase 4 / QA-31)
+      ======================================================== */}
+      {activeTab === 'batches' && (
+        <div className="space-y-4">
+          <div className="p-4 rounded-2xl bg-card border border-border flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-sm text-foreground">Cola de Lotes de Envíos Masivos</h3>
+              <p className="text-xs text-muted-foreground">
+                Monitoreo, estado de despacho y control de reintentos seguros.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadBatchJobs}
+              disabled={loadingBatchJobs}
+              className="px-3 py-2 rounded-xl text-xs font-semibold text-primary hover:bg-primary/10 border border-primary/20 flex items-center gap-1.5 cursor-pointer"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${loadingBatchJobs ? 'animate-spin' : ''}`} />
+              <span>Actualizar</span>
+            </button>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-card border border-border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground uppercase text-[10px] tracking-wider font-bold">
+                    <th className="pb-3 pl-2">ID Lote / Fecha</th>
+                    <th className="pb-3">Asunto</th>
+                    <th className="pb-3 text-center">Modo</th>
+                    <th className="pb-3 text-center">Total</th>
+                    <th className="pb-3 text-center">Enviados</th>
+                    <th className="pb-3 text-center">Simulados</th>
+                    <th className="pb-3 text-center">Fallidos</th>
+                    <th className="pb-3 text-center">Estado</th>
+                    <th className="pb-3 text-right pr-2">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {batchJobs.length > 0 ? (
+                    batchJobs.map((job) => {
+                      const failed = job.failedCount || 0;
+                      return (
+                        <tr key={job.id} className="hover:bg-muted/40 transition-colors">
+                          <td className="py-3 pl-2 font-mono text-[11px]">
+                            <p className="font-bold text-foreground">{job.id.slice(0, 16)}...</p>
+                            <p className="text-muted-foreground text-[10px]">{new Date(job.createdAt).toLocaleString('es-DO')}</p>
+                          </td>
+                          <td className="py-3">
+                            <p className="font-semibold text-foreground truncate max-w-xs">{job.subject}</p>
+                          </td>
+                          <td className="py-3 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              (job as any).mode === 'REAL' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                            }`}>
+                              {(job as any).mode || 'SIMULATION'}
+                            </span>
+                          </td>
+                          <td className="py-3 text-center font-bold text-foreground">{job.totalCount}</td>
+                          <td className="py-3 text-center text-emerald-400 font-bold">{job.sentCount || 0}</td>
+                          <td className="py-3 text-center text-sky-400 font-bold">{job.simulatedCount || 0}</td>
+                          <td className="py-3 text-center text-rose-400 font-bold">{failed}</td>
+                          <td className="py-3 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              job.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' :
+                              job.status === 'SIMULATED' ? 'bg-sky-500/20 text-sky-400' :
+                              job.status === 'FAILED' ? 'bg-rose-500/20 text-rose-400' :
+                              job.status === 'CANCELLED' ? 'bg-zinc-500/20 text-zinc-400' :
+                              job.status === 'CANCELLATION_REQUESTED' ? 'bg-amber-500/20 text-amber-400' :
+                              'bg-primary/20 text-primary'
+                            }`}>
+                              {job.status}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right pr-2 space-x-1">
+                            {(job.status === 'PENDING' || job.status === 'PROCESSING') && (
+                              <button
+                                type="button"
+                                disabled={cancellingBatchId === job.id}
+                                onClick={() => handleCancelBatch(job.id)}
+                                className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold cursor-pointer"
+                              >
+                                {cancellingBatchId === job.id ? 'Cancelando...' : 'Cancelar'}
+                              </button>
+                            )}
+                            {failed > 0 && (
+                              <button
+                                type="button"
+                                disabled={retryingBatchId === job.id}
+                                onClick={() => handleRetryFailedBatch(job.id)}
+                                className="px-2 py-1 rounded bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 text-[11px] font-bold cursor-pointer"
+                                title="Reintentar exclusivamente envíos fallidos confirmados"
+                              >
+                                {retryingBatchId === job.id ? 'Reintentando...' : 'Reintentar fallidos'}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRetryUncertainModal(job)}
+                              className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[11px] font-bold cursor-pointer inline-flex items-center gap-1"
+                              title="Atención: Reintentar envíos inciertos requiere confirmación explícita"
+                            >
+                              <AlertTriangle className="w-3 h-3 text-amber-400" />
+                              <span>Reintentar inciertos</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={9} className="text-center py-8 text-muted-foreground">
+                        {loadingBatchJobs ? 'Cargando lotes...' : 'No hay lotes de envío registrados.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
           PESTAÑA 4: HISTORIAL Y SEGUIMIENTO (QA-10)
       ======================================================== */}
       {activeTab === 'logs' && (
@@ -1575,6 +1760,63 @@ export const CommunicationsPage: React.FC = () => {
               >
                 {sendingTestMail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                 <span>{sendingTestMail ? 'Enviando...' : 'Enviar Prueba'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL: REINTENTO DE ENVÍOS INCIERTOS (QA-31) */}
+      {uncertainModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-md bg-card rounded-2xl border border-rose-500/30 p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-2 text-rose-500">
+              <AlertTriangle className="w-5 h-5" />
+              <h3 className="font-bold text-sm text-foreground">Autorización de Reenvío Incierto</h3>
+            </div>
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 space-y-2">
+              <p className="font-semibold">⚠️ Advertencia Crítica de Duplicación:</p>
+              <p>
+                Hay destinatarios con resultado incierto. Es muy probable que el servidor SMTP ya haya recibido y entregado estos correos. Reintentarlos puede provocar que los participantes reciban información duplicada.
+              </p>
+            </div>
+            <div className="space-y-3 text-xs">
+              <label className="block font-semibold text-foreground">
+                Motivo justificado de la autorización (obligatorio para auditoría):
+              </label>
+              <textarea
+                rows={3}
+                value={uncertainReason}
+                onChange={(e) => setUncertainReason(e.target.value)}
+                placeholder="Explique por qué es necesario reintentar estos envíos inciertos..."
+                className="w-full p-2.5 rounded-xl bg-background border border-border text-foreground text-xs focus:ring-1 focus:ring-primary"
+              />
+              <label className="flex items-start gap-2 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={confirmedDuplicateRisk}
+                  onChange={(e) => setConfirmedDuplicateRisk(e.target.checked)}
+                  className="mt-0.5 rounded border-border"
+                />
+                <span className="text-muted-foreground text-xs font-medium">
+                  Comprendo el riesgo de correos duplicados y autorizo expresamente el reenvío bajo mi responsabilidad.
+                </span>
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setUncertainModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!confirmedDuplicateRisk || uncertainReason.trim().length < 5 || retryingUncertain}
+                onClick={handleConfirmRetryUncertain}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs disabled:opacity-50"
+              >
+                {retryingUncertain ? 'Autorizando...' : 'Autorizar Reintento'}
               </button>
             </div>
           </div>

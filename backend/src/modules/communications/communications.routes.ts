@@ -32,11 +32,15 @@ router.get('/jobs', requireRole(['ADMIN']), CommunicationsController.getBatchJob
 router.get('/jobs/:id', requireRole(['ADMIN']), CommunicationsController.getBatchJob);
 router.post('/jobs/:id/cancel', requireRole(['ADMIN']), CommunicationsController.cancelBatchJob);
 router.post('/jobs/:id/retry', requireRole(['ADMIN']), CommunicationsController.retryBatchJob);
+router.post('/jobs/:id/retry-failed', requireRole(['ADMIN']), CommunicationsController.retryFailedBatchJob);
+router.post('/jobs/:id/retry-uncertain', requireRole(['ADMIN']), CommunicationsController.retryUncertainBatchJob);
 
 router.get('/batches', requireRole(['ADMIN']), CommunicationsController.getBatchJobs);
 router.get('/batches/:id', requireRole(['ADMIN']), CommunicationsController.getBatchJob);
 router.post('/batches/:id/cancel', requireRole(['ADMIN']), CommunicationsController.cancelBatchJob);
 router.post('/batches/:id/retry', requireRole(['ADMIN']), CommunicationsController.retryBatchJob);
+router.post('/batches/:id/retry-failed', requireRole(['ADMIN']), CommunicationsController.retryFailedBatchJob);
+router.post('/batches/:id/retry-uncertain', requireRole(['ADMIN']), CommunicationsController.retryUncertainBatchJob);
 
 // Historial de correos (ADMIN y OPERATOR)
 router.get('/logs', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.getLogs);

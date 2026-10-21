@@ -73,39 +73,75 @@ export async function recordFailedLogin(req: Request, email?: string) {
   const nowMs = now.getTime();
 
   async function recordKey(key: string) {
-    const windowStart = new Date(nowMs - WINDOW_MS);
+    let attempts = 0;
+    while (attempts < 5) {
+      attempts++;
+      const currentNow = new Date();
+      const currentNowMs = currentNow.getTime();
+      const currentWindowStart = new Date(currentNowMs - WINDOW_MS);
 
-    // 1. Incremento atómico directo dentro de la ventana activa (QA-25)
-    const updateResult = await prisma.loginAttempt.updateMany({
-      where: {
-        key,
-        firstAttemptAt: { gte: windowStart },
-      },
-      data: {
-        count: { increment: 1 },
-      },
-    });
-
-    let current;
-    if (updateResult.count > 0) {
-      current = await prisma.loginAttempt.findUnique({ where: { key } });
-    } else {
-      // 2. Si no existía o la ventana expiró, reinicializar con upsert atómico
-      current = await prisma.loginAttempt.upsert({
-        where: { key },
-        create: { key, count: 1, firstAttemptAt: now, blockedUntil: null },
-        update: { count: 1, firstAttemptAt: now, blockedUntil: null },
-      });
-    }
-
-    // 3. Si alcanza o supera el umbral, activar bloqueo atómico
-    if (current && current.count >= MAX_FAILED_ATTEMPTS && (!current.blockedUntil || current.blockedUntil <= now)) {
-      await prisma.loginAttempt.update({
-        where: { key },
-        data: {
-          blockedUntil: new Date(nowMs + BLOCK_DURATION_MS),
+      // Paso 1: Intentar incremento atómico directo dentro de la ventana activa (QA-25 / QA-32)
+      const updateResult = await prisma.loginAttempt.updateMany({
+        where: {
+          key,
+          firstAttemptAt: { gte: currentWindowStart },
         },
-      }).catch(() => {});
+        data: {
+          count: { increment: 1 },
+        },
+      });
+
+      if (updateResult.count > 0) {
+        // Comprobar si se alcanzó o superó el umbral para activar bloqueo
+        const record = await prisma.loginAttempt.findUnique({ where: { key } });
+        if (record && record.count >= MAX_FAILED_ATTEMPTS && (!record.blockedUntil || record.blockedUntil <= currentNow)) {
+          await prisma.loginAttempt.updateMany({
+            where: {
+              key,
+              OR: [{ blockedUntil: null }, { blockedUntil: { lte: currentNow } }],
+            },
+            data: {
+              blockedUntil: new Date(currentNowMs + BLOCK_DURATION_MS),
+            },
+          }).catch(() => {});
+        }
+        return;
+      }
+
+      // Paso 2: La ventana expiró (< currentWindowStart) o el registro no existe.
+      // a) Si ya existía pero expiró, reiniciar condicionalmente solo si sigue expirada (compare-and-swap)
+      const resetResult = await prisma.loginAttempt.updateMany({
+        where: {
+          key,
+          firstAttemptAt: { lt: currentWindowStart },
+          OR: [{ blockedUntil: null }, { blockedUntil: { lte: currentNow } }],
+        },
+        data: {
+          count: 1,
+          firstAttemptAt: currentNow,
+          blockedUntil: null,
+        },
+      });
+
+      if (resetResult.count > 0) {
+        return;
+      }
+
+      // b) Si no existía, intentar crear el registro inicial
+      try {
+        await prisma.loginAttempt.create({
+          data: {
+            key,
+            count: 1,
+            firstAttemptAt: currentNow,
+            blockedUntil: null,
+          },
+        });
+        return;
+      } catch (err) {
+        // Conflicto por concurrencia: otra solicitud creó o actualizó la fila.
+        // El bucle de reintento ejecutará inmediatamente el Paso 1 sobre la ventana activa.
+      }
     }
   }
 

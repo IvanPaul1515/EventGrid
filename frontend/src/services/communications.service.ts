@@ -151,8 +151,17 @@ export const communicationsService = {
     return res.data.data;
   },
 
-  async retryBatchJob(jobId: string): Promise<{ jobId: string; retriedItemsCount: number; status: string }> {
-    const res = await api.post<ApiResponse<{ jobId: string; retriedItemsCount: number; status: string }>>(`/communications/jobs/${jobId}/retry`);
+  async retryBatchJob(jobId: string): Promise<any> {
+    return this.retryFailedBatchJob(jobId);
+  },
+
+  async retryFailedBatchJob(jobId: string): Promise<any> {
+    const res = await api.post<ApiResponse<any>>(`/communications/jobs/${jobId}/retry-failed`);
+    return res.data.data;
+  },
+
+  async retryUncertainBatchJob(jobId: string, payload: { confirmedDuplicateRisk: boolean; reason: string }): Promise<any> {
+    const res = await api.post<ApiResponse<any>>(`/communications/jobs/${jobId}/retry-uncertain`, payload);
     return res.data.data;
   },
 

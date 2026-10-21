@@ -103,3 +103,12 @@ export type ValidateRecipientsInput = z.infer<typeof ValidateRecipientsSchema>;
 export type EmailPreviewInput = z.infer<typeof EmailPreviewSchema>;
 export type UpdateTemplateInput = z.infer<typeof UpdateTemplateSchema>;
 export type QueryLogsInput = z.infer<typeof QueryLogsSchema>;
+
+export const RetryUncertainBatchSchema = z.object({
+  confirmedDuplicateRisk: z.boolean().refine((val) => val === true, {
+    message: 'Debe confirmar explícitamente que acepta el riesgo de enviar correos duplicados',
+  }),
+  reason: z.string().min(5, 'Debe especificar el motivo justificado para el reenvío de correos inciertos (mínimo 5 caracteres)'),
+});
+
+export type RetryUncertainBatchInput = z.infer<typeof RetryUncertainBatchSchema>;

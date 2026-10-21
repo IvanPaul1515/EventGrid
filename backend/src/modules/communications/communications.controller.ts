@@ -9,6 +9,7 @@ import {
   EmailPreviewSchema,
   QueryLogsSchema,
   ValidateRecipientsSchema,
+  RetryUncertainBatchSchema,
 } from './communications.dto.js';
 import { recordAuditLog } from '../../middleware/audit.js';
 import { BadRequestError } from '../../utils/errors.js';
@@ -241,4 +242,38 @@ export class CommunicationsController {
     }
   }
 
+  static async retryFailedBatchJob(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const eventId = (req.query.eventId as string) || (req as any).eventId;
+      const result = await CommunicationsService.retryFailedBatchJob(id, eventId);
+      return res.status(200).json({ status: 'success', message: 'Reintento de fallidos programado exitosamente', data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async retryUncertainBatchJob(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const eventId = (req.query.eventId as string) || (req as any).eventId;
+      const userId = (req as any).user?.id;
+      const parseResult = RetryUncertainBatchSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          status: 'error',
+          message: parseResult.error.errors[0]?.message || 'Datos de confirmación inválidos',
+          errors: parseResult.error.flatten().fieldErrors,
+        });
+      }
+      const result = await CommunicationsService.retryUncertainBatchJob(id, eventId, parseResult.data, userId);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Reintento de envíos inciertos autorizado y programado exitosamente',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
