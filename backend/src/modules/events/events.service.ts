@@ -5,6 +5,39 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 export class EventsService {
+  static formatSettings(settings: any) {
+    if (!settings) return settings;
+    let tshirtSizes = settings.tshirtSizes;
+    if (typeof tshirtSizes === 'string') {
+      try {
+        tshirtSizes = JSON.parse(tshirtSizes);
+      } catch {
+        tshirtSizes = [];
+      }
+    }
+    let customCss = settings.customCss;
+    if (typeof customCss === 'string') {
+      try {
+        customCss = JSON.parse(customCss);
+      } catch {
+        customCss = {};
+      }
+    }
+    return {
+      ...settings,
+      tshirtSizes: Array.isArray(tshirtSizes) ? tshirtSizes : [],
+      customCss: customCss || {},
+    };
+  }
+
+  static formatEvent(event: any) {
+    if (!event) return event;
+    return {
+      ...event,
+      settings: event.settings ? EventsService.formatSettings(event.settings) : event.settings,
+    };
+  }
+
   static async getAll() {
     const events = await prisma.event.findMany({
       orderBy: { year: 'desc' },
@@ -19,7 +52,7 @@ export class EventsService {
       },
     });
 
-    return events;
+    return events.map((e) => EventsService.formatEvent(e));
   }
 
   static async getById(id: string) {
@@ -44,7 +77,7 @@ export class EventsService {
       throw new NotFoundError(`Edición no encontrada`);
     }
 
-    return event;
+    return EventsService.formatEvent(event);
   }
 
   static async create(data: any) {
@@ -104,7 +137,7 @@ export class EventsService {
       });
     }
 
-    return event;
+    return EventsService.formatEvent(event);
   }
 
   static async update(id: string, data: any) {
@@ -130,7 +163,7 @@ export class EventsService {
       },
     });
 
-    return updated;
+    return EventsService.formatEvent(updated);
   }
 
   static async updateSettings(eventId: string, settingsData: any) {
@@ -150,7 +183,7 @@ export class EventsService {
       data: dataToSave,
     });
 
-    return updated;
+    return EventsService.formatSettings(updated);
   }
 
   static async cloneEdition(sourceEventId: string, cloneData: any) {

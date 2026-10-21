@@ -75,7 +75,19 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
 
   // T-shirt settings from event
   const tshirtEnabled = currentEvent?.settings?.tshirtSizesEnabled === true;
-  const tshirtSizes = currentEvent?.settings?.tshirtSizes || ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+  const rawTshirtSizes = currentEvent?.settings?.tshirtSizes;
+  const tshirtSizes: string[] = (() => {
+    if (Array.isArray(rawTshirtSizes)) return rawTshirtSizes;
+    if (typeof rawTshirtSizes === 'string') {
+      try {
+        const parsed = JSON.parse(rawTshirtSizes);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // fallback
+      }
+    }
+    return ['Medium (M)', 'XL', 'L', '2XL', 'Size 16', 'Size 12', 'Size 14', 'S'];
+  })();
 
   // Modales secundarios
   const [showPaymentModal, setShowPaymentModal] = useState(false);

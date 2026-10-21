@@ -3,6 +3,17 @@ import { Shirt, CheckCircle2, UserCheck, AlertTriangle, AlertCircle, X, Package,
 import { TshirtSizeSelector } from './TshirtSizeSelector';
 import { inventoryService, TshirtInventoryItem } from '../../services/inventory.service';
 
+export const DEFAULT_BARCAMP_TSHIRT_SIZES = [
+  'Medium (M)',
+  'XL',
+  'L',
+  '2XL',
+  'Size 16',
+  'Size 12',
+  'Size 14',
+  'S',
+];
+
 interface CheckInConfirmModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -11,7 +22,7 @@ interface CheckInConfirmModalProps {
   registrationNumber: string;
   ticketTypeName: string;
   tshirtEnabled: boolean;
-  availableSizes: string[];
+  availableSizes?: string[] | string | null;
   eventId?: string;
   initialTshirtSize?: string | null;
   isLoading?: boolean;
@@ -78,11 +89,30 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
     await onConfirm(selectedSize, finalDelivered);
   };
 
-  // Si availableSizes está vacío o por defecto, usar las tallas de inventario si están disponibles
-  const sizesToDisplay =
+  // Normalizar availableSizes de forma segura (soporta array, JSON string o fallback)
+  let normalizedAvailableSizes: string[] = [];
+  if (Array.isArray(availableSizes)) {
+    normalizedAvailableSizes = availableSizes;
+  } else if (typeof availableSizes === 'string') {
+    try {
+      const parsed = JSON.parse(availableSizes);
+      if (Array.isArray(parsed)) {
+        normalizedAvailableSizes = parsed;
+      }
+    } catch {
+      normalizedAvailableSizes = [];
+    }
+  }
+
+  if (normalizedAvailableSizes.length === 0) {
+    normalizedAvailableSizes = DEFAULT_BARCAMP_TSHIRT_SIZES;
+  }
+
+  // Si hay inventario cargado, priorizar las tallas activas del inventario
+  const sizesToDisplay: string[] =
     inventoryItems.length > 0
       ? inventoryItems.filter((i) => i.isActive).map((i) => i.size)
-      : availableSizes;
+      : normalizedAvailableSizes;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
@@ -155,7 +185,7 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
               {/* Selector de Tallas con indicador de disponibilidad */}
               <div className="space-y-2">
                 <div className="flex flex-wrap gap-2">
-                  {sizesToDisplay.map((size) => {
+                  {(Array.isArray(sizesToDisplay) ? sizesToDisplay : DEFAULT_BARCAMP_TSHIRT_SIZES).map((size) => {
                     const avail = stockMap[size];
                     const outOfStock = avail !== undefined && avail <= 0;
                     const isSelected = selectedSize === size;

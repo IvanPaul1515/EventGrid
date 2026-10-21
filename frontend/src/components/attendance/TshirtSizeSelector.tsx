@@ -1,8 +1,10 @@
 import React from 'react';
 import { Shirt } from 'lucide-react';
 
+const DEFAULT_SIZES = ['Medium (M)', 'XL', 'L', '2XL', 'Size 16', 'Size 12', 'Size 14', 'S'];
+
 interface TshirtSizeSelectorProps {
-  sizes: string[];
+  sizes?: string[] | string | null;
   selectedSize: string | null;
   onSelect: (size: string | null) => void;
   disabled?: boolean;
@@ -18,6 +20,20 @@ export const TshirtSizeSelector: React.FC<TshirtSizeSelectorProps> = ({
   showSkip = true,
   label = 'Selecciona la talla de camiseta',
 }) => {
+  let safeSizes: string[] = DEFAULT_SIZES;
+  if (Array.isArray(sizes)) {
+    safeSizes = sizes;
+  } else if (typeof sizes === 'string') {
+    try {
+      const parsed = JSON.parse(sizes);
+      if (Array.isArray(parsed)) {
+        safeSizes = parsed;
+      }
+    } catch {
+      safeSizes = DEFAULT_SIZES;
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -26,7 +42,7 @@ export const TshirtSizeSelector: React.FC<TshirtSizeSelectorProps> = ({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {sizes.map((size) => (
+        {safeSizes.map((size) => (
           <button
             key={size}
             type="button"

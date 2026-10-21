@@ -28,7 +28,29 @@ export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       setIsLoading(true);
       const res = await api.get('/events');
-      const loadedEvents: EventEdition[] = res.data.data;
+      const rawEvents: EventEdition[] = res.data.data;
+      const loadedEvents = (rawEvents || []).map((e) => {
+        if (e.settings && typeof (e.settings as any).tshirtSizes === 'string') {
+          try {
+            return {
+              ...e,
+              settings: {
+                ...e.settings,
+                tshirtSizes: JSON.parse((e.settings as any).tshirtSizes),
+              },
+            };
+          } catch {
+            return {
+              ...e,
+              settings: {
+                ...e.settings,
+                tshirtSizes: [],
+              },
+            };
+          }
+        }
+        return e;
+      });
       setEvents(loadedEvents);
 
       if (loadedEvents.length > 0) {

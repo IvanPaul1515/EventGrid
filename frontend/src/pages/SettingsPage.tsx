@@ -73,7 +73,16 @@ export const SettingsPage: React.FC = () => {
 
   // Recepción y Tallas de Camisetas
   const [tshirtEnabled, setTshirtEnabled] = useState(false);
-  const [tshirtSizes, setTshirtSizes] = useState<string[]>(['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL']);
+  const [tshirtSizes, setTshirtSizes] = useState<string[]>([
+    'Medium (M)',
+    'XL',
+    'L',
+    '2XL',
+    'Size 16',
+    'Size 12',
+    'Size 14',
+    'S',
+  ]);
   const [tshirtNewSize, setTshirtNewSize] = useState('');
   const [savingReception, setSavingReception] = useState(false);
 
