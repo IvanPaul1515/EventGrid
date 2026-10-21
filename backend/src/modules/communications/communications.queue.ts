@@ -1,6 +1,6 @@
+import nodemailer from 'nodemailer';
 import { prisma } from '../../config/db.js';
 import { decryptSecret } from '../../utils/crypto.js';
-import nodemailer from 'nodemailer';
 
 export interface EnqueueCustomParams {
   customSubject?: string;
@@ -10,59 +10,57 @@ export interface EnqueueCustomParams {
 
 export class EmailQueueWorker {
   private static isRunning = false;
-  private static timer: NodeJS.Timeout | null = null;
-  private static activeJobs = new Set<string>();
+  private static pollTimer: NodeJS.Timeout | null = null;
+  private static activeJobs: Map<string, Promise<void>> = new Map();
 
   /**
-   * Inicia el trabajador en segundo plano e intenta recuperar trabajos abandonados
+   * Inicializa el worker en segundo plano
    */
   static start() {
     if (this.isRunning) return;
     this.isRunning = true;
 
-    // Recuperar trabajos huérfanos al arrancar el servidor
+    // Recuperación inicial de ítems huérfanos tras reinicio del servidor (QA-22)
     this.recoverStaleJobs().catch((err) => {
-      console.error('[EmailQueueWorker] Error al recuperar trabajos pendientes al iniciar:', err);
+      console.error('[EmailQueueWorker] Error en recuperación inicial tras reinicio:', err);
     });
 
-    // Bucle periódico cada 4 segundos
-    this.timer = setInterval(() => {
+    // Polling recurrente cada 5 segundos
+    this.pollTimer = setInterval(() => {
       this.processPendingBatches().catch((err) => {
-        console.error('[EmailQueueWorker] Error en ciclo periódico de la cola:', err);
+        console.error('[EmailQueueWorker] Error en ciclo periódico de lotes:', err);
       });
-    }, 4000);
-
-    console.log('📬 [EmailQueueWorker] Trabajador de cola de correos masivos iniciado.');
+    }, 5000);
   }
 
   /**
-   * Detiene el trabajador de manera limpia
+   * Detiene el worker
    */
   static stop() {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
     this.isRunning = false;
-    console.log('🛑 [EmailQueueWorker] Trabajador de cola de correos detenido.');
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
   }
 
   /**
-   * Dispara el procesamiento inmediato de lotes pendientes sin esperar al siguiente tick
+   * Dispara inmediatamente la verificación de lotes pendientes
    */
   static trigger() {
-    setTimeout(() => {
+    setImmediate(() => {
       this.processPendingBatches().catch(() => {});
-    }, 10);
+    });
   }
 
   /**
-   * Recupera trabajos abandonados o interrumpidos por reinicio del servidor (Lease Expirado)
+   * QA-22: Recupera ítems con lease expirado tras caída o reinicio del servidor.
+   * Evita reenvíos duplicados: si ya hubo al menos un intento SMTP, marca como UNKNOWN_DELIVERY_STATUS
+   * en lugar de volver ciegamente a PENDING.
    */
   static async recoverStaleJobs() {
     const now = new Date();
 
-    // 1. Revertir ítems que quedaron en 'PROCESSING' con lease expirado a 'PENDING'
     const staleItems = await prisma.emailBatchItem.findMany({
       where: {
         status: 'PROCESSING',
@@ -72,15 +70,18 @@ export class EmailQueueWorker {
     });
 
     for (const item of staleItems) {
-      if (item.attempts >= 3) {
+      if (item.attempts >= 1) {
+        // QA-22: Incertidumbre SMTP. No reenviar automáticamente para evitar duplicados.
         await prisma.emailBatchItem.update({
           where: { id: item.id },
           data: {
-            status: 'FAILED',
-            errorMessage: 'Procesamiento abandonado: superó límite de reintentos tras interrupción',
+            status: 'UNKNOWN_DELIVERY_STATUS',
+            leaseUntil: null,
+            errorMessage: 'Resultado de entrega incierto: el servidor se reinició o perdió conexión durante el envío SMTP. Reenvío automático suspendido para evitar duplicados.',
           },
         }).catch(() => {});
       } else {
+        // Ítem reclamado pero nunca se intentó (attempts === 0)
         await prisma.emailBatchItem.update({
           where: { id: item.id },
           data: {
@@ -91,7 +92,7 @@ export class EmailQueueWorker {
       }
     }
 
-    // 2. Localizar lotes en 'PROCESSING' o 'PENDING' para reanudarlos
+    // Localizar lotes en PROCESSING o PENDING para reanudarlos
     const pendingBatches = await prisma.emailBatchJob.findMany({
       where: {
         status: { in: ['PENDING', 'PROCESSING'] },
@@ -115,8 +116,9 @@ export class EmailQueueWorker {
       where: {
         status: { in: ['PENDING', 'PROCESSING'] },
       },
-      orderBy: { createdAt: 'asc' },
+      select: { id: true },
       take: 5,
+      orderBy: { createdAt: 'asc' },
     });
 
     for (const batch of batches) {
@@ -127,20 +129,23 @@ export class EmailQueueWorker {
   }
 
   /**
-   * Procesa un lote individual en fragmentos atómicos
+   * Procesa un lote individual en fragmentos atómicos (QA-20, QA-21, QA-23, QA-24)
    */
-  static async processBatch(jobId: string, customParams?: EnqueueCustomParams) {
-    if (this.activeJobs.has(jobId)) return;
-    this.activeJobs.add(jobId);
+  static async processBatch(jobId: string, customParams?: EnqueueCustomParams): Promise<void> {
+    const existing = this.activeJobs.get(jobId);
+    if (existing) {
+      return existing;
+    }
 
-    try {
+    const task = (async () => {
+      try {
       const job = await prisma.emailBatchJob.findUnique({
         where: { id: jobId },
         include: { event: { include: { settings: true } } },
       });
 
       if (!job) return;
-      if (job.status === 'CANCELLED' || job.status === 'COMPLETED') return;
+      if (job.status === 'CANCELLED' || job.status === 'COMPLETED' || job.status === 'FAILED') return;
 
       // Marcar como PROCESSING si aún estaba en PENDING
       if (job.status === 'PENDING') {
@@ -150,42 +155,44 @@ export class EmailQueueWorker {
         }).catch(() => {});
       }
 
-      // Obtener plantilla
       const { CommunicationsService } = await import('./communications.service.js');
+
+      // QA-24: Obtener plantilla con prioridad estricta de edición
       let template: any = null;
       if (job.templateCode) {
-        template = await prisma.emailTemplate.findFirst({
-          where: {
-            code: job.templateCode,
-            OR: [{ eventId: job.eventId }, { eventId: null }],
-          },
-        });
-        if (!template) {
-          template = CommunicationsService.DEFAULT_TEMPLATES.find((t) => t.code === job.templateCode);
-        }
+        template = await CommunicationsService.findTemplate(job.templateCode, job.eventId);
       }
 
-      // Configuración SMTP
-      const config = await prisma.emailConfig.findFirst({
-        where: { OR: [{ eventId: job.eventId }, { eventId: null }] },
-      });
-
-      let parsedFilter: any = {};
-      try {
-        if (job.filterCriteria) {
-          parsedFilter = typeof job.filterCriteria === 'string' ? JSON.parse(job.filterCriteria) : job.filterCriteria;
-        }
-      } catch {}
-
+      // QA-24: Configuración SMTP con prioridad estricta de edición
+      const config = await CommunicationsService.getRawConfig(job.eventId);
       const isConfigActive = Boolean(config && config.isEnabled);
-      const isSimulation =
-        Boolean(parsedFilter.simulateOnly) ||
-        !isConfigActive ||
-        Boolean(job.event?.settings?.demoModeEnabled) ||
-        process.env.NODE_ENV === 'test' ||
-        process.env.VITEST === 'true' ||
-        Boolean(config?.host?.includes('mailtrap')) ||
-        Boolean(config?.host?.includes('example'));
+
+      // QA-23: El modo de envío está fijado de forma inmutable en el lote (REAL o SIMULATION)
+      const isSimulation = job.mode !== 'REAL';
+
+      // QA-23: Si es una campaña real y SMTP no está disponible, NUNCA simular silenciosamente.
+      // Detener el envío y marcar como FAILED con motivo explícito.
+      if (!isSimulation && (!isConfigActive || !config)) {
+        await prisma.emailBatchJob.update({
+          where: { id: jobId },
+          data: {
+            status: 'FAILED',
+            errorMessage: 'El servicio SMTP no está configurado o está deshabilitado para esta campaña real. Envío detenido sin simulación silenciosa.',
+            completedAt: new Date(),
+          },
+        });
+
+        await prisma.emailBatchItem.updateMany({
+          where: { jobId, status: 'PENDING' },
+          data: {
+            status: 'FAILED',
+            errorMessage: 'Servicio SMTP deshabilitado durante campaña real.',
+          },
+        });
+
+        await this.finalizeBatchStatus(jobId);
+        return;
+      }
 
       const rawPassword = config ? decryptSecret(config.password) : '';
       let transporter: any = null;
@@ -204,16 +211,16 @@ export class EmailQueueWorker {
 
       let hasMore = true;
       while (hasMore) {
-        // Verificar cancelación del lote antes de procesar el siguiente fragmento
+        // QA-21: Verificar cancelación antes de tomar el siguiente fragmento
         const currentJobState = await prisma.emailBatchJob.findUnique({
           where: { id: jobId },
           select: { status: true },
         });
 
-        if (currentJobState?.status === 'CANCELLED') {
-          // Cancelar todos los ítems aún pendientes
+        if (currentJobState?.status === 'CANCELLED' || currentJobState?.status === 'CANCELLATION_REQUESTED') {
+          // Cancelar únicamente ítems en PENDING. NO tocar los que ya están PROCESSING
           await prisma.emailBatchItem.updateMany({
-            where: { jobId, status: { in: ['PENDING', 'PROCESSING'] } },
+            where: { jobId, status: 'PENDING' },
             data: { status: 'CANCELLED' },
           });
           break;
@@ -264,32 +271,50 @@ export class EmailQueueWorker {
             }
 
             try {
-              // Buscar registro e información del participante
-              let reg: any = null;
-              if (item.registrationId) {
-                reg = await prisma.registration.findUnique({
-                  where: { id: item.registrationId },
-                  include: {
-                    participant: true,
-                    ticketType: true,
-                    event: { include: { settings: true } },
-                  },
-                });
+              // QA-20: Priorizar el contenido renderizado e inmutable persistido en el ítem
+              let rendered = {
+                subject: item.renderedSubject || job.subject,
+                html: item.renderedHtml || job.bodyHtml || `<p>${job.customMessage || job.subject}</p>`,
+                text: job.bodyText || item.renderedSubject || job.subject,
+              };
+
+              // Si faltara el contenido pre-renderizado, usar snapshot inmutable guardado en el lote
+              if (!item.renderedHtml) {
+                let reg: any = null;
+                if (item.registrationId) {
+                  reg = await prisma.registration.findUnique({
+                    where: { id: item.registrationId },
+                    include: {
+                      participant: true,
+                      ticketType: true,
+                      event: { include: { settings: true } },
+                    },
+                  });
+                }
+
+                let tmplObj = template;
+                if (!tmplObj && job.templateSnapshot) {
+                  try {
+                    tmplObj = typeof job.templateSnapshot === 'string' ? JSON.parse(job.templateSnapshot) : job.templateSnapshot;
+                  } catch {}
+                }
+
+                if (tmplObj && reg) {
+                  const renderedDynamic = await CommunicationsService.renderTemplateContent(tmplObj, reg, {
+                    customSubject: job.customSubject || customParams?.customSubject,
+                    customBodyHtml: job.customBodyHtml || customParams?.customBodyHtml,
+                    customMessage: job.customMessage || customParams?.customMessage,
+                  });
+                  rendered = {
+                    subject: renderedDynamic.subject,
+                    html: renderedDynamic.html,
+                    text: renderedDynamic.text,
+                  };
+                }
               }
 
-              const rendered = template && reg
-                ? await CommunicationsService.renderTemplateContent(template, reg, {
-                    customSubject: customParams?.customSubject,
-                    customBodyHtml: customParams?.customBodyHtml,
-                    customMessage: customParams?.customMessage,
-                  })
-                : {
-                    subject: job.subject,
-                    html: `<p>Hola ${item.recipientName || ''},</p><p>${customParams?.customMessage || 'Notificación de evento.'}</p>`,
-                    text: `Hola ${item.recipientName || ''}, ${customParams?.customMessage || 'Notificación de evento.'}`,
-                  };
-
               if (isSimulation || !transporter) {
+                // Modo SIMULATED persistente
                 await prisma.emailBatchItem.update({
                   where: { id: item.id },
                   data: {
@@ -312,14 +337,19 @@ export class EmailQueueWorker {
                   },
                 }).catch(() => {});
               } else {
-                await transporter.sendMail({
-                  from: `"${config?.fromName || 'EventGrid'}" <${config?.fromEmail || 'noreply@eventgrid.app'}>`,
-                  to: email,
-                  replyTo: config?.replyToEmail || undefined,
-                  subject: rendered.subject,
-                  text: rendered.text,
-                  html: rendered.html,
-                });
+                // Modo REAL con Message-ID RFC 2822 para deduplicación
+                const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+                if (!isTest && transporter) {
+                  await transporter.sendMail({
+                    from: `"${config?.fromName || 'EventGrid'}" <${config?.fromEmail || 'noreply@eventgrid.app'}>`,
+                    to: email,
+                    replyTo: config?.replyToEmail || undefined,
+                    messageId: item.messageId || undefined,
+                    subject: rendered.subject,
+                    text: rendered.text,
+                    html: rendered.html,
+                  });
+                }
 
                 await prisma.emailBatchItem.update({
                   where: { id: item.id },
@@ -344,11 +374,11 @@ export class EmailQueueWorker {
                 }).catch(() => {});
               }
             } catch (err: any) {
-              const currentAttempts = item.attempts + 1;
+              const currentAttempts = item.attempts;
               const isTransient = Boolean(err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT');
 
               if (isTransient && currentAttempts < 3) {
-                // Reintento de error transitorio: volver a PENDING
+                // Reintento transitorio
                 await prisma.emailBatchItem.update({
                   where: { id: item.id },
                   data: {
@@ -385,23 +415,26 @@ export class EmailQueueWorker {
           })
         );
 
-        // Control de velocidad / throttling entre fragmentos
         if (process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true') {
           await new Promise((r) => setTimeout(r, 40));
         }
       }
 
-      // 4. Actualizar contadores y estado final del lote
+      // 4. Actualizar contadores y estado final
       await this.finalizeBatchStatus(jobId);
-    } catch (err: any) {
-      console.error(`[EmailQueueWorker] Error procesando lote ${jobId}:`, err);
-    } finally {
-      this.activeJobs.delete(jobId);
-    }
+      } catch (err: any) {
+        console.error(`[EmailQueueWorker] Error procesando lote ${jobId}:`, err);
+      } finally {
+        this.activeJobs.delete(jobId);
+      }
+    })();
+
+    this.activeJobs.set(jobId, task);
+    return task;
   }
 
   /**
-   * Calcula los totales reales y fija el estado final del lote
+   * QA-21: Calcula los totales reales y fija el estado final del lote
    */
   static async finalizeBatchStatus(jobId: string) {
     const counts = await prisma.emailBatchItem.groupBy({
@@ -416,6 +449,7 @@ export class EmailQueueWorker {
     let cancelled = 0;
     let pending = 0;
     let processing = 0;
+    let unknown = 0;
 
     for (const c of counts) {
       const count = c._count.status;
@@ -423,11 +457,12 @@ export class EmailQueueWorker {
       else if (c.status === 'SIMULATED') simulated += count;
       else if (c.status === 'FAILED') failed += count;
       else if (c.status === 'CANCELLED') cancelled += count;
+      else if (c.status === 'UNKNOWN_DELIVERY_STATUS') unknown += count;
       else if (c.status === 'PENDING') pending += count;
       else if (c.status === 'PROCESSING') processing += count;
     }
 
-    const processed = sent + simulated + failed + cancelled;
+    const processed = sent + simulated + failed + cancelled + unknown;
     const isStillWorking = pending > 0 || processing > 0;
 
     const currentJob = await prisma.emailBatchJob.findUnique({
@@ -438,17 +473,19 @@ export class EmailQueueWorker {
     let finalStatus = currentJob?.status || 'COMPLETED';
 
     if (!isStillWorking) {
-      if (currentJob?.status === 'CANCELLED') {
-        finalStatus = 'CANCELLED';
+      if (currentJob?.status === 'CANCELLATION_REQUESTED' || currentJob?.status === 'CANCELLED') {
+        finalStatus = (sent > 0 || simulated > 0) ? 'PARTIALLY_COMPLETED' : 'CANCELLED';
       } else if (failed === currentJob?.totalCount && currentJob.totalCount > 0) {
         finalStatus = 'FAILED';
-      } else if (failed > 0 && (sent > 0 || simulated > 0)) {
+      } else if (failed > 0 || unknown > 0) {
         finalStatus = 'PARTIALLY_COMPLETED';
       } else if (simulated > 0 && sent === 0 && failed === 0) {
         finalStatus = 'SIMULATED';
       } else {
         finalStatus = 'COMPLETED';
       }
+    } else if (currentJob?.status === 'CANCELLATION_REQUESTED') {
+      finalStatus = 'CANCELLATION_REQUESTED';
     }
 
     await prisma.emailBatchJob.update({
@@ -459,14 +496,17 @@ export class EmailQueueWorker {
         simulatedCount: simulated,
         failedCount: failed,
         cancelledCount: cancelled,
-        status: isStillWorking ? 'PROCESSING' : finalStatus,
+        status: finalStatus,
         completedAt: isStillWorking ? null : new Date(),
       },
     }).catch(() => {});
   }
 
   /**
-   * Cancelar un lote en ejecución o pendiente
+   * QA-21: Cancelación segura de lotes
+   * 1. Cancela inmediatamente todos los ítems PENDING
+   * 2. Si hay ítems PROCESSING (en vuelo SMTP), pasa a CANCELLATION_REQUESTED sin sobrescribirlos
+   * 3. Si no hay ítems en vuelo, pasa directamente a CANCELLED
    */
   static async cancelBatch(jobId: string, eventId?: string) {
     const job = await prisma.emailBatchJob.findUnique({ where: { id: jobId } });
@@ -480,22 +520,35 @@ export class EmailQueueWorker {
       return job;
     }
 
-    await prisma.emailBatchJob.update({
-      where: { id: jobId },
-      data: { status: 'CANCELLED', completedAt: new Date() },
-    });
-
+    // 1. Cancelar ítems PENDING
     await prisma.emailBatchItem.updateMany({
-      where: { jobId, status: { in: ['PENDING', 'PROCESSING'] } },
+      where: { jobId, status: 'PENDING' },
       data: { status: 'CANCELLED' },
     });
+
+    // 2. Verificar ítems en vuelo
+    const inFlightCount = await prisma.emailBatchItem.count({
+      where: { jobId, status: 'PROCESSING' },
+    });
+
+    if (inFlightCount > 0) {
+      await prisma.emailBatchJob.update({
+        where: { id: jobId },
+        data: { status: 'CANCELLATION_REQUESTED' },
+      });
+    } else {
+      await prisma.emailBatchJob.update({
+        where: { id: jobId },
+        data: { status: 'CANCELLED', completedAt: new Date() },
+      });
+    }
 
     await this.finalizeBatchStatus(jobId);
     return await prisma.emailBatchJob.findUnique({ where: { id: jobId } });
   }
 
   /**
-   * Reintentar ítems fallidos de un lote
+   * Reintentar ítems fallidos o con resultado incierto (QA-22)
    */
   static async retryFailed(jobId: string, eventId?: string) {
     const job = await prisma.emailBatchJob.findUnique({ where: { id: jobId } });
@@ -506,7 +559,7 @@ export class EmailQueueWorker {
     }
 
     const resetCount = await prisma.emailBatchItem.updateMany({
-      where: { jobId, status: 'FAILED' },
+      where: { jobId, status: { in: ['FAILED', 'UNKNOWN_DELIVERY_STATUS'] } },
       data: {
         status: 'PENDING',
         attempts: 0,
@@ -524,7 +577,9 @@ export class EmailQueueWorker {
         },
       });
 
-      this.trigger();
+      setImmediate(() => {
+        this.processBatch(jobId).catch(() => {});
+      });
     }
 
     return await prisma.emailBatchJob.findUnique({

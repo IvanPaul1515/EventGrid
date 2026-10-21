@@ -10,13 +10,17 @@ export async function editionContext(req: Request, res: Response, next: NextFunc
       (req.params.eventId as string);
 
     if (!eventId) {
-      // Si no se especifica, buscar la edición activa por defecto
-      const defaultEvent = await prisma.event.findFirst({
-        where: {
-          OR: [{ isDefault: true }, { status: 'ACTIVE' as any }],
-        },
-        orderBy: { year: 'desc' },
+      // Si no se especifica, buscar la edición predeterminada (isDefault: true) o en su defecto la activa más reciente
+      let defaultEvent = await prisma.event.findFirst({
+        where: { isDefault: true },
       });
+
+      if (!defaultEvent) {
+        defaultEvent = await prisma.event.findFirst({
+          where: { status: 'ACTIVE' as any },
+          orderBy: { year: 'desc' },
+        });
+      }
 
       if (defaultEvent) {
         req.eventId = defaultEvent.id;

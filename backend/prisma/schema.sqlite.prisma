@@ -484,8 +484,15 @@ model EmailBatchJob {
   sentCount      Int       @default(0)
   failedCount    Int       @default(0)
   simulatedCount Int       @default(0)
-  cancelledCount Int       @default(0)
-  filterCriteria String?   // JSON string
+  cancelledCount   Int       @default(0)
+  mode             String    @default("REAL") // REAL, SIMULATION
+  customSubject    String?
+  customBodyHtml   String?
+  customMessage    String?
+  templateSnapshot String?   // JSON snapshot of template
+  bodyHtml         String?
+  bodyText         String?
+  filterCriteria   String?   // JSON string
   errorMessage   String?
   createdById    String?
   startedAt      DateTime?
@@ -512,8 +519,11 @@ model EmailBatchItem {
   attempts       Int       @default(0)
   lastAttemptAt  DateTime?
   leaseUntil     DateTime?
-  idempotencyKey String?   @unique
-  errorMessage   String?
+  idempotencyKey   String?   @unique
+  messageId        String?
+  renderedSubject  String?
+  renderedHtml     String?
+  errorMessage     String?
   sentAt         DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -524,5 +534,6 @@ model EmailBatchItem {
   @@index([jobId])
   @@index([status])
   @@index([recipientEmail])
+  @@index([messageId])
   @@map("email_batch_items")
 }

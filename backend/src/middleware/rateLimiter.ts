@@ -73,30 +73,39 @@ export async function recordFailedLogin(req: Request, email?: string) {
   const nowMs = now.getTime();
 
   async function recordKey(key: string) {
-    // Incremento atómico concurrente mediante upsert nativo
-    const updated = await prisma.loginAttempt.upsert({
-      where: { key },
-      create: { key, count: 1, firstAttemptAt: now, blockedUntil: null },
-      update: { count: { increment: 1 } },
+    const windowStart = new Date(nowMs - WINDOW_MS);
+
+    // 1. Incremento atómico directo dentro de la ventana activa (QA-25)
+    const updateResult = await prisma.loginAttempt.updateMany({
+      where: {
+        key,
+        firstAttemptAt: { gte: windowStart },
+      },
+      data: {
+        count: { increment: 1 },
+      },
     });
 
-    // Si la ventana expiró, reiniciar el conteo para el nuevo ciclo
-    if (nowMs - updated.firstAttemptAt.getTime() > WINDOW_MS) {
-      await prisma.loginAttempt.update({
+    let current;
+    if (updateResult.count > 0) {
+      current = await prisma.loginAttempt.findUnique({ where: { key } });
+    } else {
+      // 2. Si no existía o la ventana expiró, reinicializar con upsert atómico
+      current = await prisma.loginAttempt.upsert({
         where: { key },
-        data: { count: 1, firstAttemptAt: now, blockedUntil: null },
+        create: { key, count: 1, firstAttemptAt: now, blockedUntil: null },
+        update: { count: 1, firstAttemptAt: now, blockedUntil: null },
       });
-      return;
     }
 
-    // Si alcanza o supera el umbral, activar bloqueo atómico
-    if (updated.count >= MAX_FAILED_ATTEMPTS && (!updated.blockedUntil || updated.blockedUntil <= now)) {
+    // 3. Si alcanza o supera el umbral, activar bloqueo atómico
+    if (current && current.count >= MAX_FAILED_ATTEMPTS && (!current.blockedUntil || current.blockedUntil <= now)) {
       await prisma.loginAttempt.update({
         where: { key },
         data: {
           blockedUntil: new Date(nowMs + BLOCK_DURATION_MS),
         },
-      });
+      }).catch(() => {});
     }
   }
 

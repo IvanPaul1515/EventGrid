@@ -20,6 +20,58 @@ export class CommunicationsService {
   /**
    * Obtener configuración SMTP (ocultando credenciales sensibles) (QA-12)
    */
+  /**
+   * QA-24: Obtener configuración SMTP cruda con prioridad estricta:
+   * 1. Configuración de la edición específica
+   * 2. Configuración global (eventId: null)
+   */
+  static async getRawConfig(eventId?: string | null) {
+    if (eventId) {
+      const editionConfig = await prisma.emailConfig.findFirst({
+        where: { eventId },
+      });
+      if (editionConfig) return editionConfig;
+    }
+
+    return await prisma.emailConfig.findFirst({
+      where: { eventId: null },
+    });
+  }
+
+  /**
+   * QA-24: Obtener plantilla con prioridad estricta:
+   * 1. Plantilla específica de la edición
+   * 2. Plantilla global (eventId: null)
+   * 3. Plantilla predeterminada del sistema
+   */
+  static async findTemplate(code: string, eventId?: string | null) {
+    if (eventId) {
+      const editionTemplate = await prisma.emailTemplate.findFirst({
+        where: { code, eventId },
+      });
+      if (editionTemplate) return editionTemplate;
+    }
+
+    const globalTemplate = await prisma.emailTemplate.findFirst({
+      where: { code, eventId: null },
+    });
+    if (globalTemplate) return globalTemplate;
+
+    const def = this.DEFAULT_TEMPLATES.find((t) => t.code === code);
+    if (def) {
+      return {
+        ...def,
+        id: `default-${code}`,
+        eventId: null,
+        isDefault: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any;
+    }
+
+    return null;
+  }
+
   static async getConfig(eventId?: string | null) {
     let config = null;
 
@@ -648,18 +700,8 @@ export class CommunicationsService {
       };
     }
 
-    // Buscar plantilla
-    let template = await prisma.emailTemplate.findFirst({
-      where: {
-        code: input.templateCode,
-        OR: input.eventId ? [{ eventId: input.eventId }, { eventId: null }] : [{ eventId: null }],
-      },
-    });
-
-    if (!template) {
-      template = this.DEFAULT_TEMPLATES.find((t) => t.code === input.templateCode) as any;
-    }
-
+    // QA-24: Buscar plantilla con prioridad estricta de edición
+    const template = await this.findTemplate(input.templateCode, input.eventId);
     if (!template) {
       throw new NotFoundError(`Plantilla '${input.templateCode}' no encontrada.`);
     }
@@ -710,18 +752,8 @@ export class CommunicationsService {
       throw new BadRequestError('La inscripción indicada no pertenece a la edición seleccionada.');
     }
 
-    // Buscar plantilla
-    let template = await prisma.emailTemplate.findFirst({
-      where: {
-        code: input.templateCode,
-        OR: [{ eventId }, { eventId: null }],
-      },
-    });
-
-    if (!template) {
-      template = this.DEFAULT_TEMPLATES.find((t) => t.code === input.templateCode) as any;
-    }
-
+    // QA-24: Buscar plantilla con prioridad estricta de edición
+    const template = await this.findTemplate(input.templateCode, eventId);
     if (!template) {
       throw new NotFoundError(`Plantilla '${input.templateCode}' no encontrada.`);
     }
@@ -733,10 +765,8 @@ export class CommunicationsService {
       customMessage: input.customMessage || undefined,
     });
 
-    // Obtener configuración de correo (de la edición o global)
-    const config = await prisma.emailConfig.findFirst({
-      where: { OR: [{ eventId }, { eventId: null }] },
-    });
+    // QA-24: Obtener configuración de correo con prioridad estricta de edición
+    const config = await this.getRawConfig(eventId);
 
     const isDemo =
       registration.isDemo ||
@@ -888,26 +918,14 @@ export class CommunicationsService {
       };
     }
 
-    // Buscar plantilla
-    let template = await prisma.emailTemplate.findFirst({
-      where: {
-        code: input.templateCode,
-        OR: [{ eventId: input.eventId }, { eventId: null }],
-      },
-    });
-
-    if (!template) {
-      template = this.DEFAULT_TEMPLATES.find((t) => t.code === input.templateCode) as any;
-    }
-
+    // QA-24: Buscar plantilla con prioridad estricta de edición
+    const template = await this.findTemplate(input.templateCode, input.eventId);
     if (!template) {
       throw new NotFoundError(`Plantilla '${input.templateCode}' no encontrada.`);
     }
 
-    // Configuración SMTP
-    const config = await prisma.emailConfig.findFirst({
-      where: { OR: [{ eventId: input.eventId }, { eventId: null }] },
-    });
+    // QA-24: Configuración SMTP con prioridad estricta de edición
+    const config = await this.getRawConfig(input.eventId);
 
     const isConfigActive = Boolean(config && config.isEnabled);
     // Explicit simulation vs real send: if SMTP disabled and real send requested, throw BadRequestError
@@ -938,12 +956,32 @@ export class CommunicationsService {
 
     // Registrar EmailBatchJob persistente en estado PENDING
     const batchId = `BATCH-${crypto.randomUUID()}`;
+    // QA-20 & QA-23: Persistir versión inmutable del contenido de la campaña
+    const mode = input.simulateOnly ? 'SIMULATION' : 'REAL';
+    const approvedSubject = input.customSubject?.trim() || template.subject;
+    const approvedBodyHtml = input.customBodyHtml?.trim() || template.bodyHtml;
+    const approvedBodyText = template.bodyText || null;
+    const templateSnapshot = JSON.stringify({
+      code: template.code,
+      name: template.name,
+      subject: template.subject,
+      bodyHtml: template.bodyHtml,
+      bodyText: template.bodyText,
+    });
+
     await prisma.emailBatchJob.create({
       data: {
         id: batchId,
         eventId: input.eventId,
         templateCode: input.templateCode,
-        subject: template?.subject || 'Comunicación EventGrid',
+        subject: approvedSubject,
+        bodyHtml: approvedBodyHtml,
+        bodyText: approvedBodyText,
+        customSubject: input.customSubject || null,
+        customBodyHtml: input.customBodyHtml || null,
+        customMessage: input.customMessage || null,
+        templateSnapshot,
+        mode,
         totalCount: registrations.length,
         status: 'PENDING',
         filterCriteria: JSON.stringify({
@@ -955,35 +993,52 @@ export class CommunicationsService {
       },
     });
 
-    // Registrar destinatarios persistentes en EmailBatchItem con idempotencyKey
-    const batchItemsData = registrations.map((reg) => ({
-      jobId: batchId,
-      registrationId: reg.id,
-      recipientEmail: reg.participant.email?.trim() || '',
-      recipientName: reg.participant.fullName,
-      status: 'PENDING',
-      attempts: 0,
-      idempotencyKey: `${batchId}:${reg.id}`,
-    }));
+    // QA-20: Pre-renderizar cada destinatario para que la recuperación tras reinicio produzca el resultado idéntico
+    const batchItemsData = await Promise.all(
+      registrations.map(async (reg) => {
+        const rendered = await this.renderTemplateContent(
+          {
+            subject: template.subject,
+            bodyHtml: template.bodyHtml,
+            bodyText: template.bodyText,
+          } as any,
+          reg,
+          {
+            customSubject: input.customSubject || undefined,
+            customBodyHtml: input.customBodyHtml || undefined,
+            customMessage: input.customMessage || undefined,
+          }
+        );
+        const messageId = `<batch-${batchId}.${reg.id}@eventgrid.io>`;
+        return {
+          jobId: batchId,
+          registrationId: reg.id,
+          recipientEmail: reg.participant.email?.trim() || '',
+          recipientName: reg.participant.fullName,
+          status: 'PENDING',
+          attempts: 0,
+          idempotencyKey: `${batchId}:${reg.id}`,
+          messageId,
+          renderedSubject: rendered.subject,
+          renderedHtml: rendered.html,
+        };
+      })
+    );
 
     await prisma.emailBatchItem.createMany({
       data: batchItemsData,
     });
 
     // Disparar procesamiento asíncrono en cola sin bloquear la respuesta HTTP
-    const processPromise = EmailQueueWorker.processBatch(batchId, {
-      customSubject: input.customSubject || undefined,
-      customBodyHtml: input.customBodyHtml || undefined,
-      customMessage: input.customMessage || undefined,
-    }).catch((err) => {
-      console.error(`[EmailQueueWorker] Error procesando lote ${batchId}:`, err);
+    setImmediate(() => {
+      EmailQueueWorker.processBatch(batchId, {
+        customSubject: input.customSubject || undefined,
+        customBodyHtml: input.customBodyHtml || undefined,
+        customMessage: input.customMessage || undefined,
+      }).catch((err) => {
+        console.error('[EmailQueueWorker] Error procesando lote ' + batchId + ':', err);
+      });
     });
-
-    // En entorno de prueba unitaria/integración, si no es simulación pura de fondo, dejamos que comience
-    if (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true') {
-      // Dejar que avance para pruebas que consultan inmediatamente
-      await new Promise((r) => setTimeout(r, 80));
-    }
 
     return {
       batchId,

@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -24,6 +24,40 @@ if (fs.existsSync(envPath)) {
       }
     }
   }
+}
+
+const isWindows = process.platform === 'win32';
+const npxCmd = isWindows ? 'npx.cmd' : 'npx';
+const args = process.argv.slice(2);
+
+// Soporte especial para validación integral de ambos esquemas (PostgreSQL y SQLite)
+if (args[0] === 'validate:all') {
+  console.log('[prisma-detect] Validando esquema SQLite (prisma/schema.sqlite.prisma)...');
+  const sqliteRes = spawnSync(npxCmd, ['prisma', 'validate', '--schema=prisma/schema.sqlite.prisma'], {
+    cwd: backendRoot,
+    stdio: 'inherit',
+    shell: isWindows,
+    env: { ...process.env, DATABASE_URL: 'file:./dev.db' },
+  });
+
+  if (sqliteRes.status !== 0) {
+    process.exit(sqliteRes.status ?? 1);
+  }
+
+  console.log('[prisma-detect] Validando esquema PostgreSQL (prisma/schema.prisma)...');
+  const pgRes = spawnSync(npxCmd, ['prisma', 'validate', '--schema=prisma/schema.prisma'], {
+    cwd: backendRoot,
+    stdio: 'inherit',
+    shell: isWindows,
+    env: { ...process.env, DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/eventgrid' },
+  });
+
+  if (pgRes.status !== 0) {
+    process.exit(pgRes.status ?? 1);
+  }
+
+  console.log('[prisma-detect] ✅ Ambos esquemas (PostgreSQL y SQLite) son válidos y consistentes.');
+  process.exit(0);
 }
 
 function resolveSchema() {
@@ -56,16 +90,12 @@ function resolveSchema() {
 }
 
 const chosenSchema = resolveSchema();
-const args = process.argv.slice(2);
 
 // Si los argumentos no especifican ya un --schema, inyectamos el detectado
 const hasSchemaArg = args.some(a => a.startsWith('--schema'));
 const finalArgs = hasSchemaArg ? args : [...args, `--schema=${chosenSchema}`];
 
 console.log(`[prisma-detect] Entorno detectado. Usando esquema: ${chosenSchema}`);
-
-const isWindows = process.platform === 'win32';
-const npxCmd = isWindows ? 'npx.cmd' : 'npx';
 
 const child = spawn(npxCmd, ['prisma', ...finalArgs], {
   cwd: backendRoot,

@@ -198,6 +198,7 @@ describe('EventGrid Fase 4: Cola Masiva Asíncrona, Prisma Multi-entorno, Concur
           subject: 'Lote con fallos para reintentar',
           filterCriteria: JSON.stringify({ targetGroup: 'ALL' }),
           status: 'FAILED',
+          mode: 'SIMULATION',
           totalCount: 2,
           processedCount: 2,
           failedCount: 2,
@@ -254,7 +255,7 @@ describe('EventGrid Fase 4: Cola Masiva Asíncrona, Prisma Multi-entorno, Concur
           recipientName: sampleRegistrations[0].participant.fullName,
           status: 'PROCESSING',
           leaseUntil: new Date(Date.now() - 60000), // Expirado hace 1 minuto
-          attempts: 1,
+          attempts: 0,
           idempotencyKey: `${staleJob.id}:${sampleRegistrations[0].id}`,
         },
       });

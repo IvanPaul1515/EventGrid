@@ -6,7 +6,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc && node scripts/prisma-detect.js generate",
+    "build": "node scripts/prisma-detect.js generate && tsc",
     "start": "node dist/server.js",
     "prisma:generate": "node scripts/prisma-detect.js generate",
     "prisma:migrate": "node scripts/prisma-detect.js migrate dev",
@@ -17,7 +17,7 @@
     "prisma:generate:postgres": "prisma generate --schema=prisma/schema.prisma",
     "prisma:migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
     "prisma:validate": "node scripts/prisma-detect.js validate",
-    "prisma:validate:all": "prisma validate --schema=prisma/schema.sqlite.prisma && prisma validate --schema=prisma/schema.prisma"
+    "prisma:validate:all": "node scripts/prisma-detect.js validate:all"
   },
   "dependencies": {
     "@prisma/client": "^6.4.0",
