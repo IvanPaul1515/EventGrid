@@ -15,6 +15,41 @@ export interface EmailPreviewResult {
   qrDataUrl: string;
 }
 
+export interface RecipientStatsResult {
+  totalSelected: number;
+  eligibleCount: number;
+  validEmailsCount: number;
+  invalidEmailsCount: number;
+  cancelledCount: number;
+  demoCount: number;
+  duplicateCount: number;
+  sampleRecipients: Array<{
+    id: string;
+    fullName: string;
+    email: string;
+    registrationNumber: string;
+    ticketType: string;
+    paymentStatus: string;
+  }>;
+}
+
+export interface EmailBatchJobInfo {
+  id: string;
+  eventId: string;
+  templateCode?: string;
+  subject: string;
+  status: string;
+  totalCount: number;
+  processedCount: number;
+  sentCount: number;
+  failedCount: number;
+  simulatedCount: number;
+  errorMessage?: string;
+  startedAt?: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
 export const communicationsService = {
   async getConfig(eventId?: string | null): Promise<EmailConfig | null> {
     const res = await api.get<ApiResponse<EmailConfig | null>>('/communications/config', {
@@ -58,6 +93,7 @@ export const communicationsService = {
   async previewEmail(payload: {
     eventId?: string | null;
     registrationId?: string | null;
+    sampleType?: 'MOCK' | 'PARTICIPANT';
     templateCode: string;
     customSubject?: string | null;
     customBodyHtml?: string | null;
@@ -74,8 +110,18 @@ export const communicationsService = {
     customSubject?: string;
     customBodyHtml?: string;
     customMessage?: string;
-  }): Promise<{ logId: string; status: string; message: string }> {
-    const res = await api.post<ApiResponse<{ logId: string; status: string; message: string }>>('/communications/send', payload);
+    simulateOnly?: boolean;
+  }): Promise<{ logId: string; status: string; message: string; simulated?: boolean }> {
+    const res = await api.post<ApiResponse<{ logId: string; status: string; message: string; simulated?: boolean }>>('/communications/send', payload);
+    return res.data.data;
+  },
+
+  async validateRecipients(payload: {
+    eventId: string;
+    targetGroup: 'ALL' | 'CONFIRMED' | 'PAID' | 'PENDING' | 'PENDING_PAYMENT' | 'ATTENDED' | 'NOT_ATTENDED' | 'SELECTED';
+    selectedRegistrationIds?: string[];
+  }): Promise<RecipientStatsResult> {
+    const res = await api.post<ApiResponse<RecipientStatsResult>>('/communications/recipients/validate', payload);
     return res.data.data;
   },
 
@@ -87,8 +133,26 @@ export const communicationsService = {
     customSubject?: string;
     customBodyHtml?: string;
     customMessage?: string;
+    simulateOnly?: boolean;
   }): Promise<{ total: number; sent: number; simulated: number; failed: number; excluded?: number; batchId?: string; message: string }> {
     const res = await api.post<ApiResponse<{ total: number; sent: number; simulated: number; failed: number; excluded?: number; batchId?: string; message: string }>>('/communications/send-bulk', payload);
+    return res.data.data;
+  },
+
+  async getBatchJobs(eventId: string): Promise<EmailBatchJobInfo[]> {
+    const res = await api.get<ApiResponse<EmailBatchJobInfo[]>>('/communications/jobs', {
+      params: { eventId },
+    });
+    return res.data.data;
+  },
+
+  async getBatchJob(jobId: string): Promise<EmailBatchJobInfo & { items: any[] }> {
+    const res = await api.get<ApiResponse<EmailBatchJobInfo & { items: any[] }>>(`/communications/jobs/${jobId}`);
+    return res.data.data;
+  },
+
+  async cancelBatchJob(jobId: string): Promise<{ jobId: string; cancelledItemsCount: number; status: string }> {
+    const res = await api.post<ApiResponse<{ jobId: string; cancelledItemsCount: number; status: string }>>(`/communications/jobs/${jobId}/cancel`);
     return res.data.data;
   },
 

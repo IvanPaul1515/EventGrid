@@ -95,7 +95,19 @@ export const CommunicationsPage: React.FC = () => {
   const [bulkSubject, setBulkSubject] = useState('');
   const [bulkCustomMessage, setBulkCustomMessage] = useState('');
   const [bulkRecipientsPreview, setBulkRecipientsPreview] = useState<Registration[]>([]);
-  const [bulkStats, setBulkStats] = useState({ total: 0, validEmails: 0, excluded: 0 });
+  const [bulkStats, setBulkStats] = useState({
+    total: 0,
+    eligible: 0,
+    validEmails: 0,
+    invalidEmails: 0,
+    cancelled: 0,
+    demo: 0,
+    duplicates: 0,
+  });
+  const [bulkSampleRecipients, setBulkSampleRecipients] = useState<any[]>([]);
+  const [bulkSimulateOnly, setBulkSimulateOnly] = useState(false);
+  const [singleSimulateOnly, setSingleSimulateOnly] = useState(false);
+  const [previewSampleType, setPreviewSampleType] = useState<'MOCK' | 'PARTICIPANT'>('MOCK');
   const [loadingBulkStats, setLoadingBulkStats] = useState(false);
   const [sendingBulk, setSendingBulk] = useState(false);
   const [bulkResult, setBulkResult] = useState<{
@@ -296,27 +308,22 @@ export const CommunicationsPage: React.FC = () => {
     if (!currentEvent) return;
     try {
       setLoadingBulkStats(true);
-      const statusParam =
-        bulkTargetGroup === 'CONFIRMED'
-          ? 'CONFIRMED'
-          : bulkTargetGroup === 'ALL'
-          ? undefined
-          : undefined;
-
-      const res = await participantsService.list({
-        status: statusParam,
-        limit: 5,
+      const res = await communicationsService.validateRecipients({
+        eventId: currentEvent.id,
+        targetGroup: bulkTargetGroup,
       });
-
-      const total = res.pagination.total;
       setBulkStats({
-        total,
-        validEmails: total,
-        excluded: 0,
+        total: res.totalSelected,
+        eligible: res.eligibleCount,
+        validEmails: res.validEmailsCount,
+        invalidEmails: res.invalidEmailsCount,
+        cancelled: res.cancelledCount,
+        demo: res.demoCount,
+        duplicates: res.duplicateCount,
       });
-      setBulkRecipientsPreview(res.data);
+      setBulkSampleRecipients(res.sampleRecipients || []);
     } catch (err) {
-      console.error(err);
+      console.error('Error al prevalidar destinatarios:', err);
     } finally {
       setLoadingBulkStats(false);
     }
@@ -934,19 +941,23 @@ export const CommunicationsPage: React.FC = () => {
                 ))}
               </div>
 
-              {/* Resumen de Destinatarios y Exclusiones */}
-              <div className="grid grid-cols-3 gap-3 p-4 rounded-xl bg-background border border-border">
+              {/* Resumen Exacto de Destinatarios y Exclusiones (Sección 8) */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-xl bg-background border border-border">
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground">Total Seleccionados</p>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">Total en Segmento</p>
                   <p className="text-xl font-black text-foreground mt-0.5">{bulkStats.total}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-emerald-400">Correos Válidos</p>
-                  <p className="text-xl font-black text-emerald-400 mt-0.5">{bulkStats.validEmails}</p>
+                  <p className="text-[10px] uppercase font-bold text-emerald-400">Elegibles para Envío</p>
+                  <p className="text-xl font-black text-emerald-400 mt-0.5">{bulkStats.eligible}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-amber-400">Excluidos (Cancelados/Demo)</p>
-                  <p className="text-xl font-black text-amber-400 mt-0.5">{bulkStats.excluded}</p>
+                  <p className="text-[10px] uppercase font-bold text-rose-400">Cancelados / Sin Email</p>
+                  <p className="text-xl font-black text-rose-400 mt-0.5">{bulkStats.cancelled + bulkStats.invalidEmails}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-amber-400">Demo / Duplicados</p>
+                  <p className="text-xl font-black text-amber-400 mt-0.5">{bulkStats.demo + bulkStats.duplicates}</p>
                 </div>
               </div>
 

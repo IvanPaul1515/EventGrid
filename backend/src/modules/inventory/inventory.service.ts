@@ -96,7 +96,7 @@ export class InventoryService {
       include: { settings: true },
     });
 
-    let s = event?.settings?.tshirtSizes;
+    let s: any = event?.settings?.tshirtSizes;
     if (typeof s === 'string') {
       try {
         s = JSON.parse(s);
@@ -204,8 +204,8 @@ export class InventoryService {
 
       const staffReserved = item.staffReservedQuantity || 0;
       const staffDelivered = item.staffDeliveredQuantity || 0;
-      const staffPending = Math.max(0, staffReserved - staffDelivered);
-      const availableParticipants = Math.max(0, item.initialQuantity - delivered - staffReserved);
+      const staffPending = staffReserved - staffDelivered;
+      const availableParticipants = item.initialQuantity - delivered - staffReserved;
 
       return {
         id: item.id,
@@ -215,6 +215,7 @@ export class InventoryService {
         deliveredQuantity: delivered,
         availableQuantity: availableParticipants,
         availableForParticipants: availableParticipants,
+        physicalRemaining: item.initialQuantity - delivered - staffDelivered,
         pendingDelivery: pending,
         staffReservedQuantity: staffReserved,
         staffDeliveredQuantity: staffDelivered,
@@ -300,6 +301,15 @@ export class InventoryService {
 
     if (!current) {
       throw new NotFoundError('Talla de inventario no encontrada');
+    }
+
+    if (data.initialQuantity !== undefined) {
+      const minRequired = (current.deliveredQuantity || 0) + (current.staffReservedQuantity || 0);
+      if (data.initialQuantity < minRequired) {
+        throw new BadRequestError(
+          `No se puede reducir la cantidad inicial (${data.initialQuantity}) por debajo del total comprometido (${minRequired} unidades: ${current.deliveredQuantity || 0} entregadas a participantes + ${current.staffReservedQuantity || 0} reservadas para staff).`
+        );
+      }
     }
 
     const updated = await prisma.tshirtInventory.update({
@@ -448,8 +458,8 @@ export class InventoryService {
       const deliveredParticipants = deliveredToParticipantsMap[item.size] || item.deliveredQuantity || 0;
       const staffReserved = item.staffReservedQuantity || 0;
       const staffDelivered = item.staffDeliveredQuantity || 0;
-      const staffPending = Math.max(0, staffReserved - staffDelivered);
-      const availableForParticipants = Math.max(0, item.initialQuantity - deliveredParticipants - staffReserved);
+      const staffPending = staffReserved - staffDelivered;
+      const availableForParticipants = item.initialQuantity - deliveredParticipants - staffReserved;
 
       summaryTotal += item.initialQuantity;
       summaryDeliveredParticipants += deliveredParticipants;
@@ -635,7 +645,7 @@ export class InventoryService {
       await tx.auditLog.create({
         data: {
           userId,
-          action: 'STAFF_TSHIRT_DELIVER',
+          action: 'STAFF_TSHIRT_DELIVERY',
           entity: 'STAFF_TSHIRT_DELIVERY',
           entityId: delivery.id,
           changes: JSON.stringify({
@@ -688,12 +698,18 @@ export class InventoryService {
         throw new NotFoundError(`Talla "${trimmedSize}" no encontrada en el inventario activo de esta edición`);
       }
 
-      const pendingReserve = Math.max(0, item.staffReservedQuantity - item.staffDeliveredQuantity);
+      const pendingReserve = item.staffReservedQuantity - item.staffDeliveredQuantity;
       if (pendingReserve <= 0) {
         throw new BadRequestError(`No hay camisetas pendientes de entrega en la reserva de la talla "${trimmedSize}" para liberar.`);
       }
 
-      const actualRelease = Math.min(quantityToRelease, pendingReserve);
+      if (quantityToRelease > pendingReserve) {
+        throw new BadRequestError(
+          `No se pueden liberar ${quantityToRelease} camisetas porque solo hay ${pendingReserve} pendientes de entrega en la reserva de la talla "${trimmedSize}".`
+        );
+      }
+
+      const actualRelease = quantityToRelease;
       const newStaffReserved = item.staffReservedQuantity - actualRelease;
 
       const updated = await tx.tshirtInventory.update({

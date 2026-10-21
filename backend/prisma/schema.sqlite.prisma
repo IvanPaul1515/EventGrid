@@ -28,6 +28,7 @@ model User {
   modifiedParticipants  Participant[]   @relation("ParticipantModifier")
   sentEmails            EmailLog[]      @relation("EmailSender")
   staffTshirtDeliveries StaffTshirtDelivery[]
+  emailBatchJobs        EmailBatchJob[]       @relation("EmailBatchCreator")
 
   @@map("users")
 }
@@ -59,6 +60,8 @@ model Event {
   emailLogs              EmailLog[]
   tshirtInventories      TshirtInventory[]
   staffTshirtDeliveries  StaffTshirtDelivery[]
+  registrationSequence   RegistrationSequence?
+  emailBatchJobs         EmailBatchJob[]
 
   @@index([year])
   @@index([status])
@@ -171,6 +174,7 @@ model Registration {
   attendanceLogs   AttendanceLog[]
   payments         Payment[]
   emailLogs        EmailLog[]
+  emailBatchItems  EmailBatchItem[]
 
   @@unique([eventId, registrationNumber])
   @@unique([eventId, participantId])
@@ -444,4 +448,78 @@ model StaffTshirtDelivery {
 
   @@index([eventId])
   @@map("staff_tshirt_deliveries")
+}
+
+model RegistrationSequence {
+  id        String   @id @default(uuid())
+  eventId   String   @unique
+  current   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("registration_sequences")
+}
+
+model LoginAttempt {
+  id             String    @id @default(uuid())
+  key            String    @unique
+  count          Int       @default(1)
+  firstAttemptAt DateTime  @default(now())
+  blockedUntil   DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  @@index([key])
+  @@map("login_attempts")
+}
+
+model EmailBatchJob {
+  id             String    @id @default(uuid())
+  eventId        String
+  templateCode   String?
+  subject        String
+  status         String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED, SIMULATED
+  totalCount     Int       @default(0)
+  processedCount Int       @default(0)
+  sentCount      Int       @default(0)
+  failedCount    Int       @default(0)
+  simulatedCount Int       @default(0)
+  filterCriteria String?   // JSON string
+  errorMessage   String?
+  createdById    String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  event         Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdByUser User?            @relation("EmailBatchCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  items         EmailBatchItem[]
+
+  @@index([eventId])
+  @@index([status])
+  @@map("email_batch_jobs")
+}
+
+model EmailBatchItem {
+  id             String    @id @default(uuid())
+  jobId          String
+  registrationId String?
+  recipientEmail String
+  recipientName  String?
+  status         String    @default("PENDING") // PENDING, PROCESSING, ACCEPTED_BY_SMTP, FAILED, SIMULATED, CANCELLED
+  attempts       Int       @default(0)
+  lastAttemptAt  DateTime?
+  errorMessage   String?
+  sentAt         DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  job          EmailBatchJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  registration Registration? @relation(fields: [registrationId], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([status])
+  @@index([recipientEmail])
+  @@map("email_batch_items")
 }

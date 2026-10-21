@@ -1,5 +1,6 @@
 import { prisma } from '../../config/db.js';
 import { NotFoundError } from '../../utils/errors.js';
+import { ParticipantsService } from '../participants/participants.service.js';
 import crypto from 'crypto';
 
 const DOMINICAN_FIRST_NAMES = [
@@ -176,22 +177,7 @@ export class DemoService {
         });
       }
 
-      let candidateNum = seq;
-      let regNum = `${prefix}${String(candidateNum).padStart(4, '0')}`;
-      while (
-        await prisma.registration.findUnique({
-          where: {
-            eventId_registrationNumber: {
-              eventId,
-              registrationNumber: regNum,
-            },
-          },
-        })
-      ) {
-        candidateNum++;
-        regNum = `${prefix}${String(candidateNum).padStart(4, '0')}`;
-      }
-      seq = candidateNum + 1;
+      const regNum = await ParticipantsService.getNextRegistrationNumber(eventId, event.year, prefix);
       const ticket = ticketTypes[i % ticketTypes.length];
       const pMethod = paymentMethods[i % paymentMethods.length];
       const price = Number(ticket.price);

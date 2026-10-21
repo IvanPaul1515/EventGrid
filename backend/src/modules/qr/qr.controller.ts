@@ -62,7 +62,7 @@ export class QrController {
           entityId: result.registration?.id,
           changes: {
             result: 'SUCCESS',
-            participantName: result.participant?.fullName,
+            participantName: (result as any).participant?.fullName || (result as any).registration?.participant?.fullName,
             ticketNumber: result.registration?.registrationNumber,
           },
         }).catch(() => {});

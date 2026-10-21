@@ -23,6 +23,15 @@ router.post('/preview', requireRole(['ADMIN', 'OPERATOR']), CommunicationsContro
 router.post('/send', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.sendSingleEmail);
 router.post('/send-bulk', requireRole(['ADMIN']), CommunicationsController.sendBulkEmail);
 
+
+// Prevalidación exacta de destinatarios (ADMIN y OPERATOR)
+router.post('/recipients/validate', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.validateRecipients);
+
+// Lotes persistentes de correo masivo (ADMIN)
+router.get('/jobs', requireRole(['ADMIN']), CommunicationsController.getBatchJobs);
+router.get('/jobs/:id', requireRole(['ADMIN']), CommunicationsController.getBatchJob);
+router.post('/jobs/:id/cancel', requireRole(['ADMIN']), CommunicationsController.cancelBatchJob);
+
 // Historial de correos (ADMIN y OPERATOR)
 router.get('/logs', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.getLogs);
 

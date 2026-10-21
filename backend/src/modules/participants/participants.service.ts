@@ -432,24 +432,11 @@ export class ParticipantsService {
     // 4. Generar número de registro único si no fue suministrado
     let regNumber = input.registrationNumber?.trim();
     if (!regNumber) {
-      const prefix = event.settings?.registrationPrefix || `EV${String(event.year).slice(-2)}-`;
-      const count = await prisma.registration.count({ where: { eventId } });
-      let candidateNum = count + 1;
-      let isUnique = false;
-
-      while (!isUnique) {
-        regNumber = `${prefix}${String(candidateNum).padStart(4, '0')}`;
-        const conflict = await prisma.registration.findUnique({
-          where: {
-            eventId_registrationNumber: {
-              eventId,
-              registrationNumber: regNumber,
-            },
-          },
-        });
-        if (!conflict) isUnique = true;
-        else candidateNum++;
-      }
+      regNumber = await ParticipantsService.getNextRegistrationNumber(
+        eventId,
+        event.year,
+        event.settings?.registrationPrefix
+      );
     } else {
       const conflict = await prisma.registration.findUnique({
         where: {
@@ -812,16 +799,12 @@ export class ParticipantsService {
       );
     }
 
-    // 3. Generar número de registro único
-    const prefix = event.settings?.registrationPrefix || `EV${String(event.year).slice(-2)}-`;
-    const count = await prisma.registration.count({ where: { eventId } });
-    let candidateNum = count + 1;
-    let regNumber = `${prefix}${String(candidateNum).padStart(4, '0')}`;
-
-    while (await prisma.registration.findUnique({ where: { eventId_registrationNumber: { eventId, registrationNumber: regNumber } } })) {
-      candidateNum++;
-      regNumber = `${prefix}${String(candidateNum).padStart(4, '0')}`;
-    }
+    // 3. Generar número de registro único atómico (QA-16)
+    const regNumber = await ParticipantsService.getNextRegistrationNumber(
+      eventId,
+      event.year,
+      event.settings?.registrationPrefix
+    );
 
     const now = new Date();
 
@@ -1161,7 +1144,7 @@ export class ParticipantsService {
   static async delete(eventId: string, registrationId: string) {
     const existing = await prisma.registration.findFirst({
       where: { id: registrationId, eventId },
-      include: { participant: true },
+      include: { participant: true, ticketType: true },
     });
 
     if (!existing) {
@@ -1228,7 +1211,7 @@ export class ParticipantsService {
       const lName = lastNames[Math.floor(Math.random() * lastNames.length)];
       const inst = institutions[Math.floor(Math.random() * institutions.length)];
       const randSuffix = Math.floor(1000 + Math.random() * 9000);
-      const email = `demo.${fName.toLowerCase()}.${lName.toLowerCase()}${randSuffix}@barcampdemo.do`;
+      const email = `demo.${fName.toLowerCase()}.${lName.toLowerCase()}${randSuffix}@eventgrid.demo`;
       const doc = `402-${String(Math.floor(1000000 + Math.random() * 8999999))}-${Math.floor(Math.random() * 9)}`;
       const phone = `809-${String(Math.floor(200 + Math.random() * 700))}-${String(Math.floor(1000 + Math.random() * 8999))}`;
       const regNumber = `${prefix}${String(startCount + i + 1).padStart(4, '0')}`;
@@ -1268,7 +1251,7 @@ export class ParticipantsService {
           totalAmount: amountPaid,
           isVerified: true,
           isCourtesy,
-          courtesyAuthorizedBy: isCourtesy ? 'Dirección BarCamp RD' : null,
+          courtesyAuthorizedBy: isCourtesy ? 'Comité Organizador del Evento' : null,
           courtesyReason: isCourtesy ? 'Beca de excelencia académica' : null,
           courtesyDate: isCourtesy ? new Date() : null,
           isDemo: true,
@@ -1481,7 +1464,7 @@ export class ParticipantsService {
         newInv = await prisma.tshirtInventory.findUnique({
           where: { eventId_size: { eventId, size: tshirtSize } },
         });
-        if (newInv && newInv.initialQuantity - newInv.deliveredQuantity <= 0) {
+        if (newInv && (newInv.initialQuantity - newInv.deliveredQuantity - newInv.staffReservedQuantity) <= 0) {
           throw new BadRequestError(`TALLA AGOTADA: No quedan unidades disponibles de la talla "${tshirtSize}".`);
         }
       }
@@ -1574,29 +1557,45 @@ export class ParticipantsService {
       throw new BadRequestError(`INVENTARIO NO ENCONTRADO: No existe inventario configurado o activo para la talla "${targetSize}".`);
     }
 
-    if (inventoryItem.initialQuantity - inventoryItem.deliveredQuantity <= 0) {
-      throw new BadRequestError(`TALLA AGOTADA: No quedan unidades disponibles de la talla "${targetSize}".`);
+    const availableForParticipants = inventoryItem.initialQuantity - inventoryItem.deliveredQuantity - inventoryItem.staffReservedQuantity;
+    if (availableForParticipants <= 0) {
+      throw new BadRequestError(`TALLA AGOTADA: No quedan unidades disponibles de la talla "${targetSize}" para participantes (reservas de staff protegidas).`);
     }
 
     const now = new Date();
 
     const updated = await prisma.$transaction(async (tx) => {
-      // QA-02: Decremento atómico
+      const inv = await tx.tshirtInventory.findUnique({
+        where: { id: inventoryItem.id },
+      });
+
+      if (!inv || !inv.isActive) {
+        throw new BadRequestError(`INVENTARIO NO ENCONTRADO: Talla "${targetSize}" no disponible.`);
+      }
+
+      const currentAvailable = inv.initialQuantity - inv.deliveredQuantity - inv.staffReservedQuantity;
+      if (currentAvailable <= 0) {
+        throw new BadRequestError(`TALLA AGOTADA: No quedan unidades disponibles de la talla "${targetSize}" para participantes.`);
+      }
+
       const invUpdate = await tx.tshirtInventory.updateMany({
         where: {
-          id: inventoryItem.id,
-          deliveredQuantity: { lt: inventoryItem.initialQuantity },
+          id: inv.id,
+          initialQuantity: inv.initialQuantity,
+          deliveredQuantity: inv.deliveredQuantity,
+          staffReservedQuantity: inv.staffReservedQuantity,
+          staffDeliveredQuantity: inv.staffDeliveredQuantity,
           isActive: true,
         },
-        data: { deliveredQuantity: { increment: 1 } },
+        data: { deliveredQuantity: inv.deliveredQuantity + 1 },
       });
 
       if (invUpdate.count === 0) {
-        throw new BadRequestError(`TALLA AGOTADA: No quedan unidades disponibles de la talla "${targetSize}".`);
+        throw new BadRequestError(`CONCURRENCIA: La disponibilidad para la talla "${targetSize}" cambió durante la operación. Por favor intente nuevamente.`);
       }
 
-      const reg = await tx.registration.update({
-        where: { id: registrationId },
+      const regUpdate = await tx.registration.updateMany({
+        where: { id: registrationId, tshirtDelivered: false },
         data: {
           tshirtSize: targetSize,
           tshirtSizeUpdatedAt: now,
@@ -1606,6 +1605,14 @@ export class ParticipantsService {
           tshirtDeliveredByUserId: userId,
           updatedByUserId: userId,
         },
+      });
+
+      if (regUpdate.count === 0) {
+        throw new BadRequestError('La camiseta ya fue entregada a este participante.');
+      }
+
+      const reg = await tx.registration.findUnique({
+        where: { id: registrationId },
         include: {
           participant: true,
           ticketType: true,
@@ -1713,4 +1720,57 @@ export class ParticipantsService {
     const [updated] = await prisma.$transaction(txOps);
     return updated;
   }
+  /**
+   * Generar número de registro secuencial y único de forma atómica (QA-16)
+   */
+  static async getNextRegistrationNumber(
+    eventId: string,
+    eventYear: number,
+    configuredPrefix?: string | null
+  ): Promise<string> {
+    const rawPrefix = configuredPrefix || `EV${String(eventYear).slice(-2)}`;
+    const prefix = rawPrefix.endsWith('-') ? rawPrefix : `${rawPrefix}-`;
+
+    return await prisma.$transaction(async (tx) => {
+      let seq = await tx.registrationSequence.findUnique({
+        where: { eventId },
+      });
+
+      if (!seq) {
+        const currentCount = await tx.registration.count({ where: { eventId } });
+        seq = await tx.registrationSequence.upsert({
+          where: { eventId },
+          create: { eventId, current: currentCount },
+          update: {},
+        });
+      }
+
+      let nextSeq = await tx.registrationSequence.update({
+        where: { eventId },
+        data: { current: { increment: 1 } },
+      });
+
+      let candidate = `${prefix}${String(nextSeq.current).padStart(4, '0')}`;
+
+      while (
+        await tx.registration.findUnique({
+          where: {
+            eventId_registrationNumber: {
+              eventId,
+              registrationNumber: candidate,
+            },
+          },
+        })
+      ) {
+        nextSeq = await tx.registrationSequence.update({
+          where: { eventId },
+          data: { current: { increment: 1 } },
+        });
+        candidate = `${prefix}${String(nextSeq.current).padStart(4, '0')}`;
+      }
+
+      return candidate;
+    });
+  }
+
 }

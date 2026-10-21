@@ -6,11 +6,11 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc && prisma generate",
+    "build": "tsc && prisma generate --schema=prisma/schema.sqlite.prisma",
     "start": "node dist/server.js",
-    "prisma:generate": "prisma generate",
+    "prisma:generate": "prisma generate --schema=prisma/schema.sqlite.prisma",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:push": "prisma db push",
+    "prisma:push": "prisma db push --schema=prisma/schema.sqlite.prisma",
     "prisma:seed": "tsx prisma/seed.ts",
     "test": "vitest run --fileParallelism=false"
   },

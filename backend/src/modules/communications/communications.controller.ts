@@ -8,8 +8,10 @@ import {
   UpdateTemplateSchema,
   EmailPreviewSchema,
   QueryLogsSchema,
+  ValidateRecipientsSchema,
 } from './communications.dto.js';
 import { recordAuditLog } from '../../middleware/audit.js';
+import { BadRequestError } from '../../utils/errors.js';
 
 export class CommunicationsController {
   static async getConfig(req: Request, res: Response, next: NextFunction) {
@@ -184,4 +186,46 @@ export class CommunicationsController {
       next(error);
     }
   }
+
+  static async validateRecipients(req: Request, res: Response, next: NextFunction) {
+    try {
+      const validated = ValidateRecipientsSchema.parse(req.body);
+      const result = await CommunicationsService.getRecipientStats(validated);
+      return res.status(200).json({ status: 'success', data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getBatchJobs(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = (req.query.eventId as string) || (req as any).eventId;
+      if (!eventId) throw new BadRequestError('El parámetro eventId es requerido');
+      const jobs = await CommunicationsService.getBatchJobs(eventId);
+      return res.status(200).json({ status: 'success', data: jobs });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getBatchJob(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const job = await CommunicationsService.getBatchJob(id);
+      return res.status(200).json({ status: 'success', data: job });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async cancelBatchJob(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const result = await CommunicationsService.cancelBatchJob(id);
+      return res.status(200).json({ status: 'success', message: 'Lote cancelado exitosamente', data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
 }

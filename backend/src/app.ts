@@ -24,6 +24,9 @@ import inventoryRoutes from './modules/inventory/inventory.routes.js';
 
 export const app = express();
 
+// Configuración de proxy para resolución segura de IPs (QA-19)
+app.set('trust proxy', 1);
+
 // Seguridad con Helmet
 app.use(helmet());
 

@@ -13,7 +13,7 @@ export class AuthController {
       const result = await AuthService.login(validated.email, validated.password);
 
       // Limpiar intentos fallidos acumulados
-      clearFailedLogin(req, validated.email);
+      await clearFailedLogin(req, validated.email);
 
       // Guardar token en cookie HttpOnly segura
       res.cookie('barcamp_token', result.token, {
@@ -39,7 +39,7 @@ export class AuthController {
       });
     } catch (error) {
       // Registrar intento fallido para rate-limiting y auditoría segura
-      recordFailedLogin(req, attemptedEmail || (req.body?.email ? String(req.body.email) : undefined));
+      await recordFailedLogin(req, attemptedEmail || (req.body?.email ? String(req.body.email) : undefined));
       next(error);
     }
   }

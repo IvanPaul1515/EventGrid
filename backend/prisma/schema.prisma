@@ -65,6 +65,15 @@ enum AuditAction {
   EMAIL_FAILED
   EMAIL_CONFIG_UPDATE
   EMAIL_TEMPLATE_UPDATE
+  TSHIRT_INVENTORY_INIT
+  TSHIRT_INVENTORY_CREATE
+  TSHIRT_INVENTORY_UPDATE
+  TSHIRT_INVENTORY_DELETE
+  TSHIRT_DELIVERY
+  TSHIRT_RETURN
+  STAFF_TSHIRT_RESERVE
+  STAFF_TSHIRT_DELIVERY
+  STAFF_TSHIRT_RELEASE
 }
 
 enum AuditEntity {
@@ -79,6 +88,9 @@ enum AuditEntity {
   EMAIL_CONFIG
   EMAIL_TEMPLATE
   EMAIL_LOG
+  TSHIRT_INVENTORY
+  STAFF_TSHIRT_DELIVERY
+  STAFF_DELIVERY
 }
 
 model User {
@@ -102,6 +114,7 @@ model User {
   modifiedParticipants  Participant[]   @relation("ParticipantModifier")
   sentEmails            EmailLog[]      @relation("EmailSender")
   staffTshirtDeliveries StaffTshirtDelivery[]
+  emailBatchJobs        EmailBatchJob[]       @relation("EmailBatchCreator")
 
   @@map("users")
 }
@@ -133,6 +146,8 @@ model Event {
   emailLogs              EmailLog[]
   tshirtInventories      TshirtInventory[]
   staffTshirtDeliveries  StaffTshirtDelivery[]
+  registrationSequence   RegistrationSequence?
+  emailBatchJobs         EmailBatchJob[]
 
   @@index([year])
   @@index([status])
@@ -245,6 +260,7 @@ model Registration {
   attendanceLogs   AttendanceLog[]
   payments         Payment[]
   emailLogs        EmailLog[]
+  emailBatchItems  EmailBatchItem[]
 
   @@unique([eventId, registrationNumber])
   @@unique([eventId, participantId]) // Un participante no se inscribe dos veces en la misma edición
@@ -487,17 +503,111 @@ model EmailLog {
 }
 
 model TshirtInventory {
-  id                String   @id @default(uuid())
-  eventId           String
-  size              String
-  initialQuantity   Int      @default(0)
-  deliveredQuantity Int      @default(0)
-  isActive          Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                     String   @id @default(uuid())
+  eventId                String
+  size                   String
+  initialQuantity        Int      @default(0)
+  deliveredQuantity      Int      @default(0)
+  staffReservedQuantity  Int      @default(0)
+  staffDeliveredQuantity Int      @default(0)
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, size])
   @@map("tshirt_inventories")
+}
+
+model StaffTshirtDelivery {
+  id                String   @id @default(uuid())
+  eventId           String
+  size              String
+  quantity          Int      @default(1)
+  recipientName     String?
+  notes             String?
+  deliveredByUserId String?
+  deliveredAt       DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  event           Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  deliveredByUser User? @relation(fields: [deliveredByUserId], references: [id], onDelete: SetNull)
+
+  @@index([eventId])
+  @@map("staff_tshirt_deliveries")
+}
+
+model RegistrationSequence {
+  id        String   @id @default(uuid())
+  eventId   String   @unique
+  current   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("registration_sequences")
+}
+
+model LoginAttempt {
+  id             String    @id @default(uuid())
+  key            String    @unique
+  count          Int       @default(1)
+  firstAttemptAt DateTime  @default(now())
+  blockedUntil   DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  @@index([key])
+  @@map("login_attempts")
+}
+
+model EmailBatchJob {
+  id             String    @id @default(uuid())
+  eventId        String
+  templateCode   String?
+  subject        String
+  status         String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED, SIMULATED
+  totalCount     Int       @default(0)
+  processedCount Int       @default(0)
+  sentCount      Int       @default(0)
+  failedCount    Int       @default(0)
+  simulatedCount Int       @default(0)
+  filterCriteria Json?
+  errorMessage   String?
+  createdById    String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  event         Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdByUser User?            @relation("EmailBatchCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  items         EmailBatchItem[]
+
+  @@index([eventId])
+  @@index([status])
+  @@map("email_batch_jobs")
+}
+
+model EmailBatchItem {
+  id             String    @id @default(uuid())
+  jobId          String
+  registrationId String?
+  recipientEmail String
+  recipientName  String?
+  status         String    @default("PENDING") // PENDING, PROCESSING, ACCEPTED_BY_SMTP, FAILED, SIMULATED, CANCELLED
+  attempts       Int       @default(0)
+  lastAttemptAt  DateTime?
+  errorMessage   String?
+  sentAt         DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  job          EmailBatchJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  registration Registration? @relation(fields: [registrationId], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([status])
+  @@index([recipientEmail])
+  @@map("email_batch_items")
 }

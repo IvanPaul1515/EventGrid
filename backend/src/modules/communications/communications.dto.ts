@@ -31,6 +31,7 @@ export const SendEmailSchema = z.object({
   customSubject: z.string().optional().nullable(),
   customBodyHtml: z.string().optional().nullable(),
   customMessage: z.string().optional().nullable(),
+  simulateOnly: z.boolean().optional(),
 });
 
 export const SendBulkEmailSchema = z.object({
@@ -50,11 +51,28 @@ export const SendBulkEmailSchema = z.object({
   customSubject: z.string().optional().nullable(),
   customBodyHtml: z.string().optional().nullable(),
   customMessage: z.string().optional().nullable(),
+  simulateOnly: z.boolean().optional(),
+});
+
+export const ValidateRecipientsSchema = z.object({
+  eventId: z.string().min(1, 'El identificador del evento es requerido'),
+  targetGroup: z.enum([
+    'ALL',
+    'CONFIRMED',
+    'PAID',
+    'PENDING',
+    'PENDING_PAYMENT',
+    'ATTENDED',
+    'NOT_ATTENDED',
+    'SELECTED',
+  ]),
+  selectedRegistrationIds: z.array(z.string()).optional(),
 });
 
 export const EmailPreviewSchema = z.object({
   eventId: z.string().optional().nullable(),
   registrationId: z.string().optional().nullable(),
+  sampleType: z.enum(['MOCK', 'PARTICIPANT']).optional(),
   templateCode: z.string().min(1, 'El código de plantilla es requerido'),
   customSubject: z.string().optional().nullable(),
   customBodyHtml: z.string().optional().nullable(),
@@ -81,6 +99,7 @@ export type UpdateSmtpConfigInput = z.infer<typeof UpdateSmtpConfigSchema>;
 export type TestEmailInput = z.infer<typeof TestEmailSchema>;
 export type SendEmailInput = z.infer<typeof SendEmailSchema>;
 export type SendBulkEmailInput = z.infer<typeof SendBulkEmailSchema>;
+export type ValidateRecipientsInput = z.infer<typeof ValidateRecipientsSchema>;
 export type EmailPreviewInput = z.infer<typeof EmailPreviewSchema>;
 export type UpdateTemplateInput = z.infer<typeof UpdateTemplateSchema>;
 export type QueryLogsInput = z.infer<typeof QueryLogsSchema>;

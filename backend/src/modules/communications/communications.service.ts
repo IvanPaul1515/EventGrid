@@ -7,6 +7,7 @@ import {
   UpdateTemplateInput,
   EmailPreviewInput,
   QueryLogsInput,
+  ValidateRecipientsInput,
 } from './communications.dto.js';
 import { encryptSecret, decryptSecret } from '../../utils/crypto.js';
 import { QrService } from '../qr/qr.service.js';
@@ -209,7 +210,7 @@ export class CommunicationsService {
           recipientName: 'Prueba SMTP',
           templateCode: 'TEST_CONNECTION',
           subject: 'Prueba de Configuración de Correo — EventGrid',
-          status: 'SENT',
+          status: 'ACCEPTED_BY_SMTP',
           sentByUserId: userId || null,
         },
       });
@@ -425,7 +426,7 @@ export class CommunicationsService {
   /**
    * Listar plantillas de correo para un evento (garantizando inicialización de las 7 estándar)
    */
-  static async getTemplates(eventId?: string | null) {
+  static async getTemplates(eventId?: string | null): Promise<any[]> {
     const existing = await prisma.emailTemplate.findMany({
       where: eventId ? { OR: [{ eventId }, { eventId: null }] } : undefined,
       orderBy: { createdAt: 'asc' },
@@ -907,14 +908,20 @@ export class CommunicationsService {
       where: { OR: [{ eventId: input.eventId }, { eventId: null }] },
     });
 
+    const isConfigActive = Boolean(config && config.isEnabled);
+    // Explicit simulation vs real send: if SMTP disabled and real send requested, throw BadRequestError
+    if (!input.simulateOnly && !isConfigActive && process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true') {
+      throw new BadRequestError('El servidor SMTP no está configurado o está deshabilitado. No se puede realizar un envío real.');
+    }
+
     const isGlobalSimulation =
-      !config ||
-      !config.isEnabled ||
-      event.settings?.demoModeEnabled ||
+      Boolean(input.simulateOnly) ||
+      !isConfigActive ||
+      Boolean(event.settings?.demoModeEnabled) ||
       process.env.NODE_ENV === 'test' ||
       process.env.VITEST === 'true' ||
-      Boolean(config.host.includes('mailtrap')) ||
-      Boolean(config.host.includes('example'));
+      Boolean(config?.host?.includes('mailtrap')) ||
+      Boolean(config?.host?.includes('example'));
 
     const rawPassword = config ? decryptSecret(config.password) : '';
     let transporter: any = null;
@@ -928,7 +935,21 @@ export class CommunicationsService {
       });
     }
 
-    const batchId = `BATCH-${Date.now()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    // Registrar EmailBatchJob persistente
+    const batchId = `BATCH-${crypto.randomUUID()}`;
+    const job = await prisma.emailBatchJob.create({
+      data: {
+        id: batchId,
+        eventId: input.eventId,
+        templateCode: input.templateCode,
+        subject: template?.subject || 'Comunicación EventGrid',
+        totalCount: registrations.length,
+        status: 'PROCESSING',
+        filterCriteria: JSON.stringify({ targetGroup: input.targetGroup }),
+        createdById: userId || null,
+        startedAt: new Date(),
+      },
+    });
     let sentCount = 0;
     let simulatedCount = 0;
     let failedCount = 0;
@@ -973,9 +994,9 @@ export class CommunicationsService {
               simulatedCount++;
             } else {
               await transporter.sendMail({
-                from: `"${config.fromName}" <${config.fromEmail}>`,
+                from: `"${config?.fromName || 'EventGrid'}" <${config?.fromEmail || 'noreply@eventgrid.app'}>`,
                 to: email,
-                replyTo: config.replyToEmail || undefined,
+                replyTo: config?.replyToEmail || undefined,
                 subject: rendered.subject,
                 text: rendered.text,
                 html: rendered.html,
@@ -1016,6 +1037,24 @@ export class CommunicationsService {
         })
       );
     }
+
+    const finalStatus = isGlobalSimulation
+      ? 'SIMULATED'
+      : failedCount === registrations.length
+      ? 'FAILED'
+      : 'ACCEPTED_BY_SMTP';
+
+    await prisma.emailBatchJob.update({
+      where: { id: batchId },
+      data: {
+        processedCount: sentCount + simulatedCount + failedCount,
+        sentCount,
+        failedCount,
+        simulatedCount,
+        status: finalStatus,
+        completedAt: new Date(),
+      },
+    }).catch(() => {});
 
     return {
       batchId,
@@ -1090,4 +1129,157 @@ export class CommunicationsService {
       totalPages,
     };
   }
+
+  /**
+   * Conteo y prevalidación exacta de destinatarios (Sección 8)
+   */
+  static async getRecipientStats(input: ValidateRecipientsInput) {
+    const event = await prisma.event.findUnique({
+      where: { id: input.eventId },
+      include: { settings: true },
+    });
+    if (!event) throw new NotFoundError('Edición no encontrada');
+
+    const baseWhere: any = { eventId: input.eventId };
+
+    if (input.targetGroup === 'CONFIRMED') {
+      baseWhere.status = 'CONFIRMED';
+    } else if (input.targetGroup === 'PAID') {
+      baseWhere.paymentStatus = { in: ['PAID', 'COURTESY'] };
+    } else if (input.targetGroup === 'PENDING' || input.targetGroup === 'PENDING_PAYMENT') {
+      baseWhere.paymentStatus = { in: ['PENDING', 'PARTIAL'] };
+    } else if (input.targetGroup === 'ATTENDED') {
+      baseWhere.attended = true;
+    } else if (input.targetGroup === 'NOT_ATTENDED') {
+      baseWhere.attended = false;
+    } else if (input.targetGroup === 'SELECTED' && input.selectedRegistrationIds?.length) {
+      baseWhere.id = { in: input.selectedRegistrationIds };
+    }
+
+    const allRegistrations = await prisma.registration.findMany({
+      where: baseWhere,
+      include: {
+        participant: true,
+        ticketType: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const totalSelected = allRegistrations.length;
+    let cancelledCount = 0;
+    let demoCount = 0;
+    let invalidEmailsCount = 0;
+    let validEmailsCount = 0;
+    const seenEmails = new Set<string>();
+    let duplicateCount = 0;
+    const eligibleRegistrations: any[] = [];
+
+    const isDemoMode = event.settings?.demoModeEnabled ?? false;
+
+    for (const reg of allRegistrations) {
+      if (reg.status === 'CANCELLED') {
+        cancelledCount++;
+        continue;
+      }
+      if (!isDemoMode && reg.isDemo) {
+        demoCount++;
+        continue;
+      }
+      const email = reg.participant?.email?.trim().toLowerCase();
+      if (!email || !email.includes('@') || email.length < 5) {
+        invalidEmailsCount++;
+        continue;
+      }
+      validEmailsCount++;
+      if (seenEmails.has(email)) {
+        duplicateCount++;
+        continue;
+      }
+      seenEmails.add(email);
+      eligibleRegistrations.push(reg);
+    }
+
+    const eligibleCount = eligibleRegistrations.length;
+    const sampleRecipients = eligibleRegistrations.slice(0, 10).map((r) => ({
+      id: r.id,
+      fullName: r.participant.fullName,
+      email: r.participant.email,
+      registrationNumber: r.registrationNumber,
+      ticketType: r.ticketType?.name || (r.isCourtesy ? 'Cortesía' : 'General'),
+      paymentStatus: r.paymentStatus,
+    }));
+
+    return {
+      totalSelected,
+      eligibleCount,
+      validEmailsCount,
+      invalidEmailsCount,
+      cancelledCount,
+      demoCount,
+      duplicateCount,
+      sampleRecipients,
+    };
+  }
+
+  /**
+   * Consultar historial de lotes persistentes de envío masivo (Sección 7)
+   */
+  static async getBatchJobs(eventId: string) {
+    return await prisma.emailBatchJob.findMany({
+      where: { eventId },
+      orderBy: { createdAt: 'desc' },
+      take: 25,
+      include: {
+        createdByUser: {
+          select: { id: true, fullName: true, email: true },
+        },
+      },
+    });
+  }
+
+  /**
+   * Consultar estado y detalle de un lote de envío persistente (Sección 7)
+   */
+  static async getBatchJob(jobId: string) {
+    const job = await prisma.emailBatchJob.findUnique({
+      where: { id: jobId },
+      include: {
+        createdByUser: {
+          select: { id: true, fullName: true, email: true },
+        },
+        items: {
+          take: 100,
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!job) throw new NotFoundError('Lote de correo no encontrado');
+    return job;
+  }
+
+  /**
+   * Cancelar envíos pendientes de un lote persistente (Sección 7)
+   */
+  static async cancelBatchJob(jobId: string) {
+    const job = await prisma.emailBatchJob.findUnique({ where: { id: jobId } });
+    if (!job) throw new NotFoundError('Lote no encontrado');
+
+    const cancelledCount = await prisma.emailBatchItem.updateMany({
+      where: { jobId, status: 'PENDING' },
+      data: { status: 'CANCELLED' },
+    });
+
+    await prisma.emailBatchJob.update({
+      where: { id: jobId },
+      data: { status: 'CANCELLED' },
+    });
+
+    return {
+      jobId,
+      cancelledItemsCount: cancelledCount.count,
+      status: 'CANCELLED',
+    };
+  }
+
 }

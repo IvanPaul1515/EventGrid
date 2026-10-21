@@ -217,19 +217,29 @@ export class AttendanceService {
           );
         }
 
-        // QA-02: Validación atómica de existencias dentro de la transacción
+        // QA-02 / Fase 3: Validación atómica de existencias respetando reservas del staff
+        const availableForParticipants = inventoryItem.initialQuantity - inventoryItem.deliveredQuantity - inventoryItem.staffReservedQuantity;
+        if (availableForParticipants <= 0) {
+          throw new BadRequestError(
+            `TALLA AGOTADA: No quedan camisetas disponibles en talla "${validTshirtSize}" para participantes (reservas de staff protegidas). Puede confirmar la asistencia dejando la entrega pendiente.`
+          );
+        }
+
         const invUpdate = await tx.tshirtInventory.updateMany({
           where: {
             id: inventoryItem.id,
-            deliveredQuantity: { lt: inventoryItem.initialQuantity },
+            initialQuantity: inventoryItem.initialQuantity,
+            deliveredQuantity: inventoryItem.deliveredQuantity,
+            staffReservedQuantity: inventoryItem.staffReservedQuantity,
+            staffDeliveredQuantity: inventoryItem.staffDeliveredQuantity,
             isActive: true,
           },
-          data: { deliveredQuantity: { increment: 1 } },
+          data: { deliveredQuantity: inventoryItem.deliveredQuantity + 1 },
         });
 
         if (invUpdate.count === 0) {
           throw new BadRequestError(
-            `TALLA AGOTADA: No quedan camisetas disponibles en talla "${validTshirtSize}". Puede confirmar la asistencia dejando la entrega pendiente.`
+            `CONCURRENCIA: La disponibilidad para la talla "${validTshirtSize}" cambió durante la operación. Por favor intente nuevamente.`
           );
         }
       }
