@@ -31,6 +31,12 @@ router.post('/recipients/validate', requireRole(['ADMIN', 'OPERATOR']), Communic
 router.get('/jobs', requireRole(['ADMIN']), CommunicationsController.getBatchJobs);
 router.get('/jobs/:id', requireRole(['ADMIN']), CommunicationsController.getBatchJob);
 router.post('/jobs/:id/cancel', requireRole(['ADMIN']), CommunicationsController.cancelBatchJob);
+router.post('/jobs/:id/retry', requireRole(['ADMIN']), CommunicationsController.retryBatchJob);
+
+router.get('/batches', requireRole(['ADMIN']), CommunicationsController.getBatchJobs);
+router.get('/batches/:id', requireRole(['ADMIN']), CommunicationsController.getBatchJob);
+router.post('/batches/:id/cancel', requireRole(['ADMIN']), CommunicationsController.cancelBatchJob);
+router.post('/batches/:id/retry', requireRole(['ADMIN']), CommunicationsController.retryBatchJob);
 
 // Historial de correos (ADMIN y OPERATOR)
 router.get('/logs', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.getLogs);

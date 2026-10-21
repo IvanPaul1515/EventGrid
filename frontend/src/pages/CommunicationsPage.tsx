@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
-import { communicationsService, EmailPreviewResult } from '../services/communications.service';
+import { communicationsService, EmailPreviewResult, EmailBatchJobInfo } from '../services/communications.service';
 import { participantsService } from '../services/participants.service';
 import { EmailConfig, EmailTemplate, EmailLog, Registration } from '../types';
 import {
@@ -32,6 +32,10 @@ import {
   ShieldAlert,
   Loader2,
   ArrowRight,
+  Layers,
+  RefreshCw,
+  StopCircle,
+  Play,
 } from 'lucide-react';
 
 export const CommunicationsPage: React.FC = () => {
@@ -40,10 +44,19 @@ export const CommunicationsPage: React.FC = () => {
   const isAdmin = hasRole(['ADMIN']);
 
   // Pestañas: 1. Redactar y enviar, 2. Plantillas, 3. Envíos masivos, 4. Historial y seguimiento
-  const [activeTab, setActiveTab] = useState<'compose' | 'templates' | 'bulk' | 'logs'>('compose');
+  const [activeTab, setActiveTab] = useState<'compose' | 'templates' | 'bulk' | 'batches' | 'logs'>('compose');
 
   // Estado del servicio SMTP (para banner informativo en cabecera)
   const [serviceConfig, setServiceConfig] = useState<EmailConfig | null>(null);
+
+  // ==========================================
+  // ESTADO 5: COLA Y LOTES PERSISTENTES (Fase 4)
+  // ==========================================
+  const [batchJobs, setBatchJobs] = useState<EmailBatchJobInfo[]>([]);
+  const [loadingBatchJobs, setLoadingBatchJobs] = useState(false);
+  const [selectedBatchJob, setSelectedBatchJob] = useState<(EmailBatchJobInfo & { items: any[] }) | null>(null);
+  const [cancellingBatchId, setCancellingBatchId] = useState<string | null>(null);
+  const [retryingBatchId, setRetryingBatchId] = useState<string | null>(null);
 
   // ==========================================
   // ESTADO 1: REDACTAR Y ENVIAR (INDIVIDUAL)
@@ -141,6 +154,52 @@ export const CommunicationsPage: React.FC = () => {
       }
     }
   }, [currentEvent, activeTab]);
+
+  const loadBatchJobs = async () => {
+    if (!currentEvent) return;
+    try {
+      setLoadingBatchJobs(true);
+      const jobs = await communicationsService.getBatchJobs(currentEvent.id);
+      setBatchJobs(jobs);
+    } catch (err) {
+      console.error('Error cargando lotes de correo:', err);
+    } finally {
+      setLoadingBatchJobs(false);
+    }
+  };
+
+  const handleCancelBatch = async (jobId: string) => {
+    if (!confirm('¿Está seguro de que desea cancelar los envíos pendientes de este lote?')) return;
+    try {
+      setCancellingBatchId(jobId);
+      await communicationsService.cancelBatchJob(jobId);
+      await loadBatchJobs();
+      if (selectedBatchJob?.id === jobId) {
+        const updated = await communicationsService.getBatchJob(jobId);
+        setSelectedBatchJob(updated);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Error al cancelar el lote');
+    } finally {
+      setCancellingBatchId(null);
+    }
+  };
+
+  const handleRetryBatch = async (jobId: string) => {
+    try {
+      setRetryingBatchId(jobId);
+      await communicationsService.retryBatchJob(jobId);
+      await loadBatchJobs();
+      if (selectedBatchJob?.id === jobId) {
+        const updated = await communicationsService.getBatchJob(jobId);
+        setSelectedBatchJob(updated);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Error al reintentar envíos fallidos');
+    } finally {
+      setRetryingBatchId(null);
+    }
+  };
 
   const loadServiceStatus = async () => {
     if (!currentEvent) return;
@@ -480,7 +539,7 @@ export const CommunicationsPage: React.FC = () => {
 
         <button
           onClick={() => {
-            setActiveTab('logs');
+            setActiveTab('batches');
             loadLogs(1);
           }}
           className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
@@ -1196,7 +1255,7 @@ export const CommunicationsPage: React.FC = () => {
                   className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold flex items-center gap-2 cursor-pointer"
                 >
                   <History className="w-4 h-4" />
-                  <span>Ver Lote en Historial</span>
+                  <span>Ver en Cola de Lotes</span>
                 </button>
               </div>
             </div>

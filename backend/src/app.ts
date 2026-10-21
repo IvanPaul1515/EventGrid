@@ -24,8 +24,21 @@ import inventoryRoutes from './modules/inventory/inventory.routes.js';
 
 export const app = express();
 
-// Configuración de proxy para resolución segura de IPs (QA-19)
-app.set('trust proxy', 1);
+// Configuración de proxy para resolución segura de IPs (QA-19 / Fase 4)
+const trustProxyConfig = process.env.TRUST_PROXY;
+if (trustProxyConfig) {
+  if (trustProxyConfig === 'true') {
+    app.set('trust proxy', true);
+  } else if (trustProxyConfig === 'false') {
+    app.set('trust proxy', false);
+  } else if (!isNaN(Number(trustProxyConfig))) {
+    app.set('trust proxy', Number(trustProxyConfig));
+  } else {
+    app.set('trust proxy', trustProxyConfig);
+  }
+} else {
+  app.set('trust proxy', process.env.NODE_ENV === 'production' ? 1 : 'loopback');
+}
 
 // Seguridad con Helmet
 app.use(helmet());

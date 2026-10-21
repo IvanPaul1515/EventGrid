@@ -529,29 +529,41 @@ export class InventoryService {
         throw new NotFoundError(`Talla "${trimmedSize}" no encontrada en el inventario activo de esta edición`);
       }
 
-      // Regla: No permitir reducir la reserva por debajo de lo ya entregado al staff
+      // Invariante 1: staffDeliveredQuantity <= staffReservedQuantity
       if (reservedQuantity < item.staffDeliveredQuantity) {
         throw new BadRequestError(
           `No puede reducir la reserva (${reservedQuantity}) por debajo de la cantidad ya entregada al personal (${item.staffDeliveredQuantity}).`
         );
       }
 
-      // Regla: No permitir reservar más camisetas que las físicamente disponibles
-      // Disponibles antes de modificar reserva = initialQuantity - deliveredQuantity - staffDeliveredQuantity
+      // Invariante 2: deliveredQuantity + staffReservedQuantity <= initialQuantity
       const maxAvailableForStaff = item.initialQuantity - item.deliveredQuantity;
       if (reservedQuantity > maxAvailableForStaff) {
-        const availableNow = Math.max(0, item.initialQuantity - item.deliveredQuantity - item.staffReservedQuantity);
+        const availableNow = item.initialQuantity - item.deliveredQuantity - item.staffReservedQuantity;
         throw new BadRequestError(
           `No hay suficientes camisetas disponibles para reservar esa cantidad. Disponibles libres para participantes: ${availableNow}, Máximo reservable para staff: ${maxAvailableForStaff}.`
         );
       }
 
-      const updated = await tx.tshirtInventory.update({
-        where: { id: item.id },
+      // Actualización condicional atómica con OCC
+      const invUpdate = await tx.tshirtInventory.updateMany({
+        where: {
+          id: item.id,
+          initialQuantity: item.initialQuantity,
+          deliveredQuantity: item.deliveredQuantity,
+          staffReservedQuantity: item.staffReservedQuantity,
+          staffDeliveredQuantity: item.staffDeliveredQuantity,
+        },
         data: {
           staffReservedQuantity: reservedQuantity,
         },
       });
+
+      if (invUpdate.count === 0) {
+        throw new BadRequestError('CONCURRENCIA: El inventario de esta talla fue modificado por otra operación simultánea. Por favor intente nuevamente.');
+      }
+
+      const updated = await tx.tshirtInventory.findUniqueOrThrow({ where: { id: item.id } });
 
       await tx.auditLog.create({
         data: {
@@ -565,7 +577,7 @@ export class InventoryService {
             previousReserved: item.staffReservedQuantity,
             newReserved: reservedQuantity,
             deliveredStaff: item.staffDeliveredQuantity,
-            availableForParticipants: Math.max(0, updated.initialQuantity - updated.deliveredQuantity - updated.staffReservedQuantity),
+            availableForParticipants: updated.initialQuantity - updated.deliveredQuantity - updated.staffReservedQuantity,
           }),
         },
       });
@@ -577,8 +589,8 @@ export class InventoryService {
         deliveredParticipants: updated.deliveredQuantity,
         staffReserved: updated.staffReservedQuantity,
         staffDelivered: updated.staffDeliveredQuantity,
-        staffPending: Math.max(0, updated.staffReservedQuantity - updated.staffDeliveredQuantity),
-        availableForParticipants: Math.max(0, updated.initialQuantity - updated.deliveredQuantity - updated.staffReservedQuantity),
+        staffPending: updated.staffReservedQuantity - updated.staffDeliveredQuantity,
+        availableForParticipants: updated.initialQuantity - updated.deliveredQuantity - updated.staffReservedQuantity,
       };
     });
   }
@@ -617,13 +629,31 @@ export class InventoryService {
       // Si se entrega directo sin reserva suficiente, se asegura que staffReservedQuantity cubra al menos lo entregado.
       const newStaffReserved = Math.max(item.staffReservedQuantity, newStaffDelivered);
 
-      const updatedInventory = await tx.tshirtInventory.update({
-        where: { id: item.id },
+      // Invariante estricta: staffDeliveredQuantity <= staffReservedQuantity
+      if (newStaffDelivered > item.staffReservedQuantity) {
+        throw new BadRequestError(
+          `No se pueden entregar ${quantity} camisetas porque superaría la reserva del personal (${item.staffReservedQuantity} reservadas, ${item.staffDeliveredQuantity} ya entregadas).`
+        );
+      }
+
+      const invUpdate = await tx.tshirtInventory.updateMany({
+        where: {
+          id: item.id,
+          initialQuantity: item.initialQuantity,
+          deliveredQuantity: item.deliveredQuantity,
+          staffReservedQuantity: item.staffReservedQuantity,
+          staffDeliveredQuantity: item.staffDeliveredQuantity,
+        },
         data: {
           staffDeliveredQuantity: newStaffDelivered,
-          staffReservedQuantity: newStaffReserved,
         },
       });
+
+      if (invUpdate.count === 0) {
+        throw new BadRequestError('CONCURRENCIA: El inventario de esta talla fue modificado por otra operación simultánea. Por favor intente nuevamente.');
+      }
+
+      const updatedInventory = await tx.tshirtInventory.findUniqueOrThrow({ where: { id: item.id } });
 
       const delivery = await tx.staffTshirtDelivery.create({
         data: {
@@ -712,12 +742,24 @@ export class InventoryService {
       const actualRelease = quantityToRelease;
       const newStaffReserved = item.staffReservedQuantity - actualRelease;
 
-      const updated = await tx.tshirtInventory.update({
-        where: { id: item.id },
+      const invUpdate = await tx.tshirtInventory.updateMany({
+        where: {
+          id: item.id,
+          initialQuantity: item.initialQuantity,
+          deliveredQuantity: item.deliveredQuantity,
+          staffReservedQuantity: item.staffReservedQuantity,
+          staffDeliveredQuantity: item.staffDeliveredQuantity,
+        },
         data: {
           staffReservedQuantity: newStaffReserved,
         },
       });
+
+      if (invUpdate.count === 0) {
+        throw new BadRequestError('CONCURRENCIA: El inventario de esta talla fue modificado por otra operación simultánea. Por favor intente nuevamente.');
+      }
+
+      const updated = await tx.tshirtInventory.findUniqueOrThrow({ where: { id: item.id } });
 
       await tx.auditLog.create({
         data: {

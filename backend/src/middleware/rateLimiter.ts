@@ -7,12 +7,18 @@ const WINDOW_MS = 15 * 60 * 1000; // 15 minutos de ventana
 const BLOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutos de bloqueo
 
 export function getClientIp(req: Request): string {
-  // Con 'trust proxy' habilitado en Express, req.ip extrae la IP real del cliente
-  return req.ip || req.socket.remoteAddress || '127.0.0.1';
+  let ip = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+  if (ip.startsWith('::ffff:')) {
+    ip = ip.replace('::ffff:', '');
+  }
+  if (ip === '::1') {
+    ip = '127.0.0.1';
+  }
+  return ip;
 }
 
 /**
- * QA-19: Middleware de limitación de tasa persistente en base de datos
+ * QA-19 / Fase 4: Middleware de limitación de tasa persistente y atómico en base de datos
  */
 export async function loginRateLimiter(req: Request, res: Response, next: NextFunction) {
   try {
@@ -34,7 +40,7 @@ export async function loginRateLimiter(req: Request, res: Response, next: NextFu
       });
     }
 
-    // 2. Verificar bloqueo por Cuenta
+    // 2. Verificar bloqueo por Cuenta (sin revelar existencia de cuenta)
     if (email) {
       const emailAttempt = await prisma.loginAttempt.findUnique({
         where: { key: `email:${email}` },
@@ -58,7 +64,7 @@ export async function loginRateLimiter(req: Request, res: Response, next: NextFu
 }
 
 /**
- * QA-19: Registrar intento fallido de autenticación en almacenamiento persistente
+ * QA-19 / Fase 4: Registrar intento fallido con incremento ATÓMICO en almacenamiento persistente
  */
 export async function recordFailedLogin(req: Request, email?: string) {
   const ip = getClientIp(req);
@@ -67,19 +73,29 @@ export async function recordFailedLogin(req: Request, email?: string) {
   const nowMs = now.getTime();
 
   async function recordKey(key: string) {
-    const existing = await prisma.loginAttempt.findUnique({ where: { key } });
-    if (!existing || nowMs - existing.firstAttemptAt.getTime() > WINDOW_MS) {
-      await prisma.loginAttempt.upsert({
-        where: { key },
-        create: { key, count: 1, firstAttemptAt: now, blockedUntil: null },
-        update: { count: 1, firstAttemptAt: now, blockedUntil: null },
-      });
-    } else {
-      const newCount = existing.count + 1;
-      const blockedUntil = newCount >= MAX_FAILED_ATTEMPTS ? new Date(nowMs + BLOCK_DURATION_MS) : null;
+    // Incremento atómico concurrente mediante upsert nativo
+    const updated = await prisma.loginAttempt.upsert({
+      where: { key },
+      create: { key, count: 1, firstAttemptAt: now, blockedUntil: null },
+      update: { count: { increment: 1 } },
+    });
+
+    // Si la ventana expiró, reiniciar el conteo para el nuevo ciclo
+    if (nowMs - updated.firstAttemptAt.getTime() > WINDOW_MS) {
       await prisma.loginAttempt.update({
         where: { key },
-        data: { count: newCount, blockedUntil },
+        data: { count: 1, firstAttemptAt: now, blockedUntil: null },
+      });
+      return;
+    }
+
+    // Si alcanza o supera el umbral, activar bloqueo atómico
+    if (updated.count >= MAX_FAILED_ATTEMPTS && (!updated.blockedUntil || updated.blockedUntil <= now)) {
+      await prisma.loginAttempt.update({
+        where: { key },
+        data: {
+          blockedUntil: new Date(nowMs + BLOCK_DURATION_MS),
+        },
       });
     }
   }

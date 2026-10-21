@@ -1725,52 +1725,101 @@ export class ParticipantsService {
    */
   static async getNextRegistrationNumber(
     eventId: string,
-    eventYear: number,
+    eventYear?: number,
     configuredPrefix?: string | null
   ): Promise<string> {
+    if (!eventYear || configuredPrefix === undefined) {
+      const evt = await prisma.event.findUnique({
+        where: { id: eventId },
+        include: { settings: true },
+      });
+      if (evt) {
+        eventYear = eventYear ?? evt.year;
+        configuredPrefix = configuredPrefix ?? evt.settings?.registrationPrefix;
+      }
+    }
     const rawPrefix = configuredPrefix || `EV${String(eventYear).slice(-2)}`;
     const prefix = rawPrefix.endsWith('-') ? rawPrefix : `${rawPrefix}-`;
 
-    return await prisma.$transaction(async (tx) => {
-      let seq = await tx.registrationSequence.findUnique({
-        where: { eventId },
-      });
+    const MAX_RETRIES = 5;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        return await prisma.$transaction(async (tx) => {
+          let seq = await tx.registrationSequence.findUnique({
+            where: { eventId },
+          });
 
-      if (!seq) {
-        const currentCount = await tx.registration.count({ where: { eventId } });
-        seq = await tx.registrationSequence.upsert({
-          where: { eventId },
-          create: { eventId, current: currentCount },
-          update: {},
+          if (!seq) {
+            // Analizar registros existentes con este prefijo para respetar numeraciones altas importadas
+            const existingWithPrefix = await tx.registration.findMany({
+              where: {
+                eventId,
+                registrationNumber: { startsWith: prefix },
+              },
+              select: { registrationNumber: true },
+            });
+
+            let highestNumber = 0;
+            for (const r of existingWithPrefix) {
+              const suffix = r.registrationNumber.slice(prefix.length);
+              const num = parseInt(suffix, 10);
+              if (!isNaN(num) && num > highestNumber) {
+                highestNumber = num;
+              }
+            }
+
+            const currentCount = await tx.registration.count({ where: { eventId } });
+            const initialBase = Math.max(currentCount, highestNumber, existingWithPrefix.length);
+
+            seq = await tx.registrationSequence.upsert({
+              where: { eventId },
+              create: { eventId, current: initialBase },
+              update: {},
+            });
+
+            if (seq.current < initialBase) {
+              seq = await tx.registrationSequence.update({
+                where: { eventId },
+                data: { current: initialBase },
+              });
+            }
+          }
+
+          let nextSeq = await tx.registrationSequence.update({
+            where: { eventId },
+            data: { current: { increment: 1 } },
+          });
+
+          let candidate = `${prefix}${String(nextSeq.current).padStart(4, '0')}`;
+
+          while (
+            await tx.registration.findUnique({
+              where: {
+                eventId_registrationNumber: {
+                  eventId,
+                  registrationNumber: candidate,
+                },
+              },
+            })
+          ) {
+            nextSeq = await tx.registrationSequence.update({
+              where: { eventId },
+              data: { current: { increment: 1 } },
+            });
+            candidate = `${prefix}${String(nextSeq.current).padStart(4, '0')}`;
+          }
+
+          return candidate;
         });
+      } catch (err: any) {
+        if (attempt < MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, 25 * attempt));
+          continue;
+        }
+        throw err;
       }
-
-      let nextSeq = await tx.registrationSequence.update({
-        where: { eventId },
-        data: { current: { increment: 1 } },
-      });
-
-      let candidate = `${prefix}${String(nextSeq.current).padStart(4, '0')}`;
-
-      while (
-        await tx.registration.findUnique({
-          where: {
-            eventId_registrationNumber: {
-              eventId,
-              registrationNumber: candidate,
-            },
-          },
-        })
-      ) {
-        nextSeq = await tx.registrationSequence.update({
-          where: { eventId },
-          data: { current: { increment: 1 } },
-        });
-        candidate = `${prefix}${String(nextSeq.current).padStart(4, '0')}`;
-      }
-
-      return candidate;
-    });
+    }
+    throw new Error('No se pudo generar un número de inscripción correlativo tras varios reintentos.');
   }
 
 }

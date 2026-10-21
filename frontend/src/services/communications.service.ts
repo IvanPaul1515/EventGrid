@@ -151,6 +151,11 @@ export const communicationsService = {
     return res.data.data;
   },
 
+  async retryBatchJob(jobId: string): Promise<{ jobId: string; retriedItemsCount: number; status: string }> {
+    const res = await api.post<ApiResponse<{ jobId: string; retriedItemsCount: number; status: string }>>(`/communications/jobs/${jobId}/retry`);
+    return res.data.data;
+  },
+
   async cancelBatchJob(jobId: string): Promise<{ jobId: string; cancelledItemsCount: number; status: string }> {
     const res = await api.post<ApiResponse<{ jobId: string; cancelledItemsCount: number; status: string }>>(`/communications/jobs/${jobId}/cancel`);
     return res.data.data;

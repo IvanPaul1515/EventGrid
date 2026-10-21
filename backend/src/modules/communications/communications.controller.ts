@@ -211,7 +211,8 @@ export class CommunicationsController {
   static async getBatchJob(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const job = await CommunicationsService.getBatchJob(id);
+      const eventId = (req.query.eventId as string) || (req as any).eventId;
+      const job = await CommunicationsService.getBatchJob(id, eventId);
       return res.status(200).json({ status: 'success', data: job });
     } catch (error) {
       next(error);
@@ -221,8 +222,20 @@ export class CommunicationsController {
   static async cancelBatchJob(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const result = await CommunicationsService.cancelBatchJob(id);
+      const eventId = (req.query.eventId as string) || (req as any).eventId;
+      const result = await CommunicationsService.cancelBatchJob(id, eventId);
       return res.status(200).json({ status: 'success', message: 'Lote cancelado exitosamente', data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async retryBatchJob(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const eventId = (req.query.eventId as string) || (req as any).eventId;
+      const result = await CommunicationsService.retryBatchJob(id, eventId);
+      return res.status(200).json({ status: 'success', message: 'Reintento de fallidos programado exitosamente', data: result });
     } catch (error) {
       next(error);
     }

@@ -11,8 +11,8 @@ export interface AuditParams {
 
 export async function recordAuditLog({ req, action, entity, entityId, changes }: AuditParams) {
   try {
-    const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
-    const userAgent = req.headers['user-agent'] || 'Unknown';
+    const ipAddress = (req.headers?.['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1';
+    const userAgent = req.headers?.['user-agent'] || 'Unknown';
 
     // Determinar si el campo changes debe ser serializado como string JSON (para SQLite) o objeto (PostgreSQL)
     let processedChanges: any = undefined;

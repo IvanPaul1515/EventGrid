@@ -6,13 +6,18 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc && prisma generate --schema=prisma/schema.sqlite.prisma",
+    "build": "tsc && node scripts/prisma-detect.js generate",
     "start": "node dist/server.js",
-    "prisma:generate": "prisma generate --schema=prisma/schema.sqlite.prisma",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:push": "prisma db push --schema=prisma/schema.sqlite.prisma",
+    "prisma:generate": "node scripts/prisma-detect.js generate",
+    "prisma:migrate": "node scripts/prisma-detect.js migrate dev",
+    "prisma:push": "node scripts/prisma-detect.js db push",
     "prisma:seed": "tsx prisma/seed.ts",
-    "test": "vitest run --fileParallelism=false"
+    "test": "vitest run --fileParallelism=false",
+    "prisma:generate:sqlite": "prisma generate --schema=prisma/schema.sqlite.prisma",
+    "prisma:generate:postgres": "prisma generate --schema=prisma/schema.prisma",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
+    "prisma:validate": "node scripts/prisma-detect.js validate",
+    "prisma:validate:all": "prisma validate --schema=prisma/schema.sqlite.prisma && prisma validate --schema=prisma/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^6.4.0",

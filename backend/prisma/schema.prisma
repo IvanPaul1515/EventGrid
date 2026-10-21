@@ -572,6 +572,7 @@ model EmailBatchJob {
   sentCount      Int       @default(0)
   failedCount    Int       @default(0)
   simulatedCount Int       @default(0)
+  cancelledCount Int       @default(0)
   filterCriteria Json?
   errorMessage   String?
   createdById    String?
@@ -598,6 +599,8 @@ model EmailBatchItem {
   status         String    @default("PENDING") // PENDING, PROCESSING, ACCEPTED_BY_SMTP, FAILED, SIMULATED, CANCELLED
   attempts       Int       @default(0)
   lastAttemptAt  DateTime?
+  leaseUntil     DateTime?
+  idempotencyKey String?   @unique
   errorMessage   String?
   sentAt         DateTime?
   createdAt      DateTime  @default(now())
