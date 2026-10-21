@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma } from '../src/config/db.js';
 import { ParticipantsService } from '../src/modules/participants/participants.service.js';
 import { EventsService } from '../src/modules/events/events.service.js';
@@ -27,25 +27,16 @@ describe('Mejoras Alpha: Recepción, Ventas, Fichas y Tipos de Entrada', () => {
     adminUserId = admin?.id || 'admin-test-id';
     operatorUserId = operator?.id || 'operator-test-id';
 
-    // 3. Obtener o crear tipos de entrada
-    let genTicket = event.ticketTypes.find((t) => t.price > 0 && !t.name.toLowerCase().includes('preventa'));
-    if (!genTicket) {
-      genTicket = await prisma.ticketType.create({
-        data: {
-          eventId,
-          name: 'Entrada General',
-          price: 2000,
-          description: 'Acceso completo al evento BarCamp RD 2026',
-        },
-      });
-    } else {
-      await prisma.ticketType.update({
-        where: { id: genTicket.id },
-        data: { price: 2000 },
-      });
-      genTicket.price = 2000 as any;
-    }
-    generalTicketTypeId = genTicket.id;
+    // 3. Crear tipo de entrada temporal y aislado para este test (NO sobreescribir la tarifa oficial)
+    const testGenTicket = await prisma.ticketType.create({
+      data: {
+        eventId,
+        name: `Test Ticket Alpha ${Date.now()}`,
+        price: 2000,
+        description: 'Boleto temporal para suite de pruebas',
+      },
+    });
+    generalTicketTypeId = testGenTicket.id;
 
     let courtTicket = event.ticketTypes.find((t) => t.price === 0);
     if (!courtTicket) {
@@ -68,6 +59,30 @@ describe('Mejoras Alpha: Recepción, Ventas, Fichas y Tipos de Entrada', () => {
       });
     }
     cashPaymentMethodId = cashMethod.id;
+  });
+
+  afterAll(async () => {
+    // Limpieza estricta de datos generados en la prueba
+    if (generalTicketTypeId) {
+      await prisma.payment.deleteMany({
+        where: { registration: { ticketTypeId: generalTicketTypeId } },
+      }).catch(() => {});
+      await prisma.registration.deleteMany({
+        where: { ticketTypeId: generalTicketTypeId },
+      }).catch(() => {});
+      await prisma.ticketType.delete({
+        where: { id: generalTicketTypeId },
+      }).catch(() => {});
+    }
+    await prisma.participant.deleteMany({
+      where: {
+        OR: [
+          { email: { contains: '@pucmm.edu.do' } },
+          { email: { contains: '@intec.edu.do' } },
+          { email: { contains: 'federico.troncoso' } },
+        ],
+      },
+    }).catch(() => {});
   });
 
   it('1. Debe listar los tipos de entrada configurados en la edición', async () => {
