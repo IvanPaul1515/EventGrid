@@ -30,5 +30,6 @@ router.post('/:id/courtesy', requirePermission('COURTESY_AUTHORIZE'), Participan
 router.post('/', requireOperatorOrAdmin, ParticipantsController.create);
 router.put('/:id', requireOperatorOrAdmin, ParticipantsController.update);
 router.delete('/:id', requireOperatorOrAdmin, ParticipantsController.delete);
+router.put('/:registrationId/tshirt-size', requirePermission('CHECKIN'), ParticipantsController.updateTshirtSize);
 
 export default router;

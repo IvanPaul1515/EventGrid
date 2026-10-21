@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const CheckInSchema = z.object({
   registrationId: z.string().uuid('ID de inscripción inválido'),
+  tshirtSize: z.string().optional(), // Talla de camiseta registrada en check-in
 });
 
 export const RevertAttendanceSchema = z.object({

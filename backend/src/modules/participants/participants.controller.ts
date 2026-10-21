@@ -350,4 +350,23 @@ export class ParticipantsController {
       next(error);
     }
   }
+
+  static async updateTshirtSize(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { registrationId } = req.params;
+      const { tshirtSize } = req.body;
+      const eventId = req.eventId!;
+      const userId = req.user!.id;
+
+      const updated = await ParticipantsService.updateTshirtSize(eventId, registrationId, tshirtSize || null, userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Talla de camiseta actualizada correctamente',
+        data: updated,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

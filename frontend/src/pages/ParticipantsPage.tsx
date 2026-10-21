@@ -61,25 +61,25 @@ export const ParticipantsPage: React.FC = () => {
   const [salesResponsibles, setSalesResponsibles] = useState<SalesResponsible[]>([]);
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
 
-  // Configuración de visibilidad de columnas
+  // Configuración de visibilidad de columnas — solo esenciales por defecto
   const [columnsDropdownOpen, setColumnsDropdownOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState({
     registrationNumber: true,
     fullName: true,
     institution: true,
-    documentId: true,
-    email: true,
+    documentId: false,
+    email: false,
     phone: false,
     alternatePhone: false,
     ticketType: true,
-    ticketPrice: true,
-    paymentMethod: true,
-    totalAmount: true,
-    balanceDue: true,
+    ticketPrice: false,
+    paymentMethod: false,
+    totalAmount: false,
+    balanceDue: false,
     attendance: true,
     salesResponsible: false,
-    saleTimestamp: true,
-    status: true, // Inscripción
+    saleTimestamp: false,
+    status: true,       // Inscripción
     paymentStatus: true, // Estado de Pago
     actions: true,
   });
@@ -665,9 +665,16 @@ export const ParticipantsPage: React.FC = () => {
                     <div className="flex items-center gap-1.5 flex-wrap justify-end">
                       {getStatusBadge(reg.status)}
                       {reg.attended ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/25 inline-flex items-center gap-1">
-                          <Check className="w-3 h-3 stroke-[3]" /> Asistió
-                        </span>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/25 inline-flex items-center gap-1">
+                            <Check className="w-3 h-3 stroke-[3]" /> Asistió
+                          </span>
+                          {reg.tshirtSize && (
+                            <span className="text-[10px] font-mono text-primary font-bold">
+                              Talla {reg.tshirtSize}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[10px] font-semibold border border-zinc-700 inline-flex items-center gap-1">
                           <Clock className="w-3 h-3" /> No ha llegado
@@ -777,7 +784,7 @@ export const ParticipantsPage: React.FC = () => {
 
         {/* TABLA DE ESCRITORIO (>= md) */}
         <div className="hidden md:block overflow-x-auto">
-          <table className="w-full min-w-[1100px] text-left border-collapse text-xs">
+          <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/40 font-mono text-[11px] text-muted-foreground uppercase tracking-wider select-none">
                 {visibleColumns.registrationNumber && (
@@ -1079,9 +1086,16 @@ export const ParticipantsPage: React.FC = () => {
                       {visibleColumns.attendance && (
                         <td className="p-3.5 whitespace-nowrap text-center">
                           {reg.attended ? (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/25 inline-flex items-center gap-1">
-                              <Check className="w-3 h-3 stroke-[3]" /> Asistió
-                            </span>
+                            <div>
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/25 inline-flex items-center gap-1">
+                                <Check className="w-3 h-3 stroke-[3]" /> Asistió
+                              </span>
+                              {reg.tshirtSize && (
+                                <span className="block text-[10px] font-mono text-primary font-bold mt-0.5">
+                                  Talla {reg.tshirtSize}
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[10px] font-semibold border border-zinc-700 inline-flex items-center gap-1">
                               <Clock className="w-3 h-3" /> No ha llegado

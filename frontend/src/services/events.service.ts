@@ -56,4 +56,9 @@ export const eventsService = {
     const res = await api.get(`/events/${id}/financial-summary`);
     return res.data.data;
   },
+
+  async getStats(id: string): Promise<any> {
+    const res = await api.get(`/events/${id}/stats`);
+    return res.data.data;
+  },
 };

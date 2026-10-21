@@ -3,6 +3,7 @@ import { qrService } from '../../services/qr.service';
 import { attendanceService } from '../../services/attendance.service';
 import { QrScanResult, Registration } from '../../types';
 import { useEdition } from '../../context/EditionContext';
+import { TshirtSizeSelector } from '../attendance/TshirtSizeSelector';
 import {
   X,
   QrCode,
@@ -37,8 +38,12 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
   const [scanResult, setScanResult] = useState<QrScanResult | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkInSuccess, setCheckInSuccess] = useState<string | null>(null);
+  const [selectedTshirtSize, setSelectedTshirtSize] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+
+  const tshirtEnabled = currentEvent?.settings?.tshirtSizesEnabled === true;
+  const tshirtSizes = currentEvent?.settings?.tshirtSizes || ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
 
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -114,7 +119,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     if (!scanResult?.registration) return;
     try {
       setIsCheckingIn(true);
-      await attendanceService.checkIn(scanResult.registration.id);
+      await attendanceService.checkIn(scanResult.registration.id, selectedTshirtSize);
       setCheckInSuccess(`¡Llegada confirmada con éxito para ${scanResult.registration.participant.fullName}!`);
       // Actualizar el estado del resultado a asistido
       setScanResult({
@@ -126,6 +131,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
           ...scanResult.registration,
           attended: true,
           attendedAt: new Date().toISOString(),
+          tshirtSize: selectedTshirtSize || undefined,
         },
       });
       if (onAttendanceMarked) onAttendanceMarked();
@@ -141,6 +147,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     setScanInput('');
     setScanResult(null);
     setCheckInSuccess(null);
+    setSelectedTshirtSize(null);
     inputRef.current?.focus();
   };
 
@@ -328,6 +335,20 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                       </p>
                     </div>
                   </div>
+
+                  {/* Selector de Talla de Camiseta (si está habilitado para el evento) */}
+                  {scanResult.canCheckIn && tshirtEnabled && (
+                    <div className="p-3 rounded-xl bg-card border border-border">
+                      <TshirtSizeSelector
+                        sizes={tshirtSizes}
+                        selectedSize={selectedTshirtSize}
+                        onSelect={setSelectedTshirtSize}
+                        disabled={isCheckingIn}
+                        showSkip={true}
+                        label="Talla de Camiseta (Opcional)"
+                      />
+                    </div>
+                  )}
 
                   {/* Botón de Confirmación de Asistencia (Control Operativo Seguro) */}
                   {scanResult.canCheckIn && (

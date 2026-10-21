@@ -57,7 +57,8 @@ export class AttendanceController {
       const result = await AttendanceService.checkIn(
         AttendanceController.getEventId(req),
         parseResult.data.registrationId,
-        operatorUserId
+        operatorUserId,
+        parseResult.data.tshirtSize
       );
 
       res.status(200).json({

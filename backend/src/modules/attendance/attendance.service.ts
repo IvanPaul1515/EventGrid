@@ -120,7 +120,7 @@ export class AttendanceService {
   /**
    * Registrar asistencia física (Check-in)
    */
-  static async checkIn(eventId: string, registrationId: string, operatorUserId: string) {
+  static async checkIn(eventId: string, registrationId: string, operatorUserId: string, tshirtSize?: string) {
     // Buscar la inscripción en la edición activa
     const registration = await prisma.registration.findFirst({
       where: {
@@ -167,6 +167,11 @@ export class AttendanceService {
           attendedByUserId: operatorUserId,
           status: newStatus,
           updatedByUserId: operatorUserId,
+          ...(tshirtSize ? {
+            tshirtSize,
+            tshirtSizeUpdatedAt: now,
+            tshirtSizeUpdatedByUserId: operatorUserId,
+          } : {}),
         },
         include: {
           participant: true,

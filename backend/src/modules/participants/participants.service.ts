@@ -1370,4 +1370,38 @@ export class ParticipantsService {
       };
     }
   }
+
+  static async updateTshirtSize(
+    eventId: string,
+    registrationId: string,
+    tshirtSize: string | null,
+    userId: string
+  ) {
+    const registration = await prisma.registration.findFirst({
+      where: { id: registrationId, eventId },
+      include: { participant: true },
+    });
+
+    if (!registration) {
+      throw new NotFoundError('Inscripción no encontrada en esta edición');
+    }
+
+    const now = new Date();
+    const updated = await prisma.registration.update({
+      where: { id: registrationId },
+      data: {
+        tshirtSize: tshirtSize || null,
+        tshirtSizeUpdatedAt: now,
+        tshirtSizeUpdatedByUserId: userId,
+        updatedByUserId: userId,
+      },
+      include: {
+        participant: true,
+        ticketType: true,
+        paymentMethod: true,
+      },
+    });
+
+    return updated;
+  }
 }

@@ -137,9 +137,17 @@ export class EventsService {
     const existing = await prisma.eventSettings.findUnique({ where: { eventId } });
     if (!existing) throw new NotFoundError('Ajustes de edición no encontrados');
 
+    // Serialize tshirtSizes array to JSON string for SQLite storage
+    const dataToSave = { ...settingsData };
+    if (dataToSave.tshirtSizes !== undefined) {
+      dataToSave.tshirtSizes = dataToSave.tshirtSizes !== null
+        ? JSON.stringify(dataToSave.tshirtSizes)
+        : null;
+    }
+
     const updated = await prisma.eventSettings.update({
       where: { eventId },
-      data: settingsData,
+      data: dataToSave,
     });
 
     return updated;
@@ -616,6 +624,126 @@ export class EventsService {
       byTicketType: Object.values(ticketBreakdown),
       byResponsible: Object.values(responsibleBreakdown),
       recentTransactions: allTransactions.slice(0, 50),
+    };
+  }
+
+  static async getStats(eventId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { settings: true },
+    });
+
+    if (!event) {
+      throw new NotFoundError('Edición no encontrada');
+    }
+
+    const isDemoFilter = !event.settings?.demoModeEnabled ? { isDemo: false } : {};
+
+    const registrations = await prisma.registration.findMany({
+      where: { eventId, ...isDemoFilter },
+      select: {
+        id: true,
+        status: true,
+        paymentStatus: true,
+        attended: true,
+        isCourtesy: true,
+        tshirtSize: true,
+        saleTimestamp: true,
+        attendedAt: true,
+        createdAt: true,
+        participant: {
+          select: { institution: true },
+        },
+      },
+    });
+
+    const total = registrations.length;
+    const confirmed = registrations.filter(r => r.status === 'CONFIRMED').length;
+    const pending = registrations.filter(r => r.status === 'PENDING').length;
+    const cancelled = registrations.filter(r => r.status === 'CANCELLED').length;
+    const attended = registrations.filter(r => r.attended).length;
+    const notAttended = total - cancelled - attended;
+    const attendanceRate = total > 0 ? Math.round((attended / Math.max(1, total - cancelled)) * 100) : 0;
+
+    // T-shirt breakdown
+    const tshirtMap: Record<string, number> = {};
+    let withoutSize = 0;
+    for (const reg of registrations) {
+      if (reg.tshirtSize) {
+        tshirtMap[reg.tshirtSize] = (tshirtMap[reg.tshirtSize] || 0) + 1;
+      } else {
+        withoutSize++;
+      }
+    }
+    const tshirtBreakdown = Object.entries(tshirtMap)
+      .map(([size, count]) => ({ size, count }))
+      .sort((a, b) => b.count - a.count);
+    const mostPopularSize = tshirtBreakdown[0]?.size || null;
+
+    // Institution breakdown
+    const institutionMap: Record<string, number> = {};
+    let withoutInstitution = 0;
+    for (const reg of registrations) {
+      const inst = reg.participant?.institution;
+      if (inst) {
+        institutionMap[inst] = (institutionMap[inst] || 0) + 1;
+      } else {
+        withoutInstitution++;
+      }
+    }
+    const institutionBreakdown = Object.entries(institutionMap)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20);
+
+    // Time series: registrations by day
+    const regByDay: Record<string, number> = {};
+    for (const reg of registrations) {
+      const day = new Date(reg.saleTimestamp || reg.createdAt).toISOString().slice(0, 10);
+      regByDay[day] = (regByDay[day] || 0) + 1;
+    }
+    const registrationsByDay = Object.entries(regByDay)
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Attendance by hour
+    const attByHour: Record<number, number> = {};
+    for (const reg of registrations) {
+      if (reg.attended && reg.attendedAt) {
+        const hour = new Date(reg.attendedAt).getHours();
+        attByHour[hour] = (attByHour[hour] || 0) + 1;
+      }
+    }
+    const attendanceByHour = Array.from({ length: 24 }, (_, h) => ({
+      hour: h,
+      count: attByHour[h] || 0,
+    }));
+
+    return {
+      participants: {
+        total,
+        confirmed,
+        pending,
+        cancelled,
+        attended,
+        notAttended,
+        attendanceRate,
+      },
+      tshirts: {
+        total: total - withoutSize,
+        mostPopular: mostPopularSize,
+        withoutSize,
+        breakdown: tshirtBreakdown,
+      },
+      institutions: {
+        total: Object.keys(institutionMap).length,
+        withoutInstitution,
+        breakdown: institutionBreakdown,
+      },
+      timeSeries: {
+        registrationsByDay,
+        attendanceByHour,
+      },
     };
   }
 }

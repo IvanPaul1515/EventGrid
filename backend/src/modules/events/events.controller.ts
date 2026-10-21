@@ -247,4 +247,16 @@ export class EventsController {
       next(error);
     }
   }
+
+  static async getStats(req: Request, res: Response, next: NextFunction) {
+    try {
+      const stats = await EventsService.getStats(req.params.id);
+      return res.status(200).json({
+        status: 'success',
+        data: stats,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

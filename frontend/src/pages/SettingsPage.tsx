@@ -32,6 +32,7 @@ import {
   ShieldCheck,
   RefreshCw,
   AlertTriangle,
+  Shirt,
 } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
@@ -39,7 +40,7 @@ export const SettingsPage: React.FC = () => {
   const { applyCustomPalette, resetDefaultTheme } = useTheme();
 
   // Pestaña activa
-  const [activeTab, setActiveTab] = useState<'visual' | 'edition' | 'tickets' | 'demo'>('visual');
+  const [activeTab, setActiveTab] = useState<'visual' | 'edition' | 'tickets' | 'reception' | 'demo'>('visual');
 
   // Identidad Visual y Colores
   const [primaryColor, setPrimaryColor] = useState('#e11d48');
@@ -69,6 +70,12 @@ export const SettingsPage: React.FC = () => {
   const [editingTicket, setEditingTicket] = useState<Partial<TicketType> | null>(null);
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [ticketSaving, setTicketSaving] = useState(false);
+
+  // Recepción y Tallas de Camisetas
+  const [tshirtEnabled, setTshirtEnabled] = useState(false);
+  const [tshirtSizes, setTshirtSizes] = useState<string[]>(['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL']);
+  const [tshirtNewSize, setTshirtNewSize] = useState('');
+  const [savingReception, setSavingReception] = useState(false);
 
   // Estados de Entorno de Demostración
   const [demoStatus, setDemoStatus] = useState<DemoStatus | null>(null);
@@ -116,6 +123,19 @@ export const SettingsPage: React.FC = () => {
         setPrefix(currentEvent.settings.registrationPrefix || 'BC26-');
         setCurrencySymbol(currentEvent.settings.currencySymbol || 'RD$');
         setLogoUrl(currentEvent.settings.logoUrl || null);
+        setTshirtEnabled(Boolean(currentEvent.settings.tshirtSizesEnabled));
+        if (currentEvent.settings.tshirtSizes) {
+          try {
+            const parsed = typeof currentEvent.settings.tshirtSizes === 'string'
+              ? JSON.parse(currentEvent.settings.tshirtSizes)
+              : currentEvent.settings.tshirtSizes;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setTshirtSizes(parsed);
+            }
+          } catch {
+            // Keep default
+          }
+        }
       }
 
       loadTickets();
@@ -359,6 +379,40 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // Guardar configuración de Recepción / T-shirts
+  const handleSaveReception = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentEvent) return;
+    try {
+      setSavingReception(true);
+      await eventsService.updateSettings(currentEvent.id, {
+        tshirtSizesEnabled: tshirtEnabled,
+        tshirtSizes: tshirtSizes,
+      });
+      await refreshEditions();
+      showNotification('success', 'Configuración de recepción y camisetas guardada exitosamente');
+    } catch (err: any) {
+      showNotification('error', err.response?.data?.message || 'Error al guardar configuración de recepción');
+    } finally {
+      setSavingReception(false);
+    }
+  };
+
+  const handleAddTshirtSize = () => {
+    const trimmed = tshirtNewSize.trim().toUpperCase();
+    if (!trimmed) return;
+    if (tshirtSizes.includes(trimmed)) {
+      showNotification('error', 'Esa talla ya está en la lista');
+      return;
+    }
+    setTshirtSizes([...tshirtSizes, trimmed]);
+    setTshirtNewSize('');
+  };
+
+  const handleRemoveTshirtSize = (sizeToRemove: string) => {
+    setTshirtSizes(tshirtSizes.filter((s) => s !== sizeToRemove));
+  };
+
   // Alternar estado activo de tipo de entrada
   const handleToggleTicketActive = async (ticket: TicketType) => {
     if (!currentEvent) return;
@@ -457,6 +511,17 @@ export const SettingsPage: React.FC = () => {
           >
             <Tag className="w-3.5 h-3.5" />
             <span>Entradas & Precios</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('reception')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              activeTab === 'reception'
+                ? 'bg-primary text-white shadow-sm'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+            }`}
+          >
+            <Shirt className="w-3.5 h-3.5" />
+            <span>Recepción & T-Shirts</span>
           </button>
           <button
             onClick={() => setActiveTab('demo')}
@@ -972,6 +1037,143 @@ export const SettingsPage: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* PESTAÑA: RECEPCIÓN Y TALLAS DE CAMISETAS */}
+      {activeTab === 'reception' && (
+        <div className="space-y-6 max-w-4xl">
+          <form onSubmit={handleSaveReception} className="space-y-6">
+            <div className="p-6 rounded-2xl bg-card border border-border space-y-6 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-border">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Shirt className="w-5 h-5 text-primary" />
+                    <h3 className="text-base font-bold text-foreground">
+                      Control de Tallas de Camiseta (T-Shirts)
+                    </h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Habilite la captura de tallas durante la recepción física o escaneo QR de la entrada.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setTshirtEnabled(!tshirtEnabled)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    tshirtEnabled ? 'bg-primary' : 'bg-zinc-700'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                      tshirtEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-background border border-border space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground uppercase tracking-wider">
+                      Estado del Módulo
+                    </span>
+                    <span
+                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                        tshirtEnabled
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                      }`}
+                    >
+                      {tshirtEnabled ? 'Activado en Check-in' : 'Desactivado'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {tshirtEnabled
+                      ? 'Al registrar asistencia (manual o por escaneo QR), el operador podrá seleccionar o cambiar la talla de camiseta del participante.'
+                      : 'No se solicitará la talla de camiseta al momento de realizar el check-in físico de los participantes.'}
+                  </p>
+                </div>
+
+                {tshirtEnabled && (
+                  <div className="space-y-4 pt-2">
+                    <div>
+                      <label className="block text-xs font-bold text-foreground uppercase tracking-wider mb-2">
+                        Tallas Disponibles para esta Edición
+                      </label>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Haga clic en la '✕' para eliminar una talla o agregue una nueva usando el campo inferior.
+                      </p>
+
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {tshirtSizes.map((size) => (
+                          <span
+                            key={size}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-primary font-bold text-xs"
+                          >
+                            <span>{size}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTshirtSize(size)}
+                              className="w-4 h-4 rounded-full hover:bg-primary/20 flex items-center justify-center text-primary transition-colors cursor-pointer"
+                              title={`Eliminar talla ${size}`}
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center gap-2 max-w-sm">
+                        <input
+                          type="text"
+                          placeholder="Nueva talla (ej: 4XL, S-Dama)"
+                          value={tshirtNewSize}
+                          onChange={(e) => setTshirtNewSize(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddTshirtSize();
+                            }
+                          }}
+                          className="flex-1 px-3 py-2 rounded-xl bg-background border border-border text-foreground text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary uppercase"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddTshirtSize}
+                          className="px-3.5 py-2 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          + Agregar
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setTshirtSizes(['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'])}
+                        className="text-xs text-muted-foreground hover:text-foreground underline transition-colors cursor-pointer"
+                      >
+                        Restablecer a tallas estándar (XS a XXXL)
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-border flex justify-end">
+                <button
+                  type="submit"
+                  disabled={savingReception}
+                  className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-2 shadow-md shadow-primary/25 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{savingReception ? 'Guardando...' : 'Guardar Ajustes de Recepción'}</span>
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       )}
 

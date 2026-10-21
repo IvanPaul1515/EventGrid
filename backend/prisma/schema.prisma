@@ -152,10 +152,12 @@ model EventSettings {
   coverImageUrl      String?
   subtitle           String   @default("Tecnología, Innovación y Comunidad")
   registrationPrefix String   @default("BC-")
-  demoModeEnabled    Boolean  @default(false)
-  customCss          Json?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  demoModeEnabled      Boolean  @default(false)
+  tshirtSizesEnabled   Boolean  @default(false)
+  tshirtSizes          Json?    // e.g. ["XS","S","M","L","XL","XXL","XXXL"]
+  customCss            Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
@@ -213,6 +215,9 @@ model Registration {
   attended             Boolean            @default(false)   // Control de asistencia física (Check-in)
   attendedAt           DateTime?
   attendedByUserId     String?
+  tshirtSize           String?            // Talla de camiseta registrada en check-in
+  tshirtSizeUpdatedAt  DateTime?
+  tshirtSizeUpdatedByUserId String?
   updatedByUserId      String?
   qrCode               String?            @unique
   qrGeneratedAt        DateTime?

@@ -79,6 +79,8 @@ model EventSettings {
   subtitle           String   @default("Tecnología, Innovación y Comunidad")
   registrationPrefix String   @default("BC-")
   demoModeEnabled    Boolean  @default(false)
+  tshirtSizesEnabled Boolean  @default(false)
+  tshirtSizes        String?  // JSON string: ["XS","S","M","L","XL","XXL","XXXL"]
   customCss          String?  // JSON string
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -139,6 +141,9 @@ model Registration {
   attended             Boolean  @default(false)
   attendedAt           DateTime?
   attendedByUserId     String?
+  tshirtSize           String?   // Talla de camiseta registrada en check-in
+  tshirtSizeUpdatedAt  DateTime?
+  tshirtSizeUpdatedByUserId String?
   updatedByUserId      String?
   qrCode               String?   @unique
   qrGeneratedAt        DateTime?

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { DetailedRegistration, participantsService } from '../../services/participants.service';
 import { attendanceService } from '../../services/attendance.service';
 import { useAuth } from '../../context/AuthContext';
+import { useEdition } from '../../context/EditionContext';
+import { api } from '../../services/api';
 import { PaymentMethod, RegistrationStatus, PaymentStatus } from '../../types';
 import { RecordPaymentModal } from './RecordPaymentModal';
 import { AssignCourtesyModal } from './AssignCourtesyModal';
@@ -9,6 +11,7 @@ import { ReasonModal } from './ReasonModal';
 import { RevertModal } from '../attendance/RevertModal';
 import { DigitalTicketModal } from '../qr/DigitalTicketModal';
 import { SendSingleEmailModal } from '../communications/SendSingleEmailModal';
+import { TshirtSizeSelector } from '../attendance/TshirtSizeSelector';
 import {
   X,
   User,
@@ -36,6 +39,7 @@ import {
   Shield,
   QrCode,
   Send,
+  Shirt,
 } from 'lucide-react';
 
 interface ParticipantDetailDrawerProps {
@@ -62,8 +66,13 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   hasNext = false,
 }) => {
   const { user, hasRole } = useAuth();
+  const { currentEvent } = useEdition();
   const isAdmin = hasRole(['ADMIN']);
   const isOperatorOrAdmin = hasRole(['ADMIN', 'OPERATOR']);
+
+  // T-shirt settings from event
+  const tshirtEnabled = currentEvent?.settings?.tshirtSizesEnabled === true;
+  const tshirtSizes = currentEvent?.settings?.tshirtSizes || ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
 
   // Modales secundarios
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -90,6 +99,13 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   // Estados de acción de check-in
   const [markingAttendance, setMarkingAttendance] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  // T-shirt selection pending check-in
+  const [pendingTshirtSize, setPendingTshirtSize] = useState<string | null>(null);
+  const [showTshirtSelector, setShowTshirtSelector] = useState(false);
+  // Edit tshirt after check-in
+  const [editingTshirt, setEditingTshirt] = useState(false);
+  const [tshirtEditSize, setTshirtEditSize] = useState<string | null>(null);
+  const [savingTshirt, setSavingTshirt] = useState(false);
 
   useEffect(() => {
     if (registration) {
@@ -206,13 +222,14 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   };
 
   // Check-in directo desde la Ficha
-  const handleMarkAttendance = async () => {
+  const handleMarkAttendance = async (tshirtSize?: string | null) => {
     if (markingAttendance || registration.attended) return;
 
     setMarkingAttendance(true);
     setFeedbackMsg(null);
+    setShowTshirtSelector(false);
     try {
-      const res = await attendanceService.checkIn(registration.id);
+      const res = await attendanceService.checkIn(registration.id, tshirtSize || undefined);
       const updatedDetailed: DetailedRegistration = {
         ...registration,
         ...res.registration,
@@ -226,10 +243,12 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
           email: user?.email || '',
         },
         status: res.registration.status,
+        tshirtSize: (res.registration as any).tshirtSize || tshirtSize || undefined,
       };
 
       if (onUpdated) onUpdated(updatedDetailed);
       window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
+      setPendingTshirtSize(null);
 
       setFeedbackMsg({
         type: 'success',
@@ -242,6 +261,27 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       });
     } finally {
       setMarkingAttendance(false);
+    }
+  };
+
+  // Guardar talla de camiseta después de check-in
+  const handleSaveTshirt = async () => {
+    if (!registration || savingTshirt) return;
+    setSavingTshirt(true);
+    try {
+      await api.put(`/participants/${registration.id}/tshirt-size`, { tshirtSize: tshirtEditSize });
+      const updatedDetailed: DetailedRegistration = {
+        ...registration,
+        tshirtSize: tshirtEditSize || undefined,
+      };
+      if (onUpdated) onUpdated(updatedDetailed);
+      window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
+      setEditingTshirt(false);
+      setFeedbackMsg({ type: 'success', text: 'Talla de camiseta actualizada.' });
+    } catch (err: any) {
+      setFeedbackMsg({ type: 'error', text: err.response?.data?.message || 'Error al actualizar talla' });
+    } finally {
+      setSavingTshirt(false);
     }
   };
 
@@ -592,16 +632,89 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                         </button>
                       </div>
                     )}
+
+                    {/* T-shirt size — show/edit after check-in */}
+                    {tshirtEnabled && (
+                      <div className="pt-2 border-t border-emerald-500/20">
+                        {editingTshirt ? (
+                          <div className="space-y-2">
+                            <TshirtSizeSelector
+                              sizes={tshirtSizes}
+                              selectedSize={tshirtEditSize}
+                              onSelect={setTshirtEditSize}
+                              disabled={savingTshirt}
+                              showSkip={true}
+                              label="Cambiar talla de camiseta"
+                            />
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                type="button"
+                                onClick={() => { setEditingTshirt(false); setTshirtEditSize(registration.tshirtSize || null); }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-muted-foreground hover:bg-muted cursor-pointer"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                disabled={savingTshirt}
+                                onClick={handleSaveTshirt}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary hover:bg-primary/90 text-white cursor-pointer disabled:opacity-50"
+                              >
+                                {savingTshirt ? 'Guardando...' : 'Guardar talla'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5">
+                              <Shirt className="w-3.5 h-3.5 text-muted-foreground" />
+                              <span className="text-muted-foreground">Camiseta:</span>
+                              {registration.tshirtSize ? (
+                                <span className="px-2 py-0.5 rounded font-bold bg-primary/20 text-primary border border-primary/30">
+                                  {registration.tshirtSize}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-500 italic">Sin registrar</span>
+                              )}
+                            </div>
+                            {isOperatorOrAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => { setEditingTshirt(true); setTshirtEditSize(registration.tshirtSize || null); }}
+                                className="text-[11px] text-primary hover:underline cursor-pointer"
+                              >
+                                {registration.tshirtSize ? 'Cambiar' : 'Registrar talla'}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-3">
                     <p className="text-xs text-muted-foreground">
                       Revise la identidad y datos del participante antes de confirmar su entrada física al recinto.
                     </p>
+
+                    {/* T-shirt size selector (if event has it enabled) */}
+                    {tshirtEnabled && (
+                      <div className="p-3 rounded-xl bg-background border border-border">
+                        <TshirtSizeSelector
+                          sizes={tshirtSizes}
+                          selectedSize={pendingTshirtSize}
+                          onSelect={setPendingTshirtSize}
+                          disabled={markingAttendance}
+                          showSkip={true}
+                          label="Talla de camiseta (opcional)"
+                        />
+                      </div>
+                    )}
+
                     <button
                       type="button"
                       disabled={markingAttendance || registration.status === 'CANCELLED'}
-                      onClick={handleMarkAttendance}
+                      onClick={() => handleMarkAttendance(pendingTshirtSize)}
                       className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-xl shadow-emerald-950/40 transition-all cursor-pointer disabled:opacity-50"
                     >
                       {markingAttendance ? (

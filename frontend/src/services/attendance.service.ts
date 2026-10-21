@@ -40,12 +40,12 @@ export const attendanceService = {
     };
   },
 
-  async checkIn(registrationId: string): Promise<{
+  async checkIn(registrationId: string, tshirtSize?: string | null): Promise<{
     message: string;
     registration: Registration;
     counters: AttendanceCounters;
   }> {
-    const res = await api.post('/attendance/check-in', { registrationId });
+    const res = await api.post('/attendance/check-in', { registrationId, ...(tshirtSize ? { tshirtSize } : {}) });
     return {
       message: res.data.message,
       registration: res.data.data,

@@ -31,6 +31,8 @@ export interface EventSettings {
   coverImageUrl?: string | null;
   subtitle: string;
   registrationPrefix: string;
+  tshirtSizesEnabled?: boolean;
+  tshirtSizes?: string[];
   demoModeEnabled?: boolean;
   customCss?: Record<string, any>;
 }
@@ -157,6 +159,9 @@ export interface Registration {
   attended: boolean;
   attendedAt?: string;
   attendedByUserId?: string;
+  tshirtSize?: string;
+  tshirtSizeUpdatedAt?: string;
+  tshirtSizeUpdatedByUserId?: string;
   attendedByUser?: {
     id: string;
     fullName: string;

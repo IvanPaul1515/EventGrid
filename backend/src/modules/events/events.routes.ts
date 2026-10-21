@@ -13,6 +13,7 @@ router.get('/', requireAnyRole, EventsController.getAll);
 router.get('/:id', requireAnyRole, EventsController.getById);
 router.get('/:id/ticket-types', requireAnyRole, EventsController.getTicketTypes);
 router.get('/:id/financial-summary', requireAnyRole, EventsController.getFinancialSummary);
+router.get('/:id/stats', requireAnyRole, EventsController.getStats);
 
 // Modificación estructural y configuración: requiere permisos de administración
 router.post('/', requirePermission('SETTINGS_MANAGE'), EventsController.create);

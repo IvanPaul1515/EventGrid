@@ -29,6 +29,8 @@ export const UpdateEventSettingsSchema = z.object({
   coverImageUrl: z.string().nullable().optional(),
   subtitle: z.string().default('PUCMM — Santiago de los Caballeros, República Dominicana'),
   registrationPrefix: z.string().default('BC-'),
+  tshirtSizesEnabled: z.boolean().optional(),
+  tshirtSizes: z.array(z.string()).optional(),
 });
 
 export const CreateTicketTypeSchema = z.object({

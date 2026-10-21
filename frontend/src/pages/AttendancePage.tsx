@@ -36,6 +36,7 @@ import {
   CreditCard,
   Check,
   QrCode,
+  Shirt,
 } from 'lucide-react';
 
 export const AttendancePage: React.FC = () => {
@@ -649,6 +650,13 @@ export const AttendancePage: React.FC = () => {
                         ) : (
                           <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30">
                             Pago Pendiente (Debe RD$ {balanceDue.toFixed(2)})
+                          </span>
+                        )}
+
+                        {/* 3. Badge de Talla de Camiseta (si ya fue registrada) */}
+                        {reg.tshirtSize && (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/20 text-primary border border-primary/30 inline-flex items-center gap-1">
+                            <Shirt className="w-3 h-3" /> Talla {reg.tshirtSize}
                           </span>
                         )}
                       </div>

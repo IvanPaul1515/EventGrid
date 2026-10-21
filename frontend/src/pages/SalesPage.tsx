@@ -172,7 +172,7 @@ export const SalesPage: React.FC = () => {
       )}
 
       {/* Tarjetas KPI Financieras Principales */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* KPI 1: Total Recaudado / Ingresos Brutos */}
         <div className="p-5 rounded-2xl bg-card border border-border shadow-sm space-y-2">
           <div className="flex items-center justify-between">
@@ -211,26 +211,7 @@ export const SalesPage: React.FC = () => {
           </div>
         </div>
 
-        {/* KPI 3: Saldo a Favor / Excedente de Tarifa */}
-        <div className="p-5 rounded-2xl bg-card border border-border shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Excedente / A Favor
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center">
-              <Receipt className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-cyan-400 font-mono tracking-tight">
-            {currency} {Number(summary?.totalOverpaid || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="pt-2 border-t border-border/60 flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>Por cambio de tarifa:</span>
-            <strong className="text-foreground">Diferencia positiva</strong>
-          </div>
-        </div>
-
-        {/* KPI 4: Cortesías Oficiales Autorizadas */}
+        {/* KPI 3: Cortesías Oficiales Autorizadas */}
         <div className="p-5 rounded-2xl bg-card border border-border shadow-sm space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
