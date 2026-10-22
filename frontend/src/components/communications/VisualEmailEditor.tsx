@@ -59,8 +59,13 @@ export interface EmailBlock {
 export interface VisualEmailEditorProps {
   initialSubject?: string;
   initialHtml?: string;
+  templateCode?: string;
+  templates?: Array<{ code: string; name: string; subject: string; bodyHtml: string }>;
+  onSelectTemplate?: (templateCode: string) => void;
   onChangeSubject?: (subject: string) => void;
   onChangeHtml?: (html: string) => void;
+  customMessage?: string;
+  onChangeCustomMessage?: (msg: string) => void;
   selectedParticipant?: {
     fullName: string;
     email: string;
@@ -81,13 +86,21 @@ const AVAILABLE_VARIABLES = [
   { key: '{{fecha}}', desc: 'Fechas de celebración' },
   { key: '{{lugar}}', desc: 'Ubicación / sede oficial' },
   { key: '{{qr}}', desc: 'Código QR individual del participante' },
+  { key: '{{primaryColor}}', desc: 'Color primario de la edición' },
+  { key: '{{messageContent}}', desc: 'Mensaje personalizado adicional' },
+  { key: '{{scheduleHtml}}', desc: 'Tabla de actividades del cronograma' },
 ];
 
 export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
   initialSubject = '',
   initialHtml = '',
+  templateCode = 'INSCRIPTION_CONFIRMATION',
+  templates = [],
+  onSelectTemplate,
   onChangeSubject,
   onChangeHtml,
+  customMessage = '',
+  onChangeCustomMessage,
   selectedParticipant,
   readOnly = false,
 }) => {
@@ -105,11 +118,24 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
   // En pantallas móviles: alternar entre pestaña de edición y vista previa
   const [mobileTab, setMobileTab] = useState<'edit' | 'preview'>('edit');
 
-  // Asunto y contenido HTML
+  // Asunto y contenido HTML interno
   const [subject, setSubject] = useState(initialSubject);
   const [rawHtml, setRawHtml] = useState(initialHtml);
 
-  // Lista de bloques
+  // Sincronizar cuando cambian las props iniciales (ej. al cambiar de plantilla en el padre)
+  useEffect(() => {
+    if (initialSubject !== undefined) {
+      setSubject(initialSubject);
+    }
+  }, [initialSubject]);
+
+  useEffect(() => {
+    if (initialHtml !== undefined && initialHtml !== '') {
+      setRawHtml(initialHtml);
+    }
+  }, [initialHtml]);
+
+  // Lista inicial de bloques predefinidos
   const [blocks, setBlocks] = useState<EmailBlock[]>(() => [
     { id: 'b-logo', type: 'LOGO', config: {} },
     {
@@ -272,8 +298,8 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
             <tr>
               <td style="padding: 12px 24px;">
                 <div style="border-left: 3px solid ${primaryColor}; padding-left: 12px; margin: 4px 0;">
-                  <strong style="font-size: 13px; color: #111827;">Cronograma Destacado</strong>
-                  <p style="margin: 4px 0 0 0; font-size: 12px; color: #6b7280;">09:00 AM — Apertura y Keynote Inaugural<br/>10:30 AM — Inicio de Sesiones Técnicas Simultáneas</p>
+                  <strong style="font-size: 13px; color: #111827;">Cronograma de Actividades</strong>
+                  {{scheduleHtml}}
                 </div>
               </td>
             </tr>
@@ -386,57 +412,148 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
     );
   };
 
-  // Generar HTML final para el iframe de vista previa con datos de muestra (o del participante seleccionado)
+  // Generar HTML final para el iframe de vista previa con datos de muestra o del participante real
   const previewHtmlDoc = useMemo(() => {
-    let html = editorMode === 'blocks' ? renderBlocksToHtml(blocks) : rawHtml;
+    let html = editorMode === 'blocks' ? renderBlocksToHtml(blocks) : (rawHtml || renderBlocksToHtml(blocks));
 
     // Datos para sustitución segura
     const pName = selectedParticipant?.fullName || 'María Pérez Fernández';
+    const pFirstName = pName.split(' ')[0] || 'María';
     const pEmail = selectedParticipant?.email || 'maria.perez@ejemplo.edu.do';
     const pTicket = selectedParticipant?.registrationNumber || 'BC26-1042';
     const pType = selectedParticipant?.ticketType || 'Entrada General';
-    const pInst = selectedParticipant?.institution || 'Pontificia Universidad Católica Madre y Maestra';
-    const eDate = currentEvent?.startDate ? new Date(currentEvent.startDate).toLocaleDateString('es-DO', { day: 'numeric', month: 'long', year: 'numeric' }) : '24 de Octubre de 2026';
-    const eVenue = currentEvent?.venue || 'Campus Principal, Santo Domingo';
+    const pInst = selectedParticipant?.institution || 'Pontificia Universidad Católica Madre y Maestra (PUCMM)';
+    const eDate = currentEvent?.startDate
+      ? new Date(currentEvent.startDate).toLocaleDateString('es-DO', { day: 'numeric', month: 'long', year: 'numeric' })
+      : '7 de Noviembre de 2026';
+    const eVenue = currentEvent?.venue || 'Campus Santiago de los Caballeros, PUCMM';
 
-    const mockQrSvg = `
-      <div style="background-color: #000000; padding: 12px; display: inline-block; border-radius: 8px;">
-        <svg width="140" height="140" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="100" height="100" fill="#ffffff" />
-          <rect x="10" y="10" width="25" height="25" fill="#000000" />
-          <rect x="65" y="10" width="25" height="25" fill="#000000" />
-          <rect x="10" y="65" width="25" height="25" fill="#000000" />
-          <rect x="15" y="15" width="15" height="15" fill="#ffffff" />
-          <rect x="70" y="15" width="15" height="15" fill="#ffffff" />
-          <rect x="15" y="70" width="15" height="15" fill="#ffffff" />
-          <rect x="18" y="18" width="9" height="9" fill="#000000" />
-          <rect x="73" y="18" width="9" height="9" fill="#000000" />
-          <rect x="18" y="73" width="9" height="9" fill="#000000" />
-          <rect x="45" y="45" width="10" height="10" fill="#000000" />
-          <rect x="40" y="20" width="15" height="8" fill="#000000" />
-          <rect x="40" y="72" width="15" height="8" fill="#000000" />
-          <rect x="72" y="45" width="8" height="15" fill="#000000" />
-        </svg>
+    // SVG QR oficial con diseño responsivo
+    const qrSvg = `
+      <div style="text-align: center; margin: 12px 0;">
+        <div style="display: inline-block; padding: 14px; background: #ffffff; border: 2px solid ${primaryColor}; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08);">
+          <svg width="150" height="150" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100" height="100" fill="#ffffff" />
+            <rect x="8" y="8" width="26" height="26" fill="#0f172a" rx="2" />
+            <rect x="12" y="12" width="18" height="18" fill="#ffffff" rx="1" />
+            <rect x="16" y="16" width="10" height="10" fill="${primaryColor}" rx="1" />
+            
+            <rect x="66" y="8" width="26" height="26" fill="#0f172a" rx="2" />
+            <rect x="70" y="12" width="18" height="18" fill="#ffffff" rx="1" />
+            <rect x="74" y="16" width="10" height="10" fill="${primaryColor}" rx="1" />
+            
+            <rect x="8" y="66" width="26" height="26" fill="#0f172a" rx="2" />
+            <rect x="12" y="70" width="18" height="18" fill="#ffffff" rx="1" />
+            <rect x="16" y="74" width="10" height="10" fill="${primaryColor}" rx="1" />
+            
+            <rect x="42" y="14" width="6" height="6" fill="#0f172a" />
+            <rect x="52" y="14" width="6" height="12" fill="#0f172a" />
+            <rect x="42" y="26" width="16" height="6" fill="#0f172a" />
+            <rect x="14" y="42" width="12" height="6" fill="#0f172a" />
+            <rect x="30" y="42" width="8" height="8" fill="${primaryColor}" />
+            <rect x="44" y="42" width="12" height="12" fill="#0f172a" />
+            <rect x="62" y="42" width="10" height="6" fill="#0f172a" />
+            <rect x="78" y="42" width="8" height="14" fill="#0f172a" />
+            <rect x="14" y="54" width="6" height="8" fill="#0f172a" />
+            <rect x="26" y="54" width="12" height="6" fill="#0f172a" />
+            <rect x="62" y="54" width="14" height="6" fill="#0f172a" />
+            <rect x="42" y="62" width="8" height="16" fill="#0f172a" />
+            <rect x="56" y="62" width="6" height="8" fill="#0f172a" />
+            <rect x="68" y="66" width="18" height="8" fill="#0f172a" />
+            <rect x="42" y="82" width="14" height="6" fill="#0f172a" />
+            <rect x="62" y="80" width="12" height="8" fill="#0f172a" />
+            <rect x="80" y="80" width="8" height="8" fill="${primaryColor}" />
+          </svg>
+          <div style="margin-top: 6px; font-family: monospace; font-size: 11px; font-weight: bold; color: #334155;">
+            ${pTicket}
+          </div>
+        </div>
       </div>
     `;
 
-    // Reemplazos de variables de plantilla
+    // Tabla de cronograma oficial para {{scheduleHtml}}
+    const scheduleHtml = `
+      <table style="width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px;">
+        <tr style="background: rgba(0,0,0,0.03); border-bottom: 2px solid ${primaryColor};">
+          <th style="padding: 8px 12px; text-align: left; font-size: 12px;">Hora</th>
+          <th style="padding: 8px 12px; text-align: left; font-size: 12px;">Actividad</th>
+          <th style="padding: 8px 12px; text-align: left; font-size: 12px;">Lugar</th>
+        </tr>
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 8px 12px; font-family: monospace; color: #475569;">08:30 AM</td>
+          <td style="padding: 8px 12px; font-weight: 600;">Registro y acreditación de participantes</td>
+          <td style="padding: 8px 12px; color: #64748b;">Vestíbulo Principal</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 8px 12px; font-family: monospace; color: #475569;">09:30 AM</td>
+          <td style="padding: 8px 12px; font-weight: 600;">Inteligencia artificial aplicada al desarrollo de software</td>
+          <td style="padding: 8px 12px; color: #64748b;">Auditorio A</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 8px 12px; font-family: monospace; color: #475569;">11:00 AM</td>
+          <td style="padding: 8px 12px; font-weight: 600;">Ciberseguridad: amenazas y buenas prácticas</td>
+          <td style="padding: 8px 12px; color: #64748b;">Auditorio B</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 12px; font-family: monospace; color: #475569;">02:00 PM</td>
+          <td style="padding: 8px 12px; font-weight: 600;">Desarrollo web moderno y aplicaciones progresivas</td>
+          <td style="padding: 8px 12px; color: #64748b;">Auditorio A</td>
+        </tr>
+      </table>
+    `;
+
+    // Reemplazos de variables de plantilla tanto en español como formato backend
     html = html.split('{{nombre}}').join(pName);
+    html = html.split('{{participantName}}').join(pName);
+    html = html.split('{{participantFirstName}}').join(pFirstName);
     html = html.split('{{email}}').join(pEmail);
+    html = html.split('{{participantEmail}}').join(pEmail);
     html = html.split('{{numero_registro}}').join(pTicket);
+    html = html.split('{{registrationNumber}}').join(pTicket);
     html = html.split('{{tipo_entrada}}').join(pType);
+    html = html.split('{{ticketType}}').join(pType);
+    html = html.split('{{ticketPrice}}').join('RD$ 1,750.00');
+    html = html.split('{{amountPaid}}').join('RD$ 1,750.00');
+    html = html.split('{{balanceDue}}').join('RD$ 0.00');
+    html = html.split('{{currencySymbol}}').join('RD$');
     html = html.split('{{institucion}}').join(pInst);
     html = html.split('{{evento}}').join(eventName);
+    html = html.split('{{eventName}}').join(eventName);
+    html = html.split('{{eventYear}}').join(String(currentEvent?.year || 2026));
     html = html.split('{{fecha}}').join(eDate);
+    html = html.split('{{eventDate}}').join(eDate);
     html = html.split('{{lugar}}').join(eVenue);
-    html = html.split('{{qr}}').join(mockQrSvg);
+    html = html.split('{{eventVenue}}').join(eVenue);
+    html = html.split('{{primaryColor}}').join(primaryColor);
+    html = html.split('{{eventColor}}').join(primaryColor);
+    html = html.split('{{qr}}').join(qrSvg);
+    html = html.split('{{qrDataUrl}}').join('data:image/svg+xml;utf8,' + encodeURIComponent(qrSvg));
+    html = html.split('cid:ticket-qr-code').join('data:image/svg+xml;utf8,' + encodeURIComponent(qrSvg));
+    html = html.split('{{qrUrl}}').join('https://barcamp.org.do/t/' + pTicket);
+    html = html.split('{{scheduleHtml}}').join(scheduleHtml);
+    html = html.split('{{messageContent}}').join(
+      customMessage
+        ? `<div style="margin: 16px 0; padding: 12px; background: rgba(0,0,0,0.04); border-left: 3px solid ${primaryColor}; border-radius: 4px;">${customMessage}</div>`
+        : ''
+    );
 
     return html;
-  }, [blocks, rawHtml, editorMode, selectedParticipant, currentEvent, eventName, primaryColor, eventLogo]);
+  }, [
+    blocks,
+    rawHtml,
+    editorMode,
+    selectedParticipant,
+    currentEvent,
+    eventName,
+    primaryColor,
+    eventLogo,
+    subject,
+    customMessage,
+  ]);
 
   return (
     <div className="flex flex-col gap-4 w-full">
-      {/* Barra de Controles Superiores: Modo de edición, Selector de Asunto y Vistas */}
+      {/* Barra de Controles Superiores: Asunto, Selector de Plantilla y Modo de Edición */}
       <div className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
         {/* Asunto del Correo */}
         <div className="flex-1">
@@ -453,8 +570,36 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
           />
         </div>
 
+        {/* Selector de Plantilla (si se proporcionan templates) */}
+        {templates && templates.length > 0 && onSelectTemplate && (
+          <div className="w-full md:w-auto shrink-0">
+            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">
+              Plantilla Base
+            </label>
+            <select
+              value={templateCode}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'CUSTOM_BLOCKS') {
+                  setEditorMode('blocks');
+                } else {
+                  onSelectTemplate(val);
+                }
+              }}
+              className="w-full md:w-auto px-3 py-2 rounded-lg bg-background border border-border text-foreground text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              {templates.map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.name}
+                </option>
+              ))}
+              <option value="CUSTOM_BLOCKS">★ Personalizado por Bloques Visuales</option>
+            </select>
+          </div>
+        )}
+
         {/* Selector de Modo Bloques vs HTML y Viewport Desktop/Mobile */}
-        <div className="flex items-center gap-2 self-end md:self-auto shrink-0">
+        <div className="flex items-center gap-2 self-end md:self-auto shrink-0 pt-2 md:pt-0">
           <div className="flex items-center bg-muted/60 p-1 rounded-xl border border-border">
             <button
               type="button"
@@ -482,7 +627,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
             </button>
           </div>
 
-          {/* Toggle móvil en pantallas pequeñas */}
+          {/* Toggle móvil en pantallas pequeñas (oculto en desktop) */}
           <div className="flex md:hidden items-center bg-muted/60 p-1 rounded-xl border border-border">
             <button
               type="button"
@@ -506,11 +651,30 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
         </div>
       </div>
 
-      {/* Layout de dos paneles en Desktop (Izquierda: Edición, Derecha: Vista Previa en Vivo) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start min-h-[580px]">
+      {/* Mensaje Personalizado Opcional (si se provee handler) */}
+      {onChangeCustomMessage && (
+        <div className="bg-card border border-border rounded-xl p-3 shadow-sm">
+          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center justify-between mb-1.5">
+            <span>Mensaje Personalizado Adicional (Opcional)</span>
+            <span className="text-[10px] text-muted-foreground font-normal">
+              Se inserta en la variable {'{{messageContent}}'}
+            </span>
+          </label>
+          <input
+            type="text"
+            value={customMessage}
+            onChange={(e) => onChangeCustomMessage(e.target.value)}
+            placeholder="Escriba un mensaje complementario para el participante..."
+            className="w-full px-3 py-1.5 text-xs bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+      )}
+
+      {/* Layout de dos paneles en Desktop (Izquierda: Edición, Derecha: Vista Previa en Vivo Permanente) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start min-h-[600px]">
         {/* PANEL IZQUIERDO: REDACCIÓN Y BLOQUES (Visible siempre en PC, condicional en móvil) */}
         <div
-          className={`lg:col-span-6 xl:col-span-6 flex flex-col gap-3.5 bg-card border border-border rounded-xl p-4 shadow-sm max-h-[750px] overflow-y-auto ${
+          className={`lg:col-span-6 xl:col-span-6 flex flex-col gap-3.5 bg-card border border-border rounded-xl p-4 shadow-sm max-h-[780px] overflow-y-auto ${
             mobileTab === 'edit' ? 'block' : 'hidden lg:block'
           }`}
         >
@@ -523,7 +687,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
                     <Plus className="w-3.5 h-3.5 text-primary" />
                     Biblioteca de Bloques Predefinidos
                   </span>
-                  <span className="text-[11px] text-muted-foreground">Haz clic para agregar</span>
+                  <span className="text-[11px] text-muted-foreground">Clic para agregar</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <button
@@ -599,28 +763,43 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
                 </div>
               </div>
 
-              {/* Lista Ordenable y Configurable de Bloques */}
+              {/* Lista de Bloques en el Correo */}
               <div className="space-y-2.5">
                 {blocks.map((block, index) => (
                   <div
                     key={block.id}
-                    className="border border-border rounded-xl p-3 bg-background shadow-xs hover:border-primary/50 transition-colors"
+                    className="border border-border rounded-xl p-3 bg-background/80 hover:border-border/80 transition-all shadow-xs flex flex-col gap-2.5"
                   >
-                    <div className="flex items-center justify-between pb-2 border-b border-border/60 mb-2.5">
+                    {/* Cabecera del Bloque */}
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-md bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
+                        <span className="w-5 h-5 rounded-md bg-muted flex items-center justify-center text-[10px] font-mono text-muted-foreground">
                           {index + 1}
                         </span>
-                        <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-                          Bloque: {block.type.replace('_', ' ')}
+                        <span className="text-xs font-bold text-foreground">
+                          {block.type === 'LOGO' && 'Logotipo del Evento'}
+                          {block.type === 'HEADING' && 'Encabezado'}
+                          {block.type === 'PARTICIPANT_NAME' && 'Nombre del Participante'}
+                          {block.type === 'TEXT' && 'Párrafo de Texto'}
+                          {block.type === 'DIVIDER' && 'Línea Separadora'}
+                          {block.type === 'REGISTRATION_DETAILS' && 'Detalles de Inscripción'}
+                          {block.type === 'TICKET_NUMBER' && 'Número de Ticket'}
+                          {block.type === 'QR_CODE' && 'Código QR Individual'}
+                          {block.type === 'DATE_LOCATION' && 'Fecha y Ubicación'}
+                          {block.type === 'SCHEDULE' && 'Cronograma de Actividades'}
+                          {block.type === 'BUTTON' && 'Botón con Enlace'}
+                          {block.type === 'NOTICE' && 'Aviso Destacado'}
+                          {block.type === 'FOOTER' && 'Pie de Página'}
                         </span>
                       </div>
+
+                      {/* Botones de acción del bloque: Reordenar y Eliminar */}
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => handleMoveBlock(index, 'up')}
                           disabled={index === 0}
-                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-25 cursor-pointer"
+                          className="p-1 rounded hover:bg-muted text-muted-foreground disabled:opacity-30 cursor-pointer"
                           title="Mover arriba"
                         >
                           <ChevronUp className="w-3.5 h-3.5" />
@@ -629,7 +808,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
                           type="button"
                           onClick={() => handleMoveBlock(index, 'down')}
                           disabled={index === blocks.length - 1}
-                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-25 cursor-pointer"
+                          className="p-1 rounded hover:bg-muted text-muted-foreground disabled:opacity-30 cursor-pointer"
                           title="Mover abajo"
                         >
                           <ChevronDown className="w-3.5 h-3.5" />
@@ -637,7 +816,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
                         <button
                           type="button"
                           onClick={() => handleRemoveBlock(block.id)}
-                          className="p-1 rounded text-rose-500 hover:bg-rose-500/10 cursor-pointer ml-1"
+                          className="p-1 rounded hover:bg-rose-500/10 text-rose-400 cursor-pointer"
                           title="Eliminar bloque"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -645,165 +824,146 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
                       </div>
                     </div>
 
-                    {/* Contenido editable según tipo de bloque */}
+                    {/* Contenido editable según el tipo de bloque */}
                     {block.type === 'HEADING' && (
                       <div className="space-y-2">
                         <input
                           type="text"
                           value={block.config.text || ''}
                           onChange={(e) => handleUpdateBlockConfig(block.id, { text: e.target.value })}
-                          placeholder="Texto del título"
-                          className="w-full px-3 py-1.5 text-xs bg-muted/40 border border-border rounded-lg text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                          className="w-full px-2.5 py-1.5 text-xs bg-muted/30 border border-border rounded-lg text-foreground font-semibold"
+                          placeholder="Texto del título..."
                         />
-                        <div className="flex items-center gap-4 text-xs">
-                          <label className="flex items-center gap-1 text-muted-foreground">
-                            <span>Nivel:</span>
-                            <select
-                              value={block.config.level || 'h1'}
-                              onChange={(e) => handleUpdateBlockConfig(block.id, { level: e.target.value as any })}
-                              className="px-2 py-0.5 bg-background border border-border rounded text-xs"
-                            >
-                              <option value="h1">H1 (Grande)</option>
-                              <option value="h2">H2 (Mediano)</option>
-                              <option value="h3">H3 (Pequeño)</option>
-                            </select>
-                          </label>
-                          <label className="flex items-center gap-1 text-muted-foreground">
-                            <span>Alineación:</span>
-                            <select
-                              value={block.config.align || 'center'}
-                              onChange={(e) => handleUpdateBlockConfig(block.id, { align: e.target.value as any })}
-                              className="px-2 py-0.5 bg-background border border-border rounded text-xs"
-                            >
-                              <option value="left">Izquierda</option>
-                              <option value="center">Centrado</option>
-                              <option value="right">Derecha</option>
-                            </select>
-                          </label>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={block.config.level || 'h1'}
+                            onChange={(e) => handleUpdateBlockConfig(block.id, { level: e.target.value as any })}
+                            className="px-2 py-1 text-xs bg-muted/40 border border-border rounded text-foreground"
+                          >
+                            <option value="h1">Nivel H1 (Grande)</option>
+                            <option value="h2">Nivel H2 (Mediano)</option>
+                            <option value="h3">Nivel H3 (Pequeño)</option>
+                          </select>
+                          <select
+                            value={block.config.align || 'left'}
+                            onChange={(e) => handleUpdateBlockConfig(block.id, { align: e.target.value as any })}
+                            className="px-2 py-1 text-xs bg-muted/40 border border-border rounded text-foreground"
+                          >
+                            <option value="left">Izquierda</option>
+                            <option value="center">Centrado</option>
+                            <option value="right">Derecha</option>
+                          </select>
                         </div>
                       </div>
                     )}
 
-                    {(block.type === 'TEXT' || block.type === 'PARTICIPANT_NAME') && (
+                    {block.type === 'TEXT' && (
                       <div className="space-y-2">
                         <textarea
                           rows={2}
                           value={block.config.text || ''}
                           onChange={(e) => handleUpdateBlockConfig(block.id, { text: e.target.value })}
-                          placeholder="Contenido del mensaje..."
-                          className="w-full px-3 py-1.5 text-xs bg-muted/40 border border-border rounded-lg text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                          className="w-full px-2.5 py-1.5 text-xs bg-muted/30 border border-border rounded-lg text-foreground resize-none leading-relaxed"
+                          placeholder="Texto del párrafo..."
                         />
-                        <div className="text-[11px] text-muted-foreground flex items-center gap-1">
-                          <Info className="w-3 h-3 text-primary" />
-                          <span>Puedes incluir variables como {`{{nombre}}`} o {`{{evento}}`}.</span>
-                        </div>
+                        <select
+                          value={block.config.align || 'left'}
+                          onChange={(e) => handleUpdateBlockConfig(block.id, { align: e.target.value as any })}
+                          className="px-2 py-1 text-xs bg-muted/40 border border-border rounded text-foreground"
+                        >
+                          <option value="left">Alineación Izquierda</option>
+                          <option value="center">Centrado</option>
+                          <option value="right">Alineación Derecha</option>
+                        </select>
                       </div>
                     )}
 
                     {block.type === 'BUTTON' && (
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <label className="block text-[11px] text-muted-foreground mb-1">Texto del Botón</label>
-                          <input
-                            type="text"
-                            value={block.config.buttonText || ''}
-                            onChange={(e) => handleUpdateBlockConfig(block.id, { buttonText: e.target.value })}
-                            className="w-full px-2.5 py-1 text-xs bg-muted/40 border border-border rounded-lg text-foreground"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] text-muted-foreground mb-1">URL Enlace</label>
-                          <input
-                            type="text"
-                            value={block.config.buttonUrl || ''}
-                            onChange={(e) => handleUpdateBlockConfig(block.id, { buttonUrl: e.target.value })}
-                            className="w-full px-2.5 py-1 text-xs bg-muted/40 border border-border rounded-lg text-foreground"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {block.type === 'NOTICE' && (
-                      <div className="space-y-2 text-xs">
-                        <div className="flex items-center gap-3">
-                          <span className="text-[11px] text-muted-foreground">Tipo de Aviso:</span>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={`notice-${block.id}`}
-                              checked={block.config.noticeType === 'info'}
-                              onChange={() => handleUpdateBlockConfig(block.id, { noticeType: 'info' })}
-                            />
-                            <span>Informativo</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={`notice-${block.id}`}
-                              checked={block.config.noticeType === 'warning'}
-                              onChange={() => handleUpdateBlockConfig(block.id, { noticeType: 'warning' })}
-                            />
-                            <span>Advertencia</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={`notice-${block.id}`}
-                              checked={block.config.noticeType === 'success'}
-                              onChange={() => handleUpdateBlockConfig(block.id, { noticeType: 'success' })}
-                            />
-                            <span>Éxito</span>
-                          </label>
-                        </div>
+                      <div className="grid grid-cols-2 gap-2">
                         <input
                           type="text"
-                          value={block.config.noticeText || ''}
-                          onChange={(e) => handleUpdateBlockConfig(block.id, { noticeText: e.target.value })}
-                          placeholder="Texto destacado de aviso"
-                          className="w-full px-3 py-1.5 text-xs bg-muted/40 border border-border rounded-lg text-foreground"
+                          value={block.config.buttonText || ''}
+                          onChange={(e) => handleUpdateBlockConfig(block.id, { buttonText: e.target.value })}
+                          className="px-2.5 py-1.5 text-xs bg-muted/30 border border-border rounded-lg text-foreground font-semibold"
+                          placeholder="Texto del botón..."
+                        />
+                        <input
+                          type="text"
+                          value={block.config.buttonUrl || ''}
+                          onChange={(e) => handleUpdateBlockConfig(block.id, { buttonUrl: e.target.value })}
+                          className="px-2.5 py-1.5 text-xs bg-muted/30 border border-border rounded-lg text-foreground font-mono"
+                          placeholder="URL del enlace..."
                         />
                       </div>
                     )}
 
+                    {block.type === 'NOTICE' && (
+                      <div className="space-y-2">
+                        <textarea
+                          rows={2}
+                          value={block.config.noticeText || ''}
+                          onChange={(e) => handleUpdateBlockConfig(block.id, { noticeText: e.target.value })}
+                          className="w-full px-2.5 py-1.5 text-xs bg-muted/30 border border-border rounded-lg text-foreground resize-none"
+                          placeholder="Mensaje de aviso..."
+                        />
+                        <select
+                          value={block.config.noticeType || 'info'}
+                          onChange={(e) => handleUpdateBlockConfig(block.id, { noticeType: e.target.value as any })}
+                          className="px-2 py-1 text-xs bg-muted/40 border border-border rounded text-foreground"
+                        >
+                          <option value="info">Información (Azul)</option>
+                          <option value="warning">Advertencia (Ámbar)</option>
+                          <option value="success">Éxito / Confirmación (Verde)</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {block.type === 'PARTICIPANT_NAME' && (
+                      <input
+                        type="text"
+                        value={block.config.text || ''}
+                        onChange={(e) => handleUpdateBlockConfig(block.id, { text: e.target.value })}
+                        className="w-full px-2.5 py-1.5 text-xs bg-muted/30 border border-border rounded-lg text-foreground"
+                        placeholder="Ej: Hola, {{nombre}}:"
+                      />
+                    )}
+
                     {block.type === 'LOGO' && (
-                      <div className="text-xs text-muted-foreground flex items-center gap-2">
-                        <Image className="w-4 h-4 text-primary" />
-                        <span>Encabezado con color oficial ({primaryColor}) y logo del evento.</span>
+                      <div className="text-xs text-muted-foreground flex items-center justify-between">
+                        <span>Aplica el logotipo del evento y el color de marca ({primaryColor}).</span>
+                        <div className="w-4 h-4 rounded-full border border-border" style={{ backgroundColor: primaryColor }} />
                       </div>
                     )}
 
                     {block.type === 'QR_CODE' && (
                       <div className="text-xs text-muted-foreground flex items-center gap-2">
-                        <QrCode className="w-4 h-4 text-emerald-500" />
-                        <span>Generará dinámicamente el código QR individual único de cada participante.</span>
+                        <QrCode className="w-4 h-4 text-primary" />
+                        <span>Genera un código QR individual y dinámico para cada asistente.</span>
                       </div>
                     )}
 
                     {block.type === 'REGISTRATION_DETAILS' && (
-                      <div className="text-xs text-muted-foreground flex items-center gap-2">
-                        <FileBadge className="w-4 h-4 text-primary" />
-                        <span>Muestra tarjeta con Nombre, Entrada e Institución del destinatario.</span>
+                      <div className="text-xs text-muted-foreground">
+                        <span>Tabla estructurada con Nombre, Tipo de Entrada e Institución.</span>
                       </div>
                     )}
 
                     {block.type === 'TICKET_NUMBER' && (
-                      <div className="text-xs text-muted-foreground flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-amber-500" />
-                        <span>Inserta el número de registro oficial con marco punteado.</span>
+                      <div className="text-xs text-muted-foreground">
+                        <span>Caja destacada con el código de registro (ej. BC26-1042).</span>
                       </div>
                     )}
 
                     {block.type === 'DATE_LOCATION' && (
-                      <div className="text-xs text-muted-foreground flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-blue-500" />
-                        <span>Muestra fecha oficial y sede física configuradas para la edición.</span>
+                      <div className="text-xs text-muted-foreground">
+                        <span>Muestra la fecha oficial y el campus/lugar de celebración.</span>
                       </div>
                     )}
 
                     {block.type === 'SCHEDULE' && (
                       <div className="text-xs text-muted-foreground flex items-center gap-2">
                         <Clock className="w-4 h-4 text-purple-500" />
-                        <span>Incluye bloque con horas destacadas de keynote y conferencias.</span>
+                        <span>Incluye bloque con las charlas y horarios confirmados del cronograma.</span>
                       </div>
                     )}
 
@@ -827,19 +987,19 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
             <div className="flex flex-col gap-2.5 h-full">
               <div className="flex items-center justify-between pb-1 border-b border-border">
                 <span className="text-xs font-bold text-foreground">Editor de Código Fuente HTML</span>
-                <span className="text-[11px] text-muted-foreground">Compatible con tablas de correo estándar</span>
+                <span className="text-[11px] text-muted-foreground">Compatible con clientes de correo</span>
               </div>
               <textarea
                 value={rawHtml}
                 onChange={(e) => handleRawHtmlChange(e.target.value)}
                 rows={22}
-                className="w-full p-3 font-mono text-xs bg-muted/30 border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary leading-relaxed"
+                className="w-full p-3 font-mono text-xs bg-muted/30 border border-border rounded-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary leading-relaxed resize-y"
                 placeholder="<html>...</html>"
               />
               {/* Píldoras de variables disponibles para copiar */}
               <div className="bg-muted/20 border border-border rounded-lg p-2.5">
                 <span className="text-[11px] font-bold text-muted-foreground block mb-1.5">
-                  Variables dinámicas disponibles:
+                  Variables dinámicas disponibles (clic para insertar):
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {AVAILABLE_VARIABLES.map((v) => (
@@ -859,7 +1019,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
           )}
         </div>
 
-        {/* PANEL DERECHO: VISTA PREVIA EN VIVO (Conmutador Desktop / Móvil iPhone) */}
+        {/* PANEL DERECHO: VISTA PREVIA EN VIVO PERMANENTE (Conmutador Desktop / Móvil iPhone) */}
         <div
           className={`lg:col-span-6 xl:col-span-6 flex flex-col gap-3 bg-card border border-border rounded-xl p-4 shadow-sm min-h-[640px] ${
             mobileTab === 'preview' ? 'block' : 'hidden lg:block'
@@ -900,7 +1060,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
                 title="Vista móvil (iPhone)"
               >
                 <Smartphone className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline text-[11px]">Móvil</span>
+                <span className="hidden sm:inline text-[11px]">iPhone</span>
               </button>
             </div>
           </div>
@@ -921,7 +1081,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
                 </div>
               )}
 
-              {/* Iframe aislado: no scripts, no acceso al DOM del panel */}
+              {/* Iframe aislado: cero scripts, renderiza en tiempo real */}
               <iframe
                 title="Vista Previa de Correo"
                 srcDoc={previewHtmlDoc}
@@ -932,8 +1092,11 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
           </div>
 
           <div className="text-[11px] text-muted-foreground flex items-center justify-between px-1">
-            <span>Renderizado seguro en tiempo real sin scripts externos.</span>
-            <span>Colores de edición aplicados ({primaryColor})</span>
+            <span>Se actualiza automáticamente al escribir o cambiar opciones.</span>
+            <span className="flex items-center gap-1.5 font-medium">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: primaryColor }} />
+              Marca {primaryColor}
+            </span>
           </div>
         </div>
       </div>

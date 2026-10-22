@@ -291,6 +291,12 @@ export const CommunicationsPage: React.FC = () => {
         setTemplateSubject(data[0].subject);
         setTemplateBody(data[0].bodyHtml);
       }
+      if (data.length > 0 && !composeSubject) {
+        const defaultTmpl = data.find((t) => t.code === 'INSCRIPTION_CONFIRMATION') || data[0];
+        setComposeTemplateCode(defaultTmpl.code);
+        setComposeSubject(defaultTmpl.subject);
+        setComposeBodyHtml(defaultTmpl.bodyHtml);
+      }
     } catch (err: any) {
       console.error(err);
     }
@@ -670,210 +676,182 @@ export const CommunicationsPage: React.FC = () => {
           PESTAÑA 1: REDACTAR Y ENVIAR (INDIVIDUAL)
       ======================================================== */}
       {activeTab === 'compose' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Columna Izquierda: Búsqueda y Selección de Participante */}
-          <div className="space-y-4">
-            <div className="p-5 rounded-2xl bg-card border border-border space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Search className="w-4 h-4 text-primary" />
-                <span>1. Seleccionar Destinatario</span>
-              </h3>
+        <div className="space-y-4">
+          {/* Barra superior de Selección de Destinatario y Acciones de Envío */}
+          <div className="p-4 rounded-2xl bg-card border border-border shadow-sm space-y-3">
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+              {/* Búsqueda y Destinatario Seleccionado */}
+              <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="relative min-w-[280px] max-w-md">
+                  <input
+                    type="text"
+                    placeholder="Buscar destinatario por nombre, correo o ticket..."
+                    value={participantSearch}
+                    onChange={(e) => setParticipantSearch(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 rounded-xl bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-primary font-medium"
+                  />
+                  <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                  {searchingParticipants && (
+                    <Loader2 className="w-3.5 h-3.5 text-primary animate-spin absolute right-3 top-1/2 -translate-y-1/2" />
+                  )}
 
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Buscar por nombre, correo o ticket..."
-                  value={participantSearch}
-                  onChange={(e) => setParticipantSearch(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-                {searchingParticipants && (
-                  <Loader2 className="w-4 h-4 text-primary animate-spin absolute right-3 top-1/2 -translate-y-1/2" />
-                )}
-              </div>
-
-              {/* Resultados de Búsqueda */}
-              {searchResults.length > 0 && (
-                <div className="space-y-1 max-h-56 overflow-y-auto border border-border rounded-xl p-1 bg-background">
-                  {searchResults.map((reg) => (
-                    <button
-                      key={reg.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedRegistration(reg);
-                        setParticipantSearch('');
-                        setSearchResults([]);
-                      }}
-                      className="w-full text-left p-2.5 rounded-lg hover:bg-muted/80 transition-colors cursor-pointer flex flex-col gap-0.5 text-xs"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-foreground">{reg.participant.fullName}</span>
-                        <span className="font-mono text-[10px] text-primary">{reg.registrationNumber}</span>
-                      </div>
-                      <span className="text-muted-foreground text-[11px]">{reg.participant.email}</span>
-                    </button>
-                  ))}
+                  {/* Menú flotante de resultados de búsqueda */}
+                  {searchResults.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 z-30 max-h-56 overflow-y-auto border border-border rounded-xl p-1 bg-card shadow-xl">
+                      {searchResults.map((reg) => (
+                        <button
+                          key={reg.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedRegistration(reg);
+                            setParticipantSearch('');
+                            setSearchResults([]);
+                          }}
+                          className="w-full text-left p-2.5 rounded-lg hover:bg-muted transition-colors cursor-pointer flex flex-col gap-0.5 text-xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-foreground">{reg.participant.fullName}</span>
+                            <span className="font-mono text-[10px] text-primary">{reg.registrationNumber}</span>
+                          </div>
+                          <span className="text-muted-foreground text-[11px]">{reg.participant.email}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
 
-              {/* Destinatario Seleccionado */}
-              {selectedRegistration ? (
-                <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase text-primary">Participante Seleccionado</p>
-                      <h4 className="font-bold text-foreground text-sm mt-0.5">
-                        {selectedRegistration.participant.fullName}
-                      </h4>
-                      <p className="text-xs text-muted-foreground">{selectedRegistration.participant.email}</p>
+                {/* Badge de Destinatario Seleccionado */}
+                {selectedRegistration ? (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/30 text-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <div className="flex items-baseline gap-1.5">
+                      <strong className="text-foreground">{selectedRegistration.participant.fullName}</strong>
+                      <span className="font-mono text-[10px] text-primary">{selectedRegistration.registrationNumber}</span>
+                      <span className="text-muted-foreground text-[11px] hidden sm:inline">({selectedRegistration.participant.email})</span>
                     </div>
                     <button
+                      type="button"
                       onClick={() => setSelectedRegistration(null)}
-                      className="text-muted-foreground hover:text-foreground text-xs cursor-pointer"
+                      className="ml-1 text-muted-foreground hover:text-foreground cursor-pointer text-xs"
+                      title="Quitar selección"
                     >
                       ✕
                     </button>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-[11px] pt-2 border-t border-primary/10">
-                    <div>
-                      <span className="text-muted-foreground">Ticket:</span>{' '}
-                      <strong className="text-foreground">{selectedRegistration.registrationNumber}</strong>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Entrada:</span>{' '}
-                      <strong className="text-foreground">{selectedRegistration.ticketType?.name || 'General'}</strong>
-                    </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/30 px-3 py-1.5 rounded-xl border border-border/60">
+                    <Info className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span>Vista previa en vivo activa con datos de ejemplo. Seleccione un participante para enviar.</span>
                   </div>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground bg-muted/20 p-3 rounded-xl border border-border/50">
-                  Busque y seleccione un participante registrado para enviarle su comunicación.
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Columna Derecha: Redacción y Acciones */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="p-6 rounded-2xl bg-card border border-border space-y-5">
-              <div className="flex items-center justify-between pb-4 border-b border-border">
-                <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-primary" />
-                  <span>2. Redactar Comunicación</span>
-                </h3>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Plantilla base:</span>
-                  <select
-                    value={composeTemplateCode}
-                    onChange={(e) => handleComposeTemplateChange(e.target.value)}
-                    className="px-3 py-1.5 rounded-lg bg-background border border-border text-foreground text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    {templates.map((t) => (
-                      <option key={t.code} value={t.code}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                )}
               </div>
 
-              {/* Asunto */}
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-foreground uppercase tracking-wider">
-                  Asunto del Correo
-                </label>
-                <input
-                  type="text"
-                  value={composeSubject}
-                  onChange={(e) => setComposeSubject(e.target.value)}
-                  placeholder="Asunto personalizado..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              {/* Mensaje Personalizado Adicional */}
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center justify-between">
-                  <span>Mensaje Personalizado (Opcional)</span>
-                  <span className="text-[10px] text-muted-foreground font-normal">
-                    Se inserta en la variable {'{{messageContent}}'}
-                  </span>
-                </label>
-                <textarea
-                  rows={3}
-                  value={composeCustomMessage}
-                  onChange={(e) => setComposeCustomMessage(e.target.value)}
-                  placeholder="Escriba un mensaje personalizado para el participante..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-                />
-              </div>
-
-              {/* Notificación de Resultado */}
-              {singleFeedback && (
-                <div
-                  className={`p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2 animate-fade-in ${
-                    singleFeedback.type === 'success'
-                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
-                      : 'bg-rose-500/10 border border-rose-500/30 text-rose-400'
-                  }`}
+              {/* Botones de Envío y Prueba */}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowTestSendModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-secondary/80 hover:bg-secondary text-foreground text-xs font-bold border border-border transition-all cursor-pointer flex items-center gap-1.5"
                 >
-                  {singleFeedback.type === 'success' ? (
-                    <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                  )}
-                  <span>{singleFeedback.message}</span>
-                </div>
-              )}
-
-              {/* Barra de Acciones */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-border">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleOpenPreview(
-                        composeTemplateCode,
-                        composeSubject,
-                        composeBodyHtml,
-                        composeCustomMessage
-                      )
-                    }
-                    className="px-4 py-2.5 rounded-xl bg-muted/60 hover:bg-muted text-foreground text-xs font-bold flex items-center gap-2 border border-border transition-all cursor-pointer"
-                  >
-                    <Eye className="w-4 h-4 text-primary" />
-                    <span>Vista previa</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowTestSendModal(true)}
-                    className="px-4 py-2.5 rounded-xl bg-secondary/80 hover:bg-secondary text-foreground text-xs font-bold border border-border transition-all cursor-pointer"
-                  >
-                    Enviar prueba
-                  </button>
-                </div>
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Probar envío</span>
+                </button>
 
                 <button
                   type="button"
                   onClick={() => handleSendSingleEmail(false)}
                   disabled={sendingSingle || !selectedRegistration}
-                  className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold shadow-lg shadow-primary/25 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold shadow-md shadow-primary/25 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                 >
-                  <Send className="w-4 h-4" />
-                  <span>
-                    {sendingSingle
-                      ? 'Enviando correo...'
-                      : selectedRegistration
-                      ? `Enviar a ${selectedRegistration.participant.firstName}`
-                      : 'Seleccione un Destinatario'}
-                  </span>
+                  {sendingSingle ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Enviando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>
+                        {selectedRegistration
+                          ? `Enviar a ${selectedRegistration.participant.firstName}`
+                          : 'Seleccionar destinatario'}
+                      </span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
+
+            {/* Alerta de Duplicado si existe */}
+            {singleDuplicateWarning && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>{singleDuplicateWarning?.message}</span>
+                </div>
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setSingleDuplicateWarning(null)}
+                    className="px-3 py-1.5 rounded-lg text-xs bg-muted/60 hover:bg-muted text-foreground cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendSingleEmail(true)}
+                    disabled={sendingSingle}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-black cursor-pointer flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Sí, reenviar correo</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Feedback de Éxito o Error */}
+            {singleFeedback && (
+              <div
+                className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 animate-fade-in ${
+                  singleFeedback.type === 'success'
+                    ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                    : 'bg-rose-500/10 border border-rose-500/30 text-rose-400'
+                }`}
+              >
+                {singleFeedback.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                )}
+                <span>{singleFeedback.message}</span>
+              </div>
+            )}
           </div>
+
+          {/* EDITOR VISUAL INTEGRADO CON VISTA PREVIA PERMANENTE A LA DERECHA */}
+          <VisualEmailEditor
+            initialSubject={composeSubject}
+            initialHtml={composeBodyHtml}
+            templateCode={composeTemplateCode}
+            templates={templates}
+            onSelectTemplate={(code) => handleComposeTemplateChange(code)}
+            onChangeSubject={(sub) => setComposeSubject(sub)}
+            onChangeHtml={(html) => setComposeBodyHtml(html)}
+            customMessage={composeCustomMessage}
+            onChangeCustomMessage={(msg) => setComposeCustomMessage(msg)}
+            selectedParticipant={
+              selectedRegistration
+                ? {
+                    fullName: selectedRegistration.participant.fullName,
+                    email: selectedRegistration.participant.email,
+                    registrationNumber: selectedRegistration.registrationNumber,
+                    ticketType: selectedRegistration.ticketType?.name || (selectedRegistration.isCourtesy ? 'Cortesía' : 'General'),
+                    institution: selectedRegistration.participant.institution || '',
+                  }
+                : null
+            }
+          />
         </div>
       )}
 
