@@ -34,6 +34,10 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
     else if (req.cookies && req.cookies.barcamp_token) {
       token = req.cookies.barcamp_token;
     }
+    // 3. Extraer desde query parameter (EventSource / SSE)
+    else if (req.query && typeof req.query.token === 'string') {
+      token = req.query.token;
+    }
 
     if (!token) {
       return next(new UnauthorizedError('Acceso no autorizado. Debe iniciar sesión'));

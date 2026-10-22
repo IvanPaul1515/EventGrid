@@ -1,3 +1,4 @@
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { prisma } from '../../config/db.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors.js';
@@ -512,6 +513,14 @@ export class ParticipantsService {
       });
     }
 
+    RealtimeService.emit(eventId, {
+      type: 'PARTICIPANT_REGISTERED',
+      data: {
+        registrationId: registration.id,
+        registration,
+      },
+    });
+
     return registration;
   }
 
@@ -870,6 +879,15 @@ export class ParticipantsService {
       });
     }
 
+    RealtimeService.emit(eventId, {
+      type: 'PARTICIPANT_REGISTERED',
+      data: {
+        registrationId: registration.id,
+        registration,
+        payment: recordedPayment,
+      },
+    });
+
     return {
       registration,
       payment: recordedPayment,
@@ -954,6 +972,15 @@ export class ParticipantsService {
         },
       }),
     ]);
+
+    RealtimeService.emit(eventId, {
+      type: 'PAYMENT_RECORDED',
+      data: {
+        registrationId,
+        payment,
+        registration: updatedRegistration,
+      },
+    });
 
     return {
       payment,
@@ -1520,6 +1547,15 @@ export class ParticipantsService {
 
     const [updated] = await prisma.$transaction(txOps);
 
+    RealtimeService.emit(eventId, {
+      type: 'TSHIRT_UPDATED',
+      data: {
+        registrationId,
+        tshirtSize: updated.tshirtSize,
+        registration: updated,
+      },
+    });
+
     return {
       ...updated,
       previousTshirtSize: oldSize || null,
@@ -1646,6 +1682,16 @@ export class ParticipantsService {
       });
 
       return reg;
+    });
+
+    RealtimeService.emit(eventId, {
+      type: 'TSHIRT_DELIVERED',
+      data: {
+        registrationId,
+        tshirtSize: targetSize,
+        tshirtDelivered: true,
+        registration: updated,
+      },
     });
 
     return updated;

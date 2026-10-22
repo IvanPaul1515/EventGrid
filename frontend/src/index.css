@@ -69,3 +69,46 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground));
 }
+
+/* Transiciones fluidas entre vistas SPA sin recarga ni parpadeos */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) {
+    animation: 90ms cubic-bezier(0.4, 0, 1, 1) both fade-out;
+  }
+  ::view-transition-new(root) {
+    animation: 140ms cubic-bezier(0, 0, 0.2, 1) 30ms both fade-in;
+  }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+.spa-content-area {
+  animation: page-appear 150ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes page-appear {
+  from {
+    opacity: 0.85;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

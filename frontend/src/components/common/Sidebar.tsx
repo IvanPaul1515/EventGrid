@@ -188,6 +188,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                   <NavLink
                     key={item.to}
                     to={item.to}
+                    viewTransition
                     end={item.to === '/'}
                     onClick={() => {
                       if (setMobileOpen) setMobileOpen(false);

@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { EditionProvider } from './context/EditionContext';
+import { RealtimeProvider } from './context/RealtimeContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { Layout } from './components/common/Layout';
@@ -24,36 +25,38 @@ export const App: React.FC = () => {
   return (
     <AuthProvider>
       <EditionProvider>
-        <ThemeProvider>
-          <BrowserRouter>
-            <Routes>
-              {/* Ruta Pública */}
-              <Route path="/login" element={<LoginPage />} />
+        <RealtimeProvider>
+          <ThemeProvider>
+            <BrowserRouter>
+              <Routes>
+                {/* Ruta Pública */}
+                <Route path="/login" element={<LoginPage />} />
 
-              {/* Rutas Administrativas Protegidas */}
-              <Route element={<ProtectedRoute />}>
-                <Route element={<Layout />}>
-                  <Route path="/" element={<DashboardPage />} />
-                  <Route path="/attendance" element={<AttendancePage />} />
-                  <Route path="/participants" element={<ParticipantsPage />} />
-                  <Route path="/import" element={<ImportPage />} />
-                  <Route path="/sales" element={<SalesPage />} />
-                  <Route path="/inventory" element={<TshirtInventoryPage />} />
-                  <Route path="/editions" element={<EditionsPage />} />
-                  <Route path="/schedule" element={<SchedulePage />} />
-                  <Route path="/communications" element={<CommunicationsPage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/users" element={<UsersPage />} />
-                  <Route path="/audit" element={<AuditPage />} />
-                  <Route path="/activity" element={<AuditPage />} />
+                {/* Rutas Administrativas Protegidas */}
+                <Route element={<ProtectedRoute />}>
+                  <Route element={<Layout />}>
+                    <Route path="/" element={<DashboardPage />} />
+                    <Route path="/attendance" element={<AttendancePage />} />
+                    <Route path="/participants" element={<ParticipantsPage />} />
+                    <Route path="/import" element={<ImportPage />} />
+                    <Route path="/sales" element={<SalesPage />} />
+                    <Route path="/inventory" element={<TshirtInventoryPage />} />
+                    <Route path="/editions" element={<EditionsPage />} />
+                    <Route path="/schedule" element={<SchedulePage />} />
+                    <Route path="/communications" element={<CommunicationsPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/users" element={<UsersPage />} />
+                    <Route path="/audit" element={<AuditPage />} />
+                    <Route path="/activity" element={<AuditPage />} />
+                  </Route>
                 </Route>
-              </Route>
 
-              {/* Fallback */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </BrowserRouter>
-        </ThemeProvider>
+                {/* Fallback */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </ThemeProvider>
+        </RealtimeProvider>
       </EditionProvider>
     </AuthProvider>
   );

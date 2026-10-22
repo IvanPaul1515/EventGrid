@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
+import { useRealtimeEvent } from '../context/RealtimeContext';
 import { useNavigate } from 'react-router-dom';
 import { participantsService } from '../services/participants.service';
 import { eventsService } from '../services/events.service';
@@ -140,7 +141,74 @@ export const DashboardPage: React.FC = () => {
     loadAllData();
   }, [loadAllData]);
 
-  // Escuchar evento de sincronización en tiempo real
+  // Sincronización reactiva en tiempo real sin recargar página
+  useRealtimeEvent('CHECK_IN_CONFIRMED', (event) => {
+    const data = event.data;
+    setStats((prev: any) => {
+      if (!prev || !prev.participants) return prev;
+      const newAttended = (prev.participants.attended || 0) + 1;
+      const notAttended = Math.max(0, (prev.participants.notAttended || 0) - 1);
+      const activeTotal = Math.max(1, prev.participants.total - (prev.participants.cancelled || 0));
+      return {
+        ...prev,
+        participants: {
+          ...prev.participants,
+          attended: newAttended,
+          notAttended,
+          attendanceRate: Math.round((newAttended / activeTotal) * 100),
+        },
+      };
+    });
+
+    if (data?.registrationId) {
+      setRegistrations((prev) =>
+        prev.map((r) =>
+          r.id === data.registrationId
+            ? { ...r, attended: true, attendedAt: data.attendedAt || new Date().toISOString() }
+            : r
+        )
+      );
+    }
+  });
+
+  useRealtimeEvent('ATTENDANCE_REVERTED', (event) => {
+    const data = event.data;
+    setStats((prev: any) => {
+      if (!prev || !prev.participants) return prev;
+      const newAttended = Math.max(0, (prev.participants.attended || 0) - 1);
+      const notAttended = (prev.participants.notAttended || 0) + 1;
+      const activeTotal = Math.max(1, prev.participants.total - (prev.participants.cancelled || 0));
+      return {
+        ...prev,
+        participants: {
+          ...prev.participants,
+          attended: newAttended,
+          notAttended,
+          attendanceRate: Math.round((newAttended / activeTotal) * 100),
+        },
+      };
+    });
+
+    if (data?.registrationId) {
+      setRegistrations((prev) =>
+        prev.map((r) =>
+          r.id === data.registrationId
+            ? { ...r, attended: false, attendedAt: undefined }
+            : r
+        )
+      );
+    }
+  });
+
+  useRealtimeEvent('PARTICIPANT_REGISTERED', () => {
+    loadAllData(true);
+  });
+
+  useRealtimeEvent('PAYMENT_RECORDED', () => {
+    loadAllData(true);
+  });
+
+  // Escuchar evento de sincronización local
   useEffect(() => {
     const handleDataRefresh = () => {
       loadAllData(true);
@@ -221,21 +289,21 @@ export const DashboardPage: React.FC = () => {
           {/* Botones de Acción Rápida */}
           <div className="flex flex-wrap items-center gap-3 shrink-0">
             <button
-              onClick={() => navigate('/attendance')}
+              onClick={() => navigate('/attendance', { viewTransition: true })}
               className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
             >
               <UserCheck className="w-4 h-4" />
               <span>Control de Asistencia</span>
             </button>
             <button
-              onClick={() => navigate('/participants')}
+              onClick={() => navigate('/participants', { viewTransition: true })}
               className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-primary/20 transition-all cursor-pointer"
             >
               <Users className="w-4 h-4" />
               <span>Participantes ({totalCount})</span>
             </button>
             <button
-              onClick={() => navigate('/import')}
+              onClick={() => navigate('/import', { viewTransition: true })}
               className="px-4 py-2.5 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4" />
@@ -592,7 +660,7 @@ export const DashboardPage: React.FC = () => {
                 </p>
               </div>
               <button
-                onClick={() => navigate('/participants')}
+                onClick={() => navigate('/participants', { viewTransition: true })}
                 className="text-xs text-primary hover:underline font-semibold flex items-center gap-1 cursor-pointer"
               >
                 Ver todos los participantes &rarr;
@@ -642,7 +710,7 @@ export const DashboardPage: React.FC = () => {
                 </p>
               </div>
               <button
-                onClick={() => navigate('/editions')}
+                onClick={() => navigate('/editions', { viewTransition: true })}
                 className="text-xs text-primary hover:underline font-semibold flex items-center gap-1 cursor-pointer"
               >
                 Administrar todas &rarr;

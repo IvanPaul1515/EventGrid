@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useEdition } from '../../context/EditionContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useRealtime } from '../../context/RealtimeContext';
 import {
   Calendar,
   ChevronDown,
@@ -22,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
   const { user, logout } = useAuth();
   const { events, currentEvent, switchEdition } = useEdition();
   const { isDark, toggleTheme } = useTheme();
+  const { isConnected } = useRealtime();
   const [editionDropdownOpen, setEditionDropdownOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -160,6 +162,27 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
           <span>MODO DEMOSTRACIÓN ACTIVO</span>
         </div>
       )}
+
+      {/* Indicador de Sincronización en Tiempo Real */}
+      <div className="flex items-center gap-2">
+        {isConnected ? (
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-semibold shadow-sm"
+            title="Sincronizado en tiempo real (SSE)"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="hidden sm:inline">En vivo</span>
+          </div>
+        ) : (
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs font-semibold"
+            title="Reconectando sincronización en tiempo real..."
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <span className="hidden sm:inline">Sincronizando</span>
+          </div>
+        )}
+      </div>
 
       {/* Controles de la Derecha: Tema, Rol y Perfil */}
       <div className="flex items-center gap-3">

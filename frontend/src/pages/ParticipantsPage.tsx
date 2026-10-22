@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
+import { useRealtimeEvent } from '../context/RealtimeContext';
 import { participantsService, DetailedRegistration } from '../services/participants.service';
 import { Registration, PaymentMethod, SalesResponsible, TicketType } from '../types';
 import { api } from '../services/api';
@@ -37,22 +38,33 @@ export const ParticipantsPage: React.FC = () => {
   const { currentEvent } = useEdition();
   const { hasRole } = useAuth();
 
+  // Recuperar estado persistente en sesión para navegación fluida
+  const getInitialFilters = () => {
+    try {
+      const saved = sessionStorage.getItem('eventgrid_participants_filters');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  };
+  const init = getInitialFilters();
+
   // Datos y paginación
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [page, setPage] = useState<number>(init.page || 1);
+  const [limit, setLimit] = useState<number>(init.limit || 10);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
 
   // Filtros y ordenamiento
-  const [search, setSearch] = useState('');
-  const [paymentMethodId, setPaymentMethodId] = useState('');
-  const [salesResponsibleId, setSalesResponsibleId] = useState('');
-  const [status, setStatus] = useState('');
-  const [isCourtesyFilter, setIsCourtesyFilter] = useState<'ALL' | 'COURTESY' | 'REGULAR'>('ALL');
-  const [sortBy, setSortBy] = useState('createdAt');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [search, setSearch] = useState<string>(init.search || '');
+  const [paymentMethodId, setPaymentMethodId] = useState<string>(init.paymentMethodId || '');
+  const [salesResponsibleId, setSalesResponsibleId] = useState<string>(init.salesResponsibleId || '');
+  const [status, setStatus] = useState<string>(init.status || '');
+  const [isCourtesyFilter, setIsCourtesyFilter] = useState<'ALL' | 'COURTESY' | 'REGULAR'>(init.isCourtesyFilter || 'ALL');
+  const [sortBy, setSortBy] = useState<string>(init.sortBy || 'createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(init.sortOrder || 'desc');
   const [demoLoading, setDemoLoading] = useState(false);
   const [stats, setStats] = useState<any>(null);
 
@@ -141,18 +153,182 @@ export const ParticipantsPage: React.FC = () => {
     }
   }, [currentEvent, page, limit, search, paymentMethodId, salesResponsibleId, status, isCourtesyFilter, sortBy, sortOrder]);
 
-  // Recargar al cambiar de edición o filtros
+  // Persistir filtros en sessionStorage para no perder contexto durante navegación
+  useEffect(() => {
+    sessionStorage.setItem(
+      'eventgrid_participants_filters',
+      JSON.stringify({ page, limit, search, paymentMethodId, salesResponsibleId, status, isCourtesyFilter, sortBy, sortOrder })
+    );
+  }, [page, limit, search, paymentMethodId, salesResponsibleId, status, isCourtesyFilter, sortBy, sortOrder]);
+
+  // Al cambiar de edición (no durante navegación), restablecer página a 1
   useEffect(() => {
     setPage(1);
-  }, [currentEvent?.id, search, paymentMethodId, salesResponsibleId, status, isCourtesyFilter]);
+  }, [currentEvent?.id]);
 
   useEffect(() => {
     fetchParticipants();
   }, [fetchParticipants]);
 
-  // Sincronización inmediata entre módulos mediante eventos del sistema
+  // Sincronización en tiempo real sin recargar página completa ni perder contexto
+  useRealtimeEvent('CHECK_IN_CONFIRMED', (event) => {
+    const data = event.data;
+    if (!data?.registrationId) return;
+
+    setRegistrations((prev) =>
+      prev.map((reg) => {
+        if (reg.id === data.registrationId) {
+          return {
+            ...reg,
+            attended: true,
+            attendedAt: data.attendedAt || new Date().toISOString(),
+            attendedByUser: data.attendedByName ? { id: data.attendedByUserId || '', fullName: data.attendedByName, email: data.attendedByEmail || '' } : reg.attendedByUser,
+            tshirtSize: data.tshirtSize || reg.tshirtSize,
+            tshirtDelivered: data.tshirtDelivered !== undefined ? data.tshirtDelivered : reg.tshirtDelivered,
+          };
+        }
+        return reg;
+      })
+    );
+
+    setSelectedForDetail((prev) => {
+      if (prev && prev.id === data.registrationId) {
+        return {
+          ...prev,
+          attended: true,
+          attendedAt: data.attendedAt || new Date().toISOString(),
+          attendedByUser: data.attendedByName ? { id: data.attendedByUserId || '', fullName: data.attendedByName, email: data.attendedByEmail || '' } : prev.attendedByUser,
+          tshirtSize: data.tshirtSize || prev.tshirtSize,
+          tshirtDelivered: data.tshirtDelivered !== undefined ? data.tshirtDelivered : prev.tshirtDelivered,
+        };
+      }
+      return prev;
+    });
+
+    setStats((prev: any) => {
+      if (!prev) return prev;
+      const newAttended = (prev.attended || 0) + 1;
+      const total = prev.total || 1;
+      return {
+        ...prev,
+        attended: newAttended,
+        notAttended: Math.max(0, (prev.notAttended || 0) - 1),
+        attendanceRate: Math.round((newAttended / total) * 100),
+      };
+    });
+  });
+
+  useRealtimeEvent('ATTENDANCE_REVERTED', (event) => {
+    const data = event.data;
+    if (!data?.registrationId) return;
+
+    setRegistrations((prev) =>
+      prev.map((reg) => {
+        if (reg.id === data.registrationId) {
+          return {
+            ...reg,
+            attended: false,
+            attendedAt: undefined,
+            attendedByUser: undefined,
+          };
+        }
+        return reg;
+      })
+    );
+
+    setSelectedForDetail((prev) => {
+      if (prev && prev.id === data.registrationId) {
+        return {
+          ...prev,
+          attended: false,
+          attendedAt: undefined,
+          attendedByUser: undefined,
+        };
+      }
+      return prev;
+    });
+
+    setStats((prev: any) => {
+      if (!prev) return prev;
+      const newAttended = Math.max(0, (prev.attended || 0) - 1);
+      const total = prev.total || 1;
+      return {
+        ...prev,
+        attended: newAttended,
+        notAttended: (prev.notAttended || 0) + 1,
+        attendanceRate: Math.round((newAttended / total) * 100),
+      };
+    });
+  });
+
+  useRealtimeEvent('PAYMENT_RECORDED', (event) => {
+    const data = event.data;
+    if (!data?.registrationId) return;
+
+    setRegistrations((prev) =>
+      prev.map((reg) => {
+        if (reg.id === data.registrationId && data.registration) {
+          return {
+            ...reg,
+            amountPaid: data.registration.amountPaid,
+            balanceDue: data.registration.balanceDue,
+            paymentStatus: data.registration.paymentStatus,
+            status: data.registration.status,
+          };
+        }
+        return reg;
+      })
+    );
+
+    setSelectedForDetail((prev) => {
+      if (prev && prev.id === data.registrationId && data.registration) {
+        return {
+          ...prev,
+          amountPaid: data.registration.amountPaid,
+          balanceDue: data.registration.balanceDue,
+          paymentStatus: data.registration.paymentStatus,
+          status: data.registration.status,
+        };
+      }
+      return prev;
+    });
+  });
+
+  useRealtimeEvent('PARTICIPANT_REGISTERED', (event) => {
+    const data = event.data;
+    if (data?.registration) {
+      setTotal((t) => t + 1);
+      if (page === 1 && !search.trim() && !paymentMethodId && !status) {
+        setRegistrations((prev) => {
+          if (prev.some((r) => r.id === data.registration.id)) return prev;
+          return [data.registration, ...prev.slice(0, limit - 1)];
+        });
+      }
+    }
+  });
+
+  useRealtimeEvent('TSHIRT_DELIVERED', (event) => {
+    const data = event.data;
+    if (!data?.registrationId) return;
+
+    setRegistrations((prev) =>
+      prev.map((reg) => {
+        if (reg.id === data.registrationId) {
+          return {
+            ...reg,
+            tshirtDelivered: true,
+            tshirtSize: data.tshirtSize || reg.tshirtSize,
+          };
+        }
+        return reg;
+      })
+    );
+  });
+
+  // Compatibilidad con eventos locales
   useEffect(() => {
     const handleDataRefresh = () => {
+      // Refresco silencioso sin perder filtros ni paginación
       fetchParticipants();
     };
     window.addEventListener('eventgrid:data-refresh', handleDataRefresh);
