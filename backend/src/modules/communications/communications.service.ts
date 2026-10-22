@@ -2141,7 +2141,7 @@ export class CommunicationsService {
           data: {
             userId,
             action: 'EMAIL_RESEND_AUTHORIZED',
-            entity: 'Registration',
+            entity: 'REGISTRATION',
             entityId: registration.id,
             changes: JSON.stringify({
               templateCode: input.templateCode,
@@ -2300,7 +2300,7 @@ export class CommunicationsService {
         data: {
           userId,
           action: 'BULK_EMAIL_RESEND_AUTHORIZED',
-          entity: 'Event',
+          entity: 'EVENT',
           entityId: input.eventId,
           changes: JSON.stringify({
             templateCode: input.templateCode,

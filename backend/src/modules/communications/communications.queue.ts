@@ -978,7 +978,7 @@ export class EmailQueueWorker {
         data: {
           userId: confirmation.userId || null,
           action: 'RETRY_UNCERTAIN_BATCH',
-          entity: 'EmailBatchJob',
+          entity: 'EMAIL_BATCH_JOB',
           entityId: jobId,
           changes: JSON.stringify({
             adminUserId: confirmation.userId || null,
