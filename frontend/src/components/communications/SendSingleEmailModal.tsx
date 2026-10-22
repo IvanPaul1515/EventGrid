@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { communicationsService } from '../../services/communications.service';
 import { useEdition } from '../../context/EditionContext';
 import { EmailTemplate } from '../../types';
@@ -45,6 +46,12 @@ export const SendSingleEmailModal: React.FC<SendSingleEmailModalProps> = ({
   const [showPreview, setShowPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string>('');
   const [resultMessage, setResultMessage] = useState<{ type: 'success' | 'error'; text: string; simulated?: boolean } | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    message: string;
+    previousSentAt?: string;
+    previousStatus?: string;
+  } | null>(null);
+  const [resendReason, setResendReason] = useState('Reenvío autorizado expresamente');
 
   const isDemoActive = Boolean(currentEvent?.settings?.demoModeEnabled);
 
@@ -54,6 +61,7 @@ export const SendSingleEmailModal: React.FC<SendSingleEmailModalProps> = ({
       setResultMessage(null);
       setShowPreview(false);
       setConfirmedDemoSending(false);
+      setDuplicateWarning(null);
     }
   }, [isOpen, eventId]);
 
@@ -131,12 +139,60 @@ export const SendSingleEmailModal: React.FC<SendSingleEmailModalProps> = ({
         text: res.message,
         simulated: res.status === 'SIMULATED',
       });
+      setDuplicateWarning(null);
 
+      if (onSent) onSent();
+    } catch (err: any) {
+      const isDuplicate =
+        err?.response?.data?.details?.code === 'DUPLICATE_COMMUNICATION_WARNING' ||
+        err?.response?.data?.message?.includes('¿Deseas reenviarlo?');
+
+      if (isDuplicate) {
+        setDuplicateWarning({
+          message: err?.response?.data?.message || 'Este participante ya recibió un envío de este tipo.',
+          previousSentAt: err?.response?.data?.details?.previousSentAt,
+          previousStatus: err?.response?.data?.details?.previousStatus,
+        });
+      } else {
+        setResultMessage({
+          type: 'error',
+          text: err?.response?.data?.message || 'Error al procesar el envío de correo',
+        });
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleExecuteResend = async () => {
+    try {
+      setSending(true);
+      setResultMessage(null);
+      const res = await communicationsService.sendSingleEmail({
+        eventId,
+        registrationId,
+        templateCode: selectedTemplateCode,
+        customSubject: subject,
+        customBodyHtml: bodyHtml,
+        mode: deliveryMode,
+        simulateOnly: deliveryMode === 'SIMULATION',
+        confirmedDemoSending,
+        forceResend: true,
+        confirmedResend: true,
+        resendReason,
+      });
+
+      setResultMessage({
+        type: 'success',
+        text: res.message,
+        simulated: res.status === 'SIMULATED',
+      });
+      setDuplicateWarning(null);
       if (onSent) onSent();
     } catch (err: any) {
       setResultMessage({
         type: 'error',
-        text: err?.response?.data?.message || 'Error al procesar el envío de correo',
+        text: err?.response?.data?.message || 'Error al autorizar el reenvío',
       });
     } finally {
       setSending(false);
@@ -145,7 +201,7 @@ export const SendSingleEmailModal: React.FC<SendSingleEmailModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-sm animate-fade-in">
       <div className="relative w-full max-w-2xl bg-card rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Cabecera */}
@@ -379,6 +435,7 @@ export const SendSingleEmailModal: React.FC<SendSingleEmailModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

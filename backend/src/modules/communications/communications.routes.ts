@@ -44,5 +44,6 @@ router.post('/batches/:id/retry-uncertain', requireRole(['ADMIN']), Communicatio
 
 // Historial de correos (ADMIN y OPERATOR)
 router.get('/logs', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.getLogs);
+router.get('/history/registration/:registrationId', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.getRegistrationHistory);
 
 export default router;

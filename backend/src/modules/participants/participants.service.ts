@@ -1,3 +1,4 @@
+import { CommunicationsService } from '../communications/communications.service.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { prisma } from '../../config/db.js';
 import { InventoryService } from '../inventory/inventory.service.js';
@@ -297,10 +298,13 @@ export class ParticipantsService {
       return { ...l, changes: ch };
     });
 
+    const emailHistory = await CommunicationsService.getUnifiedHistoryForRegistration(registration.id);
+
     return {
       ...registration,
       customFields,
       auditLogs: parsedAuditLogs,
+      emailHistory,
       editionHistory: otherRegistrations.map((or) => ({
         registrationId: or.id,
         editionId: or.eventId,

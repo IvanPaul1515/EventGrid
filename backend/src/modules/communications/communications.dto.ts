@@ -34,6 +34,9 @@ export const SendEmailSchema = z.object({
   mode: z.enum(['REAL', 'SIMULATION']).optional(),
   simulateOnly: z.boolean().optional(),
   confirmedDemoSending: z.boolean().optional(),
+  forceResend: z.boolean().optional(),
+  confirmedResend: z.boolean().optional(),
+  resendReason: z.string().optional(),
 });
 
 export const SendBulkEmailSchema = z.object({
@@ -50,6 +53,12 @@ export const SendBulkEmailSchema = z.object({
     'ATTENDED',
     'NOT_ATTENDED',
     'SELECTED',
+    'PAID_WITHOUT_CONFIRMATION',
+    'COURTESY_WITHOUT_CONFIRMATION',
+    'WITHOUT_DIGITAL_TICKET',
+    'FAILED_COMMUNICATION',
+    'WITHOUT_REMINDER',
+    'ALREADY_RECEIVED',
   ]),
   selectedRegistrationIds: z.array(z.string()).optional(),
   ticketTypeId: z.string().optional().nullable(),
@@ -61,10 +70,13 @@ export const SendBulkEmailSchema = z.object({
   mode: z.enum(['REAL', 'SIMULATION']).optional(),
   simulateOnly: z.boolean().optional(),
   confirmedDemoSending: z.boolean().optional(),
+  excludeAlreadyNotified: z.boolean().optional(),
+  forceResend: z.boolean().optional(),
 });
 
 export const ValidateRecipientsSchema = z.object({
   eventId: z.string().min(1, 'El identificador del evento es requerido'),
+  templateCode: z.string().optional(),
   targetGroup: z.enum([
     'ALL',
     'CONFIRMED',
@@ -76,11 +88,18 @@ export const ValidateRecipientsSchema = z.object({
     'ATTENDED',
     'NOT_ATTENDED',
     'SELECTED',
+    'PAID_WITHOUT_CONFIRMATION',
+    'COURTESY_WITHOUT_CONFIRMATION',
+    'WITHOUT_DIGITAL_TICKET',
+    'FAILED_COMMUNICATION',
+    'WITHOUT_REMINDER',
+    'ALREADY_RECEIVED',
   ]),
   selectedRegistrationIds: z.array(z.string()).optional(),
   ticketTypeId: z.string().optional().nullable(),
   dateFrom: z.string().optional().nullable(),
   dateTo: z.string().optional().nullable(),
+  excludeAlreadyNotified: z.boolean().optional(),
 });
 
 export const EmailPreviewSchema = z.object({
@@ -105,6 +124,12 @@ export const QueryLogsSchema = z.object({
   status: z.string().optional().nullable(),
   search: z.string().optional().nullable(),
   batchId: z.string().optional().nullable(),
+  registrationId: z.string().optional().nullable(),
+  recipientEmail: z.string().optional().nullable(),
+  templateCode: z.string().optional().nullable(),
+  dateFrom: z.string().optional().nullable(),
+  dateTo: z.string().optional().nullable(),
+  sentByUserId: z.string().optional().nullable(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(20),
 });

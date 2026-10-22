@@ -230,6 +230,7 @@ describe('QA Communications Full Module — SMTP, Encryption, Bulk, Preview & Se
           registrationId: testRegId,
           templateCode: 'INSCRIPTION_CONFIRMATION',
           customSubject: 'Tu entrada oficial para BarCamp 2026',
+          mode: 'SIMULATION',
         });
 
       expect(res.status).toBe(200);

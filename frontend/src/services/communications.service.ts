@@ -1,5 +1,5 @@
 import { api } from './api';
-import { ApiResponse, EmailConfig, EmailTemplate, EmailLog } from '../types';
+import { ApiResponse, EmailConfig, EmailTemplate, EmailLog, UnifiedEmailRecord } from '../types';
 
 export interface EmailPreviewResult {
   subject: string;
@@ -18,12 +18,23 @@ export interface EmailPreviewResult {
 export interface RecipientStatsResult {
   totalSelected: number;
   eligibleCount: number;
+  alreadyNotifiedCount?: number;
   validEmailsCount: number;
   invalidEmailsCount: number;
   cancelledCount: number;
   demoCount: number;
   duplicateCount: number;
+  totalExcluded?: number;
+  excludedRecipients?: Array<{
+    registrationId: string;
+    fullName: string;
+    email: string;
+    reason: string;
+  }>;
+  todaySentByEventGrid?: number;
+  pendingQueueCount?: number;
   dailyQuotaLimit?: number;
+  estimatedRemaining?: number;
   quotaWarning?: string;
   sampleRecipients: Array<{
     id: string;
@@ -115,6 +126,9 @@ export const communicationsService = {
     mode?: 'REAL' | 'SIMULATION';
     simulateOnly?: boolean;
     confirmedDemoSending?: boolean;
+    forceResend?: boolean;
+    confirmedResend?: boolean;
+    resendReason?: string;
   }): Promise<{ logId: string; status: string; message: string; simulated?: boolean }> {
     const res = await api.post<ApiResponse<{ logId: string; status: string; message: string; simulated?: boolean }>>('/communications/send', payload);
     return res.data.data;
@@ -122,10 +136,12 @@ export const communicationsService = {
 
   async validateRecipients(payload: {
     eventId: string;
-    targetGroup: 'ALL' | 'CONFIRMED' | 'PAID' | 'PENDING' | 'PENDING_PAYMENT' | 'PARTIAL' | 'COURTESY' | 'ATTENDED' | 'NOT_ATTENDED' | 'SELECTED';
+    targetGroup: 'ALL' | 'CONFIRMED' | 'PAID' | 'PENDING' | 'PENDING_PAYMENT' | 'PARTIAL' | 'COURTESY' | 'ATTENDED' | 'NOT_ATTENDED' | 'SELECTED' | 'PAID_WITHOUT_CONFIRMATION' | 'COURTESY_WITHOUT_CONFIRMATION' | 'WITHOUT_DIGITAL_TICKET' | 'FAILED_COMMUNICATION' | 'WITHOUT_REMINDER' | 'ALREADY_RECEIVED';
     ticketTypeId?: string;
     dateFrom?: string;
     dateTo?: string;
+    templateCode?: string;
+    excludeAlreadyNotified?: boolean;
     selectedRegistrationIds?: string[];
   }): Promise<RecipientStatsResult> {
     const res = await api.post<ApiResponse<RecipientStatsResult>>('/communications/recipients/validate', payload);
@@ -135,7 +151,7 @@ export const communicationsService = {
   async sendBulkEmail(payload: {
     eventId: string;
     templateCode: string;
-    targetGroup: 'ALL' | 'CONFIRMED' | 'PAID' | 'PENDING' | 'PENDING_PAYMENT' | 'PARTIAL' | 'COURTESY' | 'ATTENDED' | 'NOT_ATTENDED' | 'SELECTED';
+    targetGroup: 'ALL' | 'CONFIRMED' | 'PAID' | 'PENDING' | 'PENDING_PAYMENT' | 'PARTIAL' | 'COURTESY' | 'ATTENDED' | 'NOT_ATTENDED' | 'SELECTED' | 'PAID_WITHOUT_CONFIRMATION' | 'COURTESY_WITHOUT_CONFIRMATION' | 'WITHOUT_DIGITAL_TICKET' | 'FAILED_COMMUNICATION' | 'WITHOUT_REMINDER' | 'ALREADY_RECEIVED';
     ticketTypeId?: string;
     dateFrom?: string;
     dateTo?: string;
@@ -146,6 +162,8 @@ export const communicationsService = {
     mode?: 'REAL' | 'SIMULATION';
     simulateOnly?: boolean;
     confirmedDemoSending?: boolean;
+    excludeAlreadyNotified?: boolean;
+    forceResend?: boolean;
   }): Promise<{ total: number; sent: number; simulated: number; failed: number; excluded?: number; batchId?: string; message: string }> {
     const res = await api.post<ApiResponse<{ total: number; sent: number; simulated: number; failed: number; excluded?: number; batchId?: string; message: string }>>('/communications/send-bulk', payload);
     return res.data.data;
@@ -187,6 +205,12 @@ export const communicationsService = {
     status?: string;
     search?: string;
     batchId?: string;
+    registrationId?: string;
+    recipientEmail?: string;
+    templateCode?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    sentByUserId?: string;
     page?: number;
     limit?: number;
   }): Promise<{ logs: EmailLog[]; total: number; page: number; totalPages: number }> {
@@ -205,5 +229,10 @@ export const communicationsService = {
       page: pagination.page,
       totalPages: pagination.totalPages,
     };
+  },
+
+  async getRegistrationHistory(registrationId: string): Promise<UnifiedEmailRecord[]> {
+    const res = await api.get<ApiResponse<UnifiedEmailRecord[]>>(`/communications/history/registration/${registrationId}`);
+    return res.data.data;
   },
 };

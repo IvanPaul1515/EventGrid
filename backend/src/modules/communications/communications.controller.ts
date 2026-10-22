@@ -276,4 +276,15 @@ export class CommunicationsController {
       next(error);
     }
   }
+
+  static async getRegistrationHistory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { registrationId } = req.params;
+      const history = await CommunicationsService.getUnifiedHistoryForRegistration(registrationId);
+      return res.status(200).json({ status: 'success', data: history });
+    } catch (error) {
+      next(error);
+    }
+  }
+
 }

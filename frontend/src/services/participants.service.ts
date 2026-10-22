@@ -1,5 +1,5 @@
 import { api } from './api';
-import { Registration, TicketType, Payment, AuditLog } from '../types';
+import { Registration, TicketType, Payment, AuditLog, UnifiedEmailRecord } from '../types';
 
 export interface ListParticipantsParams {
   page?: number;
@@ -39,6 +39,7 @@ export interface PaginatedResult<T> {
 
 export interface DetailedRegistration extends Registration {
   auditLogs?: AuditLog[];
+  emailHistory?: UnifiedEmailRecord[];
   editionHistory?: Array<{
     registrationId: string;
     editionId: string;
