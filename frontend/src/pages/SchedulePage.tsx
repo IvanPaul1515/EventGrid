@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
-import { scheduleService, ScheduleItem, ScheduleResponse } from '../services/schedule.service';
+import {
+  scheduleService,
+  ScheduleItem,
+  ScheduleResponse,
+  ScheduleChangeLog,
+  ScheduledNotification,
+} from '../services/schedule.service';
 import {
   Calendar,
   Clock,
@@ -24,6 +30,14 @@ import {
   Tag,
   Building,
   Smartphone,
+  Megaphone,
+  History,
+  Send,
+  Eye,
+  EyeOff,
+  Bell,
+  Star,
+  Users,
 } from 'lucide-react';
 
 export const SchedulePage: React.FC = () => {
@@ -65,8 +79,55 @@ export const SchedulePage: React.FC = () => {
     category: '',
     status: 'CONFIRMED' as 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED',
     description: '',
+    isKeynote: false,
+    visibility: 'PUBLISHED' as 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'CANCELLED',
+    publishAt: '',
+    announcementText: '',
   });
   const [savingItem, setSavingItem] = useState(false);
+
+  // Modal Confirmar Notificación de Cambio
+  const [showChangeNotificationModal, setShowChangeNotificationModal] = useState(false);
+  const [changePromptData, setChangePromptData] = useState<{
+    scheduleItemId: string;
+    changeLogId?: string;
+    diffs: any[];
+    itemTitle: string;
+  } | null>(null);
+  const [changeTargetGroup, setChangeTargetGroup] = useState<string>('ALL');
+  const [changeActionType, setChangeActionType] = useState<'SEND_NOW' | 'SCHEDULE'>('SEND_NOW');
+  const [changeScheduledFor, setChangeScheduledFor] = useState<string>('');
+  const [changeCustomNote, setChangeCustomNote] = useState<string>('');
+  const [sendingChangeNotification, setSendingChangeNotification] = useState(false);
+
+  // Modal Keynote Announcement
+  const [showKeynoteModal, setShowKeynoteModal] = useState(false);
+  const [keynoteItem, setKeynoteItem] = useState<ScheduleItem | null>(null);
+  const [keynoteTargetGroup, setKeynoteTargetGroup] = useState<string>('ALL');
+  const [keynoteAction, setKeynoteAction] = useState<
+    'PUBLISH_ONLY' | 'PUBLISH_AND_NOTIFY' | 'SCHEDULE_PUBLISH_AND_NOTIFY'
+  >('PUBLISH_AND_NOTIFY');
+  const [keynoteScheduledFor, setKeynoteScheduledFor] = useState<string>('');
+  const [keynoteCustomMessage, setKeynoteCustomMessage] = useState<string>('');
+  const [processingKeynote, setProcessingKeynote] = useState(false);
+
+  // Modal Crear Anuncio En Vivo / Pausa
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [announcementSubject, setAnnouncementSubject] = useState('');
+  const [announcementMessage, setAnnouncementMessage] = useState('');
+  const [announcementTargetGroup, setAnnouncementTargetGroup] = useState<string>('ALL');
+  const [announcementPriority, setAnnouncementPriority] = useState<'NORMAL' | 'URGENT'>('NORMAL');
+  const [announcementAction, setAnnouncementAction] = useState<'SEND_NOW' | 'SCHEDULE'>('SEND_NOW');
+  const [announcementScheduledFor, setAnnouncementScheduledFor] = useState<string>('');
+  const [sendingAnnouncement, setSendingAnnouncement] = useState(false);
+
+  // Modal Historial de Cambios y Notificaciones Programadas
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyTab, setHistoryTab] = useState<'LOGS' | 'SCHEDULED'>('LOGS');
+  const [changeLogs, setChangeLogs] = useState<ScheduleChangeLog[]>([]);
+  const [scheduledNotifications, setScheduledNotifications] = useState<ScheduledNotification[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [cancellingNotificationId, setCancellingNotificationId] = useState<string | null>(null);
 
   // Modal Importar
   const [showImportModal, setShowImportModal] = useState(false);
@@ -133,6 +194,10 @@ export const SchedulePage: React.FC = () => {
       category: data.categories[0] || 'Tecnología',
       status: 'CONFIRMED',
       description: '',
+      isKeynote: false,
+      visibility: 'PUBLISHED',
+      publishAt: '',
+      announcementText: '',
     });
     setShowItemModal(true);
   };
@@ -151,6 +216,10 @@ export const SchedulePage: React.FC = () => {
       category: item.category || '',
       status: item.status,
       description: item.description || '',
+      isKeynote: !!item.isKeynote,
+      visibility: item.visibility || 'PUBLISHED',
+      publishAt: item.publishAt ? new Date(item.publishAt).toISOString().slice(0, 16) : '',
+      announcementText: item.announcementText || '',
     });
     setShowItemModal(true);
   };
@@ -160,15 +229,36 @@ export const SchedulePage: React.FC = () => {
     if (!currentEvent?.id) return;
     try {
       setSavingItem(true);
+      const payload: any = {
+        ...itemForm,
+        publishAt: itemForm.visibility === 'SCHEDULED' && itemForm.publishAt ? new Date(itemForm.publishAt).toISOString() : null,
+      };
+
       if (editingItem) {
-        await scheduleService.updateItem(currentEvent.id, editingItem.id, itemForm);
-        setFeedback({ type: 'success', text: 'Charla actualizada correctamente' });
+        const res = await scheduleService.updateItem(currentEvent.id, editingItem.id, payload);
+        setShowItemModal(false);
+        loadSchedule();
+
+        if (res.meta?.hasRelevantChanges && res.meta.diffs?.length > 0) {
+          setChangePromptData({
+            scheduleItemId: editingItem.id,
+            changeLogId: res.meta.changeLog?.id,
+            diffs: res.meta.diffs,
+            itemTitle: itemForm.title,
+          });
+          setChangeTargetGroup('ALL');
+          setChangeActionType('SEND_NOW');
+          setChangeCustomNote('');
+          setShowChangeNotificationModal(true);
+        } else {
+          setFeedback({ type: 'success', text: 'Charla actualizada correctamente' });
+        }
       } else {
-        await scheduleService.createItem(currentEvent.id, itemForm);
+        await scheduleService.createItem(currentEvent.id, payload);
+        setShowItemModal(false);
         setFeedback({ type: 'success', text: 'Charla agregada al cronograma' });
+        loadSchedule();
       }
-      setShowItemModal(false);
-      loadSchedule();
     } catch (err: any) {
       setFeedback({
         type: 'error',
@@ -176,6 +266,150 @@ export const SchedulePage: React.FC = () => {
       });
     } finally {
       setSavingItem(false);
+    }
+  };
+
+  const handleConfirmChangeNotification = async () => {
+    if (!currentEvent?.id || !changePromptData) return;
+    try {
+      setSendingChangeNotification(true);
+      await scheduleService.notifyScheduleChange(currentEvent.id, {
+        scheduleItemId: changePromptData.scheduleItemId,
+        changeLogId: changePromptData.changeLogId,
+        action: changeActionType,
+        targetGroup: changeTargetGroup,
+        scheduledFor: changeActionType === 'SCHEDULE' && changeScheduledFor ? new Date(changeScheduledFor).toISOString() : undefined,
+        customNote: changeCustomNote.trim() || undefined,
+        changesSummary: changePromptData.diffs,
+      });
+
+      setFeedback({
+        type: 'success',
+        text:
+          changeActionType === 'SCHEDULE'
+            ? 'Notificación de cambio programada exitosamente.'
+            : 'Notificación de cambio enviada exitosamente a los asistentes.',
+      });
+      setShowChangeNotificationModal(false);
+      setChangePromptData(null);
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        text: err.response?.data?.message || 'Error al enviar la notificación de cambio',
+      });
+    } finally {
+      setSendingChangeNotification(false);
+    }
+  };
+
+  const handleDismissChangeNotification = () => {
+    setShowChangeNotificationModal(false);
+    setChangePromptData(null);
+    setFeedback({
+      type: 'success',
+      text: 'Charla actualizada sin enviar notificación a los asistentes.',
+    });
+  };
+
+  const handlePublishKeynoteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentEvent?.id || !keynoteItem) return;
+    try {
+      setProcessingKeynote(true);
+      const res = await scheduleService.publishKeynote(currentEvent.id, keynoteItem.id, {
+        action: keynoteAction,
+        targetGroup: keynoteTargetGroup,
+        scheduledFor: keynoteAction === 'SCHEDULE_PUBLISH_AND_NOTIFY' && keynoteScheduledFor ? new Date(keynoteScheduledFor).toISOString() : undefined,
+        customMessage: keynoteCustomMessage.trim() || undefined,
+      });
+
+      setFeedback({
+        type: 'success',
+        text: res.message || 'Keynote procesado exitosamente',
+      });
+      setShowKeynoteModal(false);
+      setKeynoteItem(null);
+      loadSchedule();
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        text: err.response?.data?.message || 'Error al procesar el Keynote',
+      });
+    } finally {
+      setProcessingKeynote(false);
+    }
+  };
+
+  const handleSendAnnouncementSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentEvent?.id || !announcementSubject.trim() || !announcementMessage.trim()) return;
+    try {
+      setSendingAnnouncement(true);
+      const res = await scheduleService.createAnnouncement(currentEvent.id, {
+        subject: announcementSubject.trim(),
+        message: announcementMessage.trim(),
+        action: announcementAction,
+        targetGroup: announcementTargetGroup,
+        scheduledFor: announcementAction === 'SCHEDULE' && announcementScheduledFor ? new Date(announcementScheduledFor).toISOString() : undefined,
+        priority: announcementPriority,
+      });
+
+      setFeedback({
+        type: 'success',
+        text: res.message || 'Anuncio procesado exitosamente',
+      });
+      setShowAnnouncementModal(false);
+      setAnnouncementSubject('');
+      setAnnouncementMessage('');
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        text: err.response?.data?.message || 'Error al enviar el anuncio',
+      });
+    } finally {
+      setSendingAnnouncement(false);
+    }
+  };
+
+  const loadHistory = async () => {
+    if (!currentEvent?.id) return;
+    try {
+      setLoadingHistory(true);
+      const [logs, notifs] = await Promise.all([
+        scheduleService.getChangeHistory(currentEvent.id),
+        scheduleService.getScheduledNotifications(currentEvent.id),
+      ]);
+      setChangeLogs(logs);
+      setScheduledNotifications(notifs);
+    } catch (err) {
+      console.error('Error al cargar historial:', err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleOpenHistory = () => {
+    setShowHistoryModal(true);
+    loadHistory();
+  };
+
+  const handleCancelNotification = async (id: string) => {
+    if (!currentEvent?.id) return;
+    try {
+      setCancellingNotificationId(id);
+      await scheduleService.cancelScheduledNotification(currentEvent.id, id);
+      setFeedback({
+        type: 'success',
+        text: 'Notificación programada cancelada exitosamente.',
+      });
+      loadHistory();
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        text: err.response?.data?.message || 'Error al cancelar la notificación',
+      });
+    } finally {
+      setCancellingNotificationId(null);
     }
   };
 
@@ -317,7 +551,7 @@ export const SchedulePage: React.FC = () => {
             Cronograma de Conferencias
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Gestión completa de ponencias, horarios, aulas y agenda para {currentEvent?.name || 'la edición actual'}
+            Gestión de ponencias, anuncios en vivo, avisos de cambios y keynotes para {currentEvent?.name || 'la edición actual'}
           </p>
         </div>
 
@@ -344,6 +578,30 @@ export const SchedulePage: React.FC = () => {
 
           {canEdit && (
             <>
+              {/* Botón Historial y Alertas */}
+              <button
+                onClick={handleOpenHistory}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-indigo-300 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+                title="Ver historial de cambios y notificaciones programadas"
+              >
+                <History className="w-4 h-4 text-indigo-500" />
+                Historial y Alertas
+              </button>
+
+              {/* Botón Crear Anuncio En Vivo */}
+              <button
+                onClick={() => {
+                  setAnnouncementSubject('');
+                  setAnnouncementMessage('');
+                  setShowAnnouncementModal(true);
+                }}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"
+                title="Enviar un anuncio en vivo o aviso de pausa a los asistentes"
+              >
+                <Megaphone className="w-4 h-4 text-amber-500" />
+                Crear Anuncio
+              </button>
+
               <button
                 onClick={() => setShowPdfModal(true)}
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -559,18 +817,24 @@ export const SchedulePage: React.FC = () => {
             const isConfirmed = item.status === 'CONFIRMED';
             const isRescheduled = item.status === 'RESCHEDULED';
             const isCancelled = item.status === 'CANCELLED';
-            const isRegistration = (item.category?.toLowerCase() === 'registro') ||
-                                   item.title.toLowerCase().includes('registro') ||
-                                   item.title.toLowerCase().includes('acreditaci');
-            const isDemo = (item.category?.toLowerCase().includes('demo')) ||
-                           item.title.toLowerCase().includes('[demo]') ||
-                           (item.speakerName?.toLowerCase().includes('demo') ?? false);
+            const isRegistration =
+              item.category?.toLowerCase() === 'registro' ||
+              item.title.toLowerCase().includes('registro') ||
+              item.title.toLowerCase().includes('acreditaci');
+            const isDemo =
+              item.category?.toLowerCase().includes('demo') ||
+              item.title.toLowerCase().includes('[demo]') ||
+              (item.speakerName?.toLowerCase().includes('demo') ?? false);
+            const isKeynote = !!item.isKeynote;
+            const visibility = item.visibility || 'PUBLISHED';
 
             return (
               <div
                 key={item.id}
                 className={`rounded-xl border p-5 transition-all hover:shadow-md ${
-                  isRegistration
+                  isKeynote
+                    ? 'bg-gradient-to-r from-amber-50/90 via-white to-amber-50/50 dark:from-amber-950/30 dark:via-gray-800 dark:to-amber-950/10 border-amber-300 dark:border-amber-800/80 shadow-sm ring-1 ring-amber-400/30'
+                    : isRegistration
                     ? 'bg-gradient-to-r from-indigo-50/80 via-white to-indigo-50/40 dark:from-indigo-950/30 dark:via-gray-800 dark:to-indigo-950/10 border-indigo-200 dark:border-indigo-800/80 shadow-sm'
                     : isCancelled
                     ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-800 opacity-60'
@@ -580,14 +844,24 @@ export const SchedulePage: React.FC = () => {
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                   <div className="flex items-start gap-4">
                     {/* Horario */}
-                    <div className={`text-center border rounded-xl p-3 min-w-[90px] ${
-                      isRegistration
-                        ? 'bg-indigo-100/70 dark:bg-indigo-950/70 border-indigo-200 dark:border-indigo-800'
-                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700'
-                    }`}>
-                      <p className={`text-sm font-extrabold font-mono ${
-                        isRegistration ? 'text-indigo-900 dark:text-indigo-200' : 'text-gray-900 dark:text-white'
-                      }`}>
+                    <div
+                      className={`text-center border rounded-xl p-3 min-w-[90px] ${
+                        isKeynote
+                          ? 'bg-amber-100/70 dark:bg-amber-950/70 border-amber-300 dark:border-amber-800'
+                          : isRegistration
+                          ? 'bg-indigo-100/70 dark:bg-indigo-950/70 border-indigo-200 dark:border-indigo-800'
+                          : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700'
+                      }`}
+                    >
+                      <p
+                        className={`text-sm font-extrabold font-mono ${
+                          isKeynote
+                            ? 'text-amber-900 dark:text-amber-200'
+                            : isRegistration
+                            ? 'text-indigo-900 dark:text-indigo-200'
+                            : 'text-gray-900 dark:text-white'
+                        }`}
+                      >
                         {item.startTime}
                       </p>
                       <p className="text-xs text-gray-400 font-mono mt-0.5">a {item.endTime}</p>
@@ -599,6 +873,13 @@ export const SchedulePage: React.FC = () => {
                     {/* Contenido principal */}
                     <div className="space-y-1.5">
                       <div className="flex flex-wrap items-center gap-2">
+                        {/* Keynote Badge */}
+                        {isKeynote && (
+                          <span className="px-2.5 py-0.5 text-xs font-black uppercase tracking-wider rounded-md bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-sm flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" /> Keynote Magistral
+                          </span>
+                        )}
+
                         <h3
                           className={`text-base font-bold text-gray-900 dark:text-white ${
                             isCancelled ? 'line-through text-gray-400' : ''
@@ -620,19 +901,36 @@ export const SchedulePage: React.FC = () => {
                           {isConfirmed ? 'Confirmada' : isRescheduled ? 'Reagendada' : 'Cancelada'}
                         </span>
 
+                        {/* Visibility Pill */}
+                        {visibility === 'DRAFT' && (
+                          <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 flex items-center gap-1">
+                            <EyeOff className="w-3 h-3" /> Borrador (Oculto)
+                          </span>
+                        )}
+                        {visibility === 'SCHEDULED' && (
+                          <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-sky-100 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-800 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> Programada
+                            {item.publishAt ? ` (${new Date(item.publishAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
+                          </span>
+                        )}
+
                         {isRegistration ? (
                           <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 flex items-center gap-1">
                             <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> Registro / Acreditación
                           </span>
-                        ) : item.category && (
-                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                            isDemo
-                              ? 'bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1'
-                              : 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/50'
-                          }`}>
-                            {isDemo && <Sparkles className="w-3 h-3 text-purple-500" />}
-                            {item.category}
-                          </span>
+                        ) : (
+                          item.category && (
+                            <span
+                              className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                                isDemo
+                                  ? 'bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1'
+                                  : 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/50'
+                              }`}
+                            >
+                              {isDemo && <Sparkles className="w-3 h-3 text-purple-500" />}
+                              {item.category}
+                            </span>
+                          )
                         )}
                       </div>
 
@@ -643,9 +941,7 @@ export const SchedulePage: React.FC = () => {
                             <span className="inline-flex items-center gap-1 font-medium">
                               <User className="w-3.5 h-3.5 text-gray-400" />
                               {item.speakerName}
-                              {item.speakerCompany && (
-                                <span className="text-gray-400">({item.speakerCompany})</span>
-                              )}
+                              {item.speakerCompany && <span className="text-gray-400">({item.speakerCompany})</span>}
                             </span>
                           )}
 
@@ -669,7 +965,26 @@ export const SchedulePage: React.FC = () => {
 
                   {/* Acciones */}
                   {canEdit && (
-                    <div className="flex items-center gap-2 self-end sm:self-start">
+                    <div className="flex flex-wrap items-center gap-2 self-end sm:self-start">
+                      {/* Botón de Publicar / Anunciar Keynote */}
+                      {isKeynote && (
+                        <button
+                          onClick={() => {
+                            setKeynoteItem(item);
+                            setKeynoteTargetGroup('ALL');
+                            setKeynoteAction(visibility === 'DRAFT' ? 'PUBLISH_AND_NOTIFY' : 'PUBLISH_AND_NOTIFY');
+                            setKeynoteScheduledFor('');
+                            setKeynoteCustomMessage('');
+                            setShowKeynoteModal(true);
+                          }}
+                          className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1.5 shadow-sm transition-colors"
+                          title="Publicar o anunciar este Keynote"
+                        >
+                          <Megaphone className="w-3.5 h-3.5" />
+                          Anunciar Keynote
+                        </button>
+                      )}
+
                       <button
                         onClick={() => handleOpenEdit(item)}
                         className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -711,6 +1026,58 @@ export const SchedulePage: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveItem} className="mt-4 space-y-4">
+              {/* Keynote Checkbox */}
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    ¿Es una conferencia magistral (Keynote)?
+                  </span>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                    Permite visibilidad especial, campaña de anuncio dedicada y aviso destacado.
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={itemForm.isKeynote}
+                  onChange={(e) => setItemForm({ ...itemForm, isKeynote: e.target.checked })}
+                  className="w-5 h-5 text-amber-600 rounded border-gray-300 focus:ring-amber-500 cursor-pointer"
+                />
+              </div>
+
+              {/* Visibilidad */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Visibilidad Pública
+                  </label>
+                  <select
+                    value={itemForm.visibility}
+                    onChange={(e) => setItemForm({ ...itemForm, visibility: e.target.value as any })}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  >
+                    <option value="PUBLISHED">Publicada (Visible)</option>
+                    <option value="DRAFT">Borrador (Oculta al público)</option>
+                    <option value="SCHEDULED">Programada (Auto-publicar)</option>
+                    <option value="CANCELLED">Cancelada</option>
+                  </select>
+                </div>
+
+                {itemForm.visibility === 'SCHEDULED' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      Fecha y Hora de Publicación
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={itemForm.publishAt}
+                      onChange={(e) => setItemForm({ ...itemForm, publishAt: e.target.value })}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                   Título de la Conferencia / Actividad *
@@ -863,6 +1230,656 @@ export const SchedulePage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL NOTIFICAR CAMBIOS DETECTADOS */}
+      {showChangeNotificationModal && changePromptData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-lg w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-amber-600">
+              <Bell className="w-6 h-6 flex-shrink-0 animate-bounce" />
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                  Se ha actualizado esta actividad
+                </h3>
+                <p className="text-xs text-gray-500">¿Deseas notificar los cambios a los asistentes?</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+              <p className="font-bold">Actividad: {changePromptData.itemTitle}</p>
+              <div className="space-y-1">
+                <p className="font-semibold text-gray-700 dark:text-gray-300">Modificaciones detectadas:</p>
+                <div className="space-y-1 pl-2">
+                  {changePromptData.diffs.map((d: any, idx: number) => (
+                    <div key={idx} className="flex items-center gap-2 font-mono text-[11px]">
+                      <span className="font-bold text-gray-600 dark:text-gray-400">{d.field}:</span>
+                      <span className="line-through text-rose-500">{String(d.oldValue || '—')}</span>
+                      <span>→</span>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">{String(d.newValue || '—')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Configuración de Destinatarios */}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Audiencia / Destinatarios
+                </label>
+                <select
+                  value={changeTargetGroup}
+                  onChange={(e) => setChangeTargetGroup(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                >
+                  <option value="ALL">Todos los inscritos</option>
+                  <option value="CONFIRMED">Inscripciones confirmadas</option>
+                  <option value="PAID">Participantes pagados</option>
+                  <option value="COURTESY">Cortesías / Invitados especiales</option>
+                  <option value="ATTENDED">Asistentes presentes (Check-in realizado)</option>
+                  <option value="NOT_ATTENDED">Pendientes de check-in</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Tipo de Notificación
+                </label>
+                <div className="flex gap-4">
+                  <label className="inline-flex items-center gap-2 text-sm cursor-pointer text-gray-700 dark:text-gray-300">
+                    <input
+                      type="radio"
+                      name="changeActionType"
+                      checked={changeActionType === 'SEND_NOW'}
+                      onChange={() => setChangeActionType('SEND_NOW')}
+                      className="text-rose-600 focus:ring-rose-500"
+                    />
+                    Notificar ahora
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm cursor-pointer text-gray-700 dark:text-gray-300">
+                    <input
+                      type="radio"
+                      name="changeActionType"
+                      checked={changeActionType === 'SCHEDULE'}
+                      onChange={() => setChangeActionType('SCHEDULE')}
+                      className="text-rose-600 focus:ring-rose-500"
+                    />
+                    Programar notificación
+                  </label>
+                </div>
+              </div>
+
+              {changeActionType === 'SCHEDULE' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Fecha y Hora programada para el envío
+                  </label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={changeScheduledFor}
+                    onChange={(e) => setChangeScheduledFor(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Nota adicional para el correo (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={changeCustomNote}
+                  onChange={(e) => setChangeCustomNote(e.target.value)}
+                  placeholder="Ej. Disculpen los inconvenientes, se amplió el salón para mayor comodidad."
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-between gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={handleDismissChangeNotification}
+                className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                No notificar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmChangeNotification}
+                disabled={sendingChangeNotification || (changeActionType === 'SCHEDULE' && !changeScheduledFor)}
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {sendingChangeNotification ? (
+                  <>
+                    <Clock className="w-4 h-4 animate-spin" /> Procesando...
+                  </>
+                ) : changeActionType === 'SCHEDULE' ? (
+                  <>
+                    <Clock className="w-4 h-4" /> Programar Notificación
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" /> Notificar Ahora
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PUBLICAR Y ANUNCIAR KEYNOTE */}
+      {showKeynoteModal && keynoteItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-lg w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-6 h-6 text-amber-500" />
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Publicar y Anunciar Keynote
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  setShowKeynoteModal(false);
+                  setKeynoteItem(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Resumen del Keynote */}
+            <div className="p-4 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/40 dark:to-yellow-950/20 border border-amber-200 dark:border-amber-800 rounded-xl space-y-1.5 text-xs text-amber-950 dark:text-amber-200">
+              <p className="font-extrabold text-sm text-gray-900 dark:text-white">{keynoteItem.title}</p>
+              {keynoteItem.speakerName && (
+                <p className="font-medium text-amber-800 dark:text-amber-300">
+                  Orador: {keynoteItem.speakerName} {keynoteItem.speakerCompany ? `(${keynoteItem.speakerCompany})` : ''}
+                </p>
+              )}
+              <p className="text-gray-600 dark:text-gray-400">
+                Horario: {keynoteItem.day} • {keynoteItem.startTime} - {keynoteItem.endTime} {keynoteItem.room ? `• ${keynoteItem.room}` : ''}
+              </p>
+              {keynoteItem.description && (
+                <p className="text-gray-500 dark:text-gray-400 italic line-clamp-2 mt-1">
+                  "{keynoteItem.description}"
+                </p>
+              )}
+            </div>
+
+            <form onSubmit={handlePublishKeynoteSubmit} className="space-y-4">
+              {/* Opciones de Acción */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Acción a realizar *
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 p-2.5 rounded-lg border border-gray-200 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <input
+                      type="radio"
+                      name="keynoteAction"
+                      value="PUBLISH_AND_NOTIFY"
+                      checked={keynoteAction === 'PUBLISH_AND_NOTIFY'}
+                      onChange={() => setKeynoteAction('PUBLISH_AND_NOTIFY')}
+                      className="text-amber-600 focus:ring-amber-500"
+                    />
+                    <div className="text-xs">
+                      <p className="font-bold text-gray-900 dark:text-white">Publicar y enviar anuncio ahora</p>
+                      <p className="text-gray-500">Hace pública la charla y despacha un correo de anuncio inmediato a la audiencia.</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2 p-2.5 rounded-lg border border-gray-200 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <input
+                      type="radio"
+                      name="keynoteAction"
+                      value="SCHEDULE_PUBLISH_AND_NOTIFY"
+                      checked={keynoteAction === 'SCHEDULE_PUBLISH_AND_NOTIFY'}
+                      onChange={() => setKeynoteAction('SCHEDULE_PUBLISH_AND_NOTIFY')}
+                      className="text-amber-600 focus:ring-amber-500"
+                    />
+                    <div className="text-xs">
+                      <p className="font-bold text-gray-900 dark:text-white">Programar publicación y envío</p>
+                      <p className="text-gray-500">Se revelará y notificará automáticamente en la fecha y hora configurada.</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2 p-2.5 rounded-lg border border-gray-200 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <input
+                      type="radio"
+                      name="keynoteAction"
+                      value="PUBLISH_ONLY"
+                      checked={keynoteAction === 'PUBLISH_ONLY'}
+                      onChange={() => setKeynoteAction('PUBLISH_ONLY')}
+                      className="text-amber-600 focus:ring-amber-500"
+                    />
+                    <div className="text-xs">
+                      <p className="font-bold text-gray-900 dark:text-white">Solo publicar en el cronograma</p>
+                      <p className="text-gray-500">Muestra la charla al público sin enviar correos a los asistentes.</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {keynoteAction === 'SCHEDULE_PUBLISH_AND_NOTIFY' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Fecha y Hora de Publicación y Envío *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={keynoteScheduledFor}
+                    onChange={(e) => setKeynoteScheduledFor(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  />
+                </div>
+              )}
+
+              {keynoteAction !== 'PUBLISH_ONLY' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      Destinatarios del Anuncio
+                    </label>
+                    <select
+                      value={keynoteTargetGroup}
+                      onChange={(e) => setKeynoteTargetGroup(e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    >
+                      <option value="ALL">Todos los inscritos</option>
+                      <option value="CONFIRMED">Inscripciones confirmadas</option>
+                      <option value="PAID">Participantes pagados</option>
+                      <option value="COURTESY">Cortesías / Invitados especiales</option>
+                      <option value="ATTENDED">Asistentes presentes (Check-in realizado)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      Mensaje de Introducción Personalizado (Opcional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={keynoteCustomMessage}
+                      onChange={(e) => setKeynoteCustomMessage(e.target.value)}
+                      placeholder="Ej. Nos complace anunciar a nuestro expositor principal de este año..."
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowKeynoteModal(false);
+                    setKeynoteItem(null);
+                  }}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={processingKeynote || (keynoteAction === 'SCHEDULE_PUBLISH_AND_NOTIFY' && !keynoteScheduledFor)}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 flex items-center gap-2"
+                >
+                  {processingKeynote ? (
+                    <>
+                      <Clock className="w-4 h-4 animate-spin" /> Procesando...
+                    </>
+                  ) : (
+                    <>
+                      <Megaphone className="w-4 h-4" /> Confirmar Keynote
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CREAR ANUNCIO EN VIVO / PAUSA */}
+      {showAnnouncementModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-lg w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <Megaphone className="w-6 h-6 text-amber-500" />
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Crear Anuncio en Vivo
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowAnnouncementModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSendAnnouncementSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Asunto del Anuncio *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={announcementSubject}
+                  onChange={(e) => setAnnouncementSubject(e.target.value)}
+                  placeholder="Ej. ¡Pausa de Café y Sesión de Networking!"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Mensaje del Anuncio *
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  value={announcementMessage}
+                  onChange={(e) => setAnnouncementMessage(e.target.value)}
+                  placeholder="Escribe el mensaje que recibirán los asistentes por correo..."
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Destinatarios
+                  </label>
+                  <select
+                    value={announcementTargetGroup}
+                    onChange={(e) => setAnnouncementTargetGroup(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  >
+                    <option value="ALL">Todos los inscritos</option>
+                    <option value="ATTENDED">Asistentes presentes (Check-in)</option>
+                    <option value="CONFIRMED">Inscripciones confirmadas</option>
+                    <option value="PAID">Participantes pagados</option>
+                    <option value="COURTESY">Cortesías</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Prioridad
+                  </label>
+                  <select
+                    value={announcementPriority}
+                    onChange={(e) => setAnnouncementPriority(e.target.value as any)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  >
+                    <option value="NORMAL">Normal</option>
+                    <option value="URGENT">Urgente / Inmediata</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Acción de Envío
+                </label>
+                <div className="flex gap-4">
+                  <label className="inline-flex items-center gap-2 text-sm cursor-pointer text-gray-700 dark:text-gray-300">
+                    <input
+                      type="radio"
+                      name="announcementAction"
+                      checked={announcementAction === 'SEND_NOW'}
+                      onChange={() => setAnnouncementAction('SEND_NOW')}
+                      className="text-amber-600 focus:ring-amber-500"
+                    />
+                    Enviar ahora
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm cursor-pointer text-gray-700 dark:text-gray-300">
+                    <input
+                      type="radio"
+                      name="announcementAction"
+                      checked={announcementAction === 'SCHEDULE'}
+                      onChange={() => setAnnouncementAction('SCHEDULE')}
+                      className="text-amber-600 focus:ring-amber-500"
+                    />
+                    Programar
+                  </label>
+                </div>
+              </div>
+
+              {announcementAction === 'SCHEDULE' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Fecha y Hora programada para el envío
+                  </label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={announcementScheduledFor}
+                    onChange={(e) => setAnnouncementScheduledFor(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  />
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAnnouncementModal(false)}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={sendingAnnouncement || (announcementAction === 'SCHEDULE' && !announcementScheduledFor)}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 flex items-center gap-2"
+                >
+                  {sendingAnnouncement ? (
+                    <>
+                      <Clock className="w-4 h-4 animate-spin" /> Enviando...
+                    </>
+                  ) : announcementAction === 'SCHEDULE' ? (
+                    <>
+                      <Clock className="w-4 h-4" /> Programar Anuncio
+                    </>
+                  ) : (
+                    <>
+                      <Megaphone className="w-4 h-4" /> Enviar Anuncio Ahora
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL HISTORIAL Y ALERTAS */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-2xl w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <History className="w-6 h-6 text-indigo-500" />
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Historial de Cambios y Notificaciones
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-gray-200 dark:border-gray-800 gap-4">
+              <button
+                onClick={() => setHistoryTab('LOGS')}
+                className={`pb-2 text-sm font-bold border-b-2 transition-colors ${
+                  historyTab === 'LOGS'
+                    ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                Registro de Cambios ({changeLogs.length})
+              </button>
+              <button
+                onClick={() => setHistoryTab('SCHEDULED')}
+                className={`pb-2 text-sm font-bold border-b-2 transition-colors ${
+                  historyTab === 'SCHEDULED'
+                    ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                Notificaciones Programadas ({scheduledNotifications.length})
+              </button>
+            </div>
+
+            {loadingHistory ? (
+              <div className="py-12 text-center text-gray-400 text-sm">
+                <Clock className="w-5 h-5 animate-spin mx-auto mb-2" />
+                Cargando historial...
+              </div>
+            ) : historyTab === 'LOGS' ? (
+              <div className="space-y-3">
+                {changeLogs.length === 0 ? (
+                  <p className="text-center py-8 text-sm text-gray-400">
+                    No se han registrado modificaciones de cronograma aún.
+                  </p>
+                ) : (
+                  changeLogs.map((log) => {
+                    const diffs = Array.isArray(log.diffPayload)
+                      ? log.diffPayload
+                      : typeof log.diffPayload === 'string'
+                      ? JSON.parse(log.diffPayload || '[]')
+                      : [];
+
+                    return (
+                      <div
+                        key={log.id}
+                        className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700/60 text-xs space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-gray-900 dark:text-white">
+                            {log.scheduleItem?.title || log.changeType}
+                          </span>
+                          <span className="text-[11px] text-gray-400 font-mono">
+                            {new Date(log.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+
+                        {diffs.length > 0 && (
+                          <div className="space-y-1 pt-1 border-t border-gray-100 dark:border-gray-700/40">
+                            {diffs.map((d: any, idx: number) => (
+                              <div key={idx} className="flex items-center gap-1.5 font-mono text-[11px]">
+                                <span className="font-semibold text-gray-600 dark:text-gray-400">{d.field}:</span>
+                                <span className="line-through text-rose-500">{String(d.oldValue || '—')}</span>
+                                <span>→</span>
+                                <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                                  {String(d.newValue || '—')}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2 pt-1 text-[11px]">
+                          <span
+                            className={`px-2 py-0.5 rounded font-semibold ${
+                              log.notified
+                                ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400'
+                                : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                            }`}
+                          >
+                            {log.notified ? '✓ Notificado a asistentes' : 'Sin notificación'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {scheduledNotifications.length === 0 ? (
+                  <p className="text-center py-8 text-sm text-gray-400">
+                    No hay notificaciones programadas pendientes o registradas.
+                  </p>
+                ) : (
+                  scheduledNotifications.map((notif) => {
+                    const isPending = notif.status === 'PENDING';
+                    return (
+                      <div
+                        key={notif.id}
+                        className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700/60 text-xs flex items-center justify-between gap-3"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-900 dark:text-white uppercase">
+                              {notif.type}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isPending
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400'
+                                  : notif.status === 'COMPLETED'
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400'
+                                  : notif.status === 'CANCELLED'
+                                  ? 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                                  : 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400'
+                              }`}
+                            >
+                              {notif.status}
+                            </span>
+                          </div>
+                          <p className="text-gray-500">
+                            Audiencia: <span className="font-semibold">{notif.targetGroup}</span> • Programado para:{' '}
+                            <span className="font-mono font-semibold text-gray-700 dark:text-gray-300">
+                              {new Date(notif.scheduledFor).toLocaleString()}
+                            </span>
+                          </p>
+                        </div>
+
+                        {isPending && (
+                          <button
+                            onClick={() => handleCancelNotification(notif.id)}
+                            disabled={cancellingNotificationId === notif.id}
+                            className="px-3 py-1.5 rounded-lg border border-rose-300 dark:border-rose-800 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold disabled:opacity-50"
+                          >
+                            {cancellingNotificationId === notif.id ? 'Cancelando...' : 'Cancelar Envío'}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1021,10 +2038,7 @@ export const SchedulePage: React.FC = () => {
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                 <h3 className="text-sm font-bold text-white tracking-wide uppercase">En Vivo / Agenda Móvil</h3>
               </div>
-              <button
-                onClick={() => setShowMobilePreview(false)}
-                className="text-gray-400 hover:text-white"
-              >
+              <button onClick={() => setShowMobilePreview(false)} className="text-gray-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>

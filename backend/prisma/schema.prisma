@@ -149,6 +149,8 @@ model Event {
   registrationSequence   RegistrationSequence?
   emailBatchJobs         EmailBatchJob[]
   scheduleItems          ScheduleItem[]
+  scheduleChangeLogs     ScheduleChangeLog[]
+  scheduledNotifications ScheduledNotification[]
 
   @@index([year])
   @@index([status])
@@ -643,13 +645,67 @@ model ScheduleItem {
   status         String   @default("CONFIRMED")
   description    String?
   order          Int      @default(0)
+  isKeynote      Boolean  @default(false)
+  visibility     String   @default("PUBLISHED") // DRAFT, SCHEDULED, PUBLISHED, CANCELLED
+  publishAt      DateTime?
+  imageUrl       String?
+  announcementText String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  changeLogs     ScheduleChangeLog[]
 
   @@index([eventId])
   @@index([day])
   @@index([status])
   @@map("schedule_items")
+}
+
+model ScheduleChangeLog {
+  id              String   @id @default(uuid())
+  eventId         String
+  scheduleItemId  String
+  changedByUserId String?
+  changeSummary   String
+  previousValues  String   // JSON
+  newValues       String   // JSON
+  notified        Boolean  @default(false)
+  notifiedAt      DateTime?
+  batchJobId      String?
+  deliveryStatus  String?  @default("NONE") // SENT, SIMULATED, SCHEDULED, NONE
+  createdAt       DateTime @default(now())
+
+  scheduleItem    ScheduleItem @relation(fields: [scheduleItemId], references: [id], onDelete: Cascade)
+  event           Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([scheduleItemId])
+  @@map("schedule_change_logs")
+}
+
+model ScheduledNotification {
+  id              String    @id @default(uuid())
+  eventId         String
+  title           String
+  message         String
+  targetGroup     String    @default("ALL")
+  templateCode    String    @default("SCHEDULE_CHANGE_ALERT")
+  scheduledFor    DateTime
+  status          String    @default("SCHEDULED") // SCHEDULED, PROCESSING, SENT, CANCELLED, FAILED
+  mode            String    @default("REAL") // REAL vs SIMULATION
+  scheduleItemId  String?
+  batchJobId      String?
+  createdByUserId String?
+  executedAt      DateTime?
+  error           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  event           Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([status])
+  @@index([scheduledFor])
+  @@map("scheduled_notifications")
 }

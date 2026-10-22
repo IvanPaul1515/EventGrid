@@ -5,6 +5,9 @@ import {
   UpdateScheduleItemSchema,
   QueryScheduleSchema,
   UpdateSchedulePdfSchema,
+  PublishKeynoteSchema,
+  NotifyScheduleChangeSchema,
+  CreateAnnouncementSchema,
 } from './schedule.dto.js';
 import { BadRequestError } from '../../utils/errors.js';
 import fs from 'fs';
@@ -68,12 +71,15 @@ export class ScheduleController {
     try {
       const eventId = ScheduleController.getEventId(req);
       const input = UpdateScheduleItemSchema.parse(req.body);
-      const item = await ScheduleService.updateItem(eventId, req.params.id, input);
+      const userId = (req as any).user?.id;
+      const result = await ScheduleService.updateItem(eventId, req.params.id, input, userId);
 
       return res.status(200).json({
         status: 'success',
         message: 'Charla actualizada exitosamente',
-        data: item,
+        data: result.item,
+        hasRelevantChanges: result.hasRelevantChanges,
+        changeLog: result.changeLog,
       });
     } catch (error) {
       next(error);
@@ -187,6 +193,102 @@ export class ScheduleController {
     try {
       const eventId = ScheduleController.getEventId(req);
       const result = await ScheduleService.clearDemoSchedule(eventId);
+      return res.status(200).json({
+        status: 'success',
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+
+  static async publishKeynote(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = ScheduleController.getEventId(req);
+      const input = PublishKeynoteSchema.parse(req.body);
+      const userId = (req as any).user?.id;
+      const result = await ScheduleService.publishKeynote(eventId, req.params.id, input, userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async notifyScheduleChange(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = ScheduleController.getEventId(req);
+      const input = NotifyScheduleChangeSchema.parse(req.body);
+      const userId = (req as any).user?.id;
+      const result = await ScheduleService.notifyScheduleChange(eventId, input, userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async createAnnouncement(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = ScheduleController.getEventId(req);
+      const input = CreateAnnouncementSchema.parse(req.body);
+      const userId = (req as any).user?.id;
+      const result = await ScheduleService.createAnnouncement(eventId, input, userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getChangeHistory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = ScheduleController.getEventId(req);
+      const history = await ScheduleService.getChangeHistory(eventId);
+
+      return res.status(200).json({
+        status: 'success',
+        data: history,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getScheduledNotifications(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = ScheduleController.getEventId(req);
+      const notifications = await ScheduleService.getScheduledNotifications(eventId);
+
+      return res.status(200).json({
+        status: 'success',
+        data: notifications,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async cancelScheduledNotification(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = ScheduleController.getEventId(req);
+      const userId = (req as any).user?.id;
+      const result = await ScheduleService.cancelScheduledNotification(eventId, req.params.id, userId);
+
       return res.status(200).json({
         status: 'success',
         message: result.message,
