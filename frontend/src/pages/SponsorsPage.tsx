@@ -6,6 +6,8 @@ import { Sponsor, SponsorSummary, SponsorType, ContributionType, SponsorStatus }
 import { SponsorFormModal } from '../components/sponsors/SponsorFormModal';
 import { RecordSponsorPaymentModal } from '../components/sponsors/RecordSponsorPaymentModal';
 import { SponsorDetailDrawer } from '../components/sponsors/SponsorDetailDrawer';
+import { TableSkeleton } from '../components/common/Skeleton';
+import { EmptyState } from '../components/common/EmptyState';
 import {
   Handshake,
   DollarSign,

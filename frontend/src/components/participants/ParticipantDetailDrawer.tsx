@@ -612,7 +612,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
         />
 
         <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-8 pointer-events-none">
-          <div className="w-screen max-w-full sm:w-[480px] md:w-[520px] lg:w-[35vw] lg:min-w-[480px] lg:max-w-[640px] h-full max-h-screen bg-card border-l border-border shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+          <div className="mobile-drawer w-screen max-w-full sm:w-[480px] md:w-[520px] lg:w-[35vw] lg:min-w-[480px] lg:max-w-[640px] h-full max-h-screen bg-card border-l border-border shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             {/* Cabecera de la Ficha con Navegación Anterior/Siguiente */}
             <div className="border-b border-border bg-gradient-to-b from-primary/15 via-background to-background p-4 sm:p-6 shrink-0">
               <div className="flex items-center justify-between mb-3">
@@ -1887,8 +1887,8 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       />
       {/* Modal Detalle de Comunicación */}
       {selectedCommsDetail && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-2xl p-5 space-y-4">
+        <div className="mobile-safe-overlay fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="mobile-scroll-dialog bg-card border border-border w-full max-w-md rounded-2xl shadow-2xl p-5 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-border">
               <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
                 <Mail className="w-4 h-4 text-primary" />

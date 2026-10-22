@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Role } from '../../types';
+import { AppLoadingScreen } from './AppLoadingScreen';
 
 interface ProtectedRouteProps {
   allowedRoles?: Role[];
@@ -12,10 +13,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) 
 
   if (isLoading) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-barcamp-black text-white gap-4">
-        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm font-mono text-zinc-400">Verificando sesión BarCamp RD...</p>
-      </div>
+      <AppLoadingScreen
+        message="Verificando sesión..."
+        submessage="Validando credenciales de acceso"
+      />
     );
   }
 

@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+import { CurrencyInput } from '../common/CurrencyInput';
 import React, { useState, useEffect } from 'react';
 import { X, Building2, DollarSign, Gift, Loader2 } from 'lucide-react';
 import { Sponsor, SponsorType, ContributionType } from '../../types';
@@ -16,7 +18,6 @@ export const SponsorFormModal: React.FC<SponsorFormModalProps> = ({
   sponsorToEdit,
   onSave,
 }) => {
-  if (!isOpen) return null;
 
   const isEditing = Boolean(sponsorToEdit);
 
@@ -72,6 +73,8 @@ export const SponsorFormModal: React.FC<SponsorFormModalProps> = ({
     setError(null);
   }, [sponsorToEdit, isOpen]);
 
+  if (!isOpen) return null;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -118,9 +121,9 @@ export const SponsorFormModal: React.FC<SponsorFormModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-2xl max-w-2xl w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200 my-8 max-h-[90vh] flex flex-col">
+  return createPortal(
+    <div className="mobile-safe-overlay fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-card border border-border rounded-2xl max-w-2xl w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200 my-8 max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2 text-primary font-bold text-sm">
@@ -268,13 +271,12 @@ export const SponsorFormModal: React.FC<SponsorFormModalProps> = ({
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-2.5 text-xs font-bold text-muted-foreground">RD$</span>
-                <input
-                  type="number"
+                <CurrencyInput
                   step="0.01"
                   min="0"
                   disabled={contributionType === 'IN_KIND' || loading}
                   value={contributionType === 'IN_KIND' ? 0 : committedAmount}
-                  onChange={(e) => setCommittedAmount(e.target.value)}
+                  onValueChange={setCommittedAmount}
                   placeholder="0.00"
                   className="w-full pl-12 pr-3 py-2 text-sm rounded-xl bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none font-bold text-foreground disabled:opacity-50"
                 />
@@ -355,6 +357,6 @@ export const SponsorFormModal: React.FC<SponsorFormModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </div>, document.body
   );
 };

@@ -10,6 +10,9 @@ import { ParticipantFormModal } from '../components/participants/ParticipantForm
 import { DeleteConfirmModal } from '../components/participants/DeleteConfirmModal';
 import { DeleteExcelModal } from '../components/participants/DeleteExcelModal';
 import { OnsiteSaleModal } from '../components/sales/OnsiteSaleModal';
+import { TableSkeleton } from '../components/common/Skeleton';
+import { EmptyState } from '../components/common/EmptyState';
+import { ErrorState } from '../components/common/ErrorState';
 import {
   Users,
   Plus,
@@ -56,6 +59,7 @@ export const ParticipantsPage: React.FC = () => {
   const [limit, setLimit] = useState<number>(init.limit || 10);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Filtros y ordenamiento
   const [search, setSearch] = useState<string>(init.search || '');
@@ -126,6 +130,7 @@ export const ParticipantsPage: React.FC = () => {
     if (!currentEvent) return;
     try {
       setLoading(true);
+      setFetchError(null);
       const isCourtesyParam =
         isCourtesyFilter === 'COURTESY' ? true : isCourtesyFilter === 'REGULAR' ? false : undefined;
 
@@ -148,6 +153,7 @@ export const ParticipantsPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Error al cargar participantes:', err);
+      setFetchError(err.response?.data?.message || 'Error al conectar con el servidor.');
     } finally {
       setLoading(false);
     }
@@ -802,20 +808,32 @@ export const ParticipantsPage: React.FC = () => {
       <div className="rounded-2xl bg-card border border-border overflow-hidden shadow-sm">
         {/* VISTA ADAPTATIVA EN TARJETAS PARA CELULARES Y PANTALLAS PEQUEÑAS (< md) */}
         <div className="md:hidden divide-y divide-border">
-          {loading ? (
-            <div className="p-8 text-center text-muted-foreground">
-              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-              <span>Cargando participantes...</span>
+          {fetchError ? (
+            <div className="p-6">
+              <ErrorState
+                title="Error al consultar participantes"
+                message={fetchError}
+                onRetry={fetchParticipants}
+              />
+            </div>
+          ) : loading ? (
+            <div className="p-3">
+              <TableSkeleton rows={6} cols={2} />
             </div>
           ) : registrations.length === 0 ? (
-            <div className="p-8 text-center space-y-3">
-              <Users className="w-10 h-10 text-muted-foreground mx-auto opacity-40" />
-              <p className="text-sm font-bold text-foreground">
-                {isFiltering ? 'No se encontraron participantes con esos filtros' : `No hay participantes registrados`}
-              </p>
-              <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                {isFiltering ? 'Intenta modificar el término de búsqueda o limpiar los filtros.' : 'Comienza registrando asistentes o importa tus archivos Excel.'}
-              </p>
+            <div className="p-4">
+              <EmptyState
+                isFiltered={isFiltering}
+                onClearFilters={clearFilters}
+                title={isFiltering ? 'No se encontraron participantes con esos filtros' : `No hay participantes registrados`}
+                description={isFiltering ? 'Intenta modificar el término de búsqueda o limpiar los filtros.' : 'Comienza registrando asistentes o importa tus archivos Excel.'}
+                actionLabel={hasRole(['ADMIN', 'OPERATOR']) && !isFiltering ? 'Registrar Primer Asistente' : undefined}
+                onAction={() => {
+                  setSelectedForEdit(null);
+                  setIsFormOpen(true);
+                }}
+                icon={Users}
+              />
             </div>
           ) : (
             registrations.map((reg) => {
@@ -1051,36 +1069,37 @@ export const ParticipantsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {loading ? (
+              {fetchError ? (
                 <tr>
-                  <td colSpan={14} className="p-12 text-center text-muted-foreground">
-                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                    <span>Cargando participantes de {currentEvent?.name}...</span>
+                  <td colSpan={16} className="p-8">
+                    <ErrorState
+                      title="Error al consultar participantes"
+                      message={fetchError}
+                      onRetry={fetchParticipants}
+                    />
+                  </td>
+                </tr>
+              ) : loading ? (
+                <tr>
+                  <td colSpan={16} className="p-4">
+                    <TableSkeleton rows={limit > 10 ? 10 : limit} cols={7} />
                   </td>
                 </tr>
               ) : registrations.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="p-12 text-center space-y-3">
-                    <Users className="w-10 h-10 text-muted-foreground mx-auto opacity-40" />
-                    <p className="text-sm font-bold text-foreground">
-                      {isFiltering ? 'No se encontraron participantes con esos filtros' : `No hay participantes registrados en ${currentEvent?.name}`}
-                    </p>
-                    <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                      {isFiltering ? 'Intenta modificar el término de búsqueda o limpiar los filtros seleccionados.' : 'Comienza registrando asistentes manualmente o importa los registros históricos desde Excel.'}
-                    </p>
-                    {hasRole(['ADMIN', 'OPERATOR']) && !isFiltering && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedForEdit(null);
-                          setIsFormOpen(true);
-                        }}
-                        className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-xl shadow-md transition-colors inline-flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Registrar Primer Asistente</span>
-                      </button>
-                    )}
+                  <td colSpan={16} className="p-8">
+                    <EmptyState
+                      isFiltered={isFiltering}
+                      onClearFilters={clearFilters}
+                      title={isFiltering ? 'No se encontraron participantes con esos filtros' : `No hay participantes registrados en ${currentEvent?.name}`}
+                      description={isFiltering ? 'Intenta modificar el término de búsqueda o limpiar los filtros seleccionados.' : 'Comienza registrando asistentes manualmente o importa los registros históricos desde Excel.'}
+                      actionLabel={hasRole(['ADMIN', 'OPERATOR']) && !isFiltering ? 'Registrar Primer Asistente' : undefined}
+                      onAction={() => {
+                        setSelectedForEdit(null);
+                        setIsFormOpen(true);
+                      }}
+                      icon={Users}
+                    />
                   </td>
                 </tr>
               ) : (

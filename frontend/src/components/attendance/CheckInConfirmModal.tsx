@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Shirt, CheckCircle2, UserCheck, AlertTriangle, AlertCircle, X, Package, Check } from 'lucide-react';
 import { TshirtSizeSelector } from './TshirtSizeSelector';
 import { inventoryService, TshirtInventoryItem } from '../../services/inventory.service';
@@ -114,11 +115,11 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
       ? inventoryItems.filter((i) => i.isActive).map((i) => i.size)
       : normalizedAvailableSizes;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-lg bg-card rounded-2xl border border-border shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+  return createPortal(
+    <div className="mobile-safe-overlay fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+      <div className="relative w-full max-w-lg max-h-[calc(100dvh-2rem)] max-sm:max-h-full bg-card rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95" role="dialog" aria-modal="true" aria-label="Confirmar asistencia">
         {/* Cabecera */}
-        <div className="flex items-center justify-between p-4 border-b border-border bg-muted/40">
+        <div className="flex items-center justify-between p-4 border-b border-border bg-muted/40 shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
               <UserCheck className="w-4 h-4" />
@@ -139,7 +140,7 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
         </div>
 
         {/* Contenido */}
-        <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+        <div className="p-5 space-y-4 max-h-[80vh] min-h-0 overflow-y-auto">
           {/* Ficha Resumida del Participante */}
           <div className="p-3.5 rounded-xl bg-background border border-border space-y-1.5">
             <div className="flex items-center justify-between">
@@ -295,7 +296,7 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
         </div>
 
         {/* Acciones del Modal */}
-        <div className="p-4 border-t border-border bg-muted/20 flex items-center justify-end gap-2.5">
+        <div className="p-4 border-t border-border bg-muted/20 flex items-center justify-end gap-2.5 shrink-0 max-sm:flex-wrap">
           <button
             type="button"
             onClick={onClose}
@@ -319,6 +320,6 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>, document.body
   );
 };

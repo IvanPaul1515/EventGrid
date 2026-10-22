@@ -716,7 +716,7 @@ export const SchedulePage: React.FC = () => {
             <select
               value={selectedRoom}
               onChange={(e) => setSelectedRoom(e.target.value)}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              className="min-w-0 max-sm:w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
             >
               <option value="ALL">Todos los salones</option>
               {data.rooms.map((r) => (
@@ -732,7 +732,7 @@ export const SchedulePage: React.FC = () => {
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+              className="min-w-0 max-sm:w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
             >
               <option value="ALL">Todas las categorías</option>
               {data.categories.map((c) => (
@@ -747,7 +747,7 @@ export const SchedulePage: React.FC = () => {
           <select
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+            className="min-w-0 max-sm:w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
           >
             <option value="ALL">Todos los estados</option>
             <option value="CONFIRMED">Confirmada</option>
@@ -1010,8 +1010,8 @@ export const SchedulePage: React.FC = () => {
 
       {/* MODAL CREAR / EDITAR CHARLA */}
       {showItemModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-lg w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-lg w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto border border-gray-200 dark:border-gray-800 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-rose-500" />
@@ -1236,8 +1236,8 @@ export const SchedulePage: React.FC = () => {
 
       {/* MODAL NOTIFICAR CAMBIOS DETECTADOS */}
       {showChangeNotificationModal && changePromptData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-lg w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4">
+        <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-lg w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4">
             <div className="flex items-center gap-3 text-amber-600">
               <Bell className="w-6 h-6 flex-shrink-0 animate-bounce" />
               <div>
@@ -1378,8 +1378,8 @@ export const SchedulePage: React.FC = () => {
 
       {/* MODAL PUBLICAR Y ANUNCIAR KEYNOTE */}
       {showKeynoteModal && keynoteItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-lg w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-lg w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-6 h-6 text-amber-500" />
@@ -1553,8 +1553,8 @@ export const SchedulePage: React.FC = () => {
 
       {/* MODAL CREAR ANUNCIO EN VIVO / PAUSA */}
       {showAnnouncementModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-lg w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4">
+        <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-lg w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center gap-2">
                 <Megaphone className="w-6 h-6 text-amber-500" />
@@ -1710,7 +1710,7 @@ export const SchedulePage: React.FC = () => {
 
       {/* MODAL HISTORIAL Y ALERTAS */}
       {showHistoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-2xl w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center gap-2">
@@ -1886,8 +1886,8 @@ export const SchedulePage: React.FC = () => {
 
       {/* MODAL IMPORTAR EXCEL */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl">
+        <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto border border-gray-200 dark:border-gray-800 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <FileSpreadsheet className="w-5 h-5 text-green-500" />
@@ -1957,8 +1957,8 @@ export const SchedulePage: React.FC = () => {
 
       {/* MODAL CONFIGURAR PDF */}
       {showPdfModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl">
+        <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto border border-gray-200 dark:border-gray-800 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <Upload className="w-5 h-5 text-blue-500" />
@@ -2031,7 +2031,7 @@ export const SchedulePage: React.FC = () => {
 
       {/* MODAL VISTA PÚBLICA MÓVIL (NOW / NEXT) */}
       {showMobilePreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-gray-950 rounded-3xl max-w-sm w-full p-5 border border-gray-800 shadow-2xl max-h-[85vh] overflow-y-auto text-white">
             <div className="flex items-center justify-between pb-3 border-b border-gray-800">
               <div className="flex items-center gap-2">
@@ -2105,8 +2105,8 @@ export const SchedulePage: React.FC = () => {
 
       {/* MODAL CONFIRMAR LIMPIAR DEMO */}
       {showClearDemoConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4">
+        <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4">
             <div className="flex items-center gap-3 text-rose-600">
               <AlertCircle className="w-6 h-6 flex-shrink-0" />
               <h3 className="text-base font-bold text-gray-900 dark:text-white">¿Limpiar charlas demo?</h3>

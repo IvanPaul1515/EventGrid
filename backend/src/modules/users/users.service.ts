@@ -128,7 +128,7 @@ export class UsersService {
       data: {
         userId: actorUserId || null,
         action: 'USER_CREATE',
-        entity: 'User',
+        entity: 'USER',
         entityId: user.id,
         changes: JSON.stringify({
           email: user.email,
@@ -194,7 +194,7 @@ export class UsersService {
       data: {
         userId: actorUserId || null,
         action: 'USER_UPDATE',
-        entity: 'User',
+        entity: 'USER',
         entityId: id,
         changes: JSON.stringify(input),
       },
@@ -248,7 +248,7 @@ export class UsersService {
       data: {
         userId: actorUserId || null,
         action: 'USER_TOGGLE_STATUS',
-        entity: 'User',
+        entity: 'USER',
         entityId: id,
         changes: JSON.stringify({ previousStatus: user.isActive, newStatus: targetStatus }),
       },
@@ -282,7 +282,7 @@ export class UsersService {
       data: {
         userId: actorUserId || null,
         action: 'USER_PASSWORD_RESET',
-        entity: 'User',
+        entity: 'USER',
         entityId: id,
         changes: JSON.stringify({ resetAt: new Date().toISOString() }),
       },
@@ -341,7 +341,7 @@ export class UsersService {
       data: {
         userId: actorUserId || null,
         action: 'USER_DELETE',
-        entity: 'User',
+        entity: 'USER',
         entityId: id,
         changes: JSON.stringify({ email: user.email, fullName: user.fullName }),
       },

@@ -149,7 +149,7 @@ export const DeleteExcelModal: React.FC<DeleteExcelModalProps> = ({
   const isPurgePhraseValid = confirmationPhrase.trim().toUpperCase() === 'ELIMINAR PARTICIPANTES';
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+    <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
       <div
         className="bg-card border border-border w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}

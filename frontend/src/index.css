@@ -242,3 +242,96 @@ html:not(.dark) .on-dark-only { display: none !important; }
   from { opacity: 0.88; }
   to { opacity: 1; }
 }
+
+@keyframes loading-bar {
+  0% {
+    left: -40%;
+    width: 40%;
+  }
+  50% {
+    left: 30%;
+    width: 60%;
+  }
+  100% {
+    left: 100%;
+    width: 30%;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Escáner QR — Guía Cuadrada y Láser de Lectura
+   ══════════════════════════════════════════════════════════════════ */
+@keyframes qr-scan-line {
+  0% {
+    top: 6%;
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    top: 92%;
+    opacity: 0.35;
+  }
+}
+
+.animate-scan-line {
+  animation: qr-scan-line 2.2s ease-in-out infinite alternate;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Áreas Seguras iOS & PWA
+   ══════════════════════════════════════════════════════════════════ */
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pl-safe {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+.pr-safe {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Mobile corrections only: preserve desktop typography and spacing. */
+@media (max-width: 767px), (max-width: 1023px) and (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='file']),
+  select, textarea {
+    font-size: 16px !important;
+  }
+  .app-viewport {
+    height: var(--mobile-viewport-height, 100dvh);
+  }
+  .mobile-header {
+    height: auto;
+    min-height: calc(4rem + env(safe-area-inset-top, 0px));
+  }
+  .pb-safe-content {
+    padding-bottom: calc(0.875rem + env(safe-area-inset-bottom, 0px));
+    padding-left: max(0.875rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.875rem, env(safe-area-inset-right, 0px));
+  }
+  .mobile-safe-overlay {
+    top: var(--mobile-viewport-top, 0px);
+    height: var(--mobile-viewport-height, 100dvh);
+    padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+  }
+  .mobile-safe-overlay > div {
+    max-height: 100%;
+  }
+  .mobile-scroll-dialog {
+    overflow-y: auto;
+  }
+  .mobile-drawer {
+    height: var(--mobile-viewport-height, 100dvh);
+    max-height: var(--mobile-viewport-height, 100dvh);
+    margin-top: var(--mobile-viewport-top, 0px);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}

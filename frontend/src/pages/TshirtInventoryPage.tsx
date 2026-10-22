@@ -3,6 +3,8 @@ import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { useRealtimeEvent } from '../context/RealtimeContext';
 import { inventoryService, TshirtInventoryItem, InventoryStats } from '../services/inventory.service';
+import { TableSkeleton } from '../components/common/Skeleton';
+import { EmptyState } from '../components/common/EmptyState';
 import {
   Shirt,
   Package,
@@ -444,25 +446,20 @@ export const TshirtInventoryPage: React.FC = () => {
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="p-12 text-center text-muted-foreground">
-                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                    <span>Cargando inventario de T-shirts...</span>
+                  <td colSpan={7} className="p-4">
+                    <TableSkeleton rows={6} cols={6} />
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-12 text-center space-y-3">
-                    <Shirt className="w-10 h-10 text-muted-foreground mx-auto opacity-30" />
-                    <p className="text-sm font-bold text-foreground">No hay tallas en el inventario de esta edición</p>
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={handleInitDefault}
-                        className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white font-bold text-xs cursor-pointer shadow"
-                      >
-                        Cargar configuración inicial (282 camisetas)
-                      </button>
-                    )}
+                  <td colSpan={7} className="p-8">
+                    <EmptyState
+                      icon={Shirt}
+                      title="No hay tallas en el inventario de esta edición"
+                      description="Active las tallas de camisetas deseadas o cargue la configuración de 282 unidades estándar de BarCamp."
+                      actionLabel={isAdmin ? 'Cargar configuración inicial (282 camisetas)' : undefined}
+                      onAction={isAdmin ? handleInitDefault : undefined}
+                    />
                   </td>
                 </tr>
               ) : (

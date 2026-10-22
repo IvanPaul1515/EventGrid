@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
 import { qrService } from '../../services/qr.service';
 import { attendanceService } from '../../services/attendance.service';
 import { QrScanResult, Registration } from '../../types';
@@ -13,12 +14,13 @@ import {
   AlertTriangle,
   Clock,
   UserCheck,
-  ShieldAlert,
-  ArrowRight,
   RotateCcw,
-  Sparkles,
   Camera,
+  Keyboard,
   ExternalLink,
+  RefreshCw,
+  Sparkles,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface QrScanModalProps {
@@ -35,13 +37,20 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
   onOpenParticipantDetail,
 }) => {
   const { currentEvent } = useEdition();
+
+  // Modo de escaneo: 'camera' (Cámara en vivo cuadrada) o 'manual' (Lector USB / Token manual)
+  const [scanMode, setScanMode] = useState<'camera' | 'manual'>('camera');
+
   const [scanInput, setScanInput] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<QrScanResult | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkInSuccess, setCheckInSuccess] = useState<string | null>(null);
   const [selectedTshirtSize, setSelectedTshirtSize] = useState<string | null>(null);
+
+  // Estados específicos de la cámara
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
@@ -62,51 +71,84 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const cameraHost = useRef<HTMLDivElement | null>(null);
+  const cameraElement = useRef<HTMLDivElement | null>(null);
+  const attachCameraHost = useCallback((host: HTMLDivElement | null) => {
+    cameraHost.current = host;
+    const element = cameraElement.current;
+    if (!host && element) {
+      // Keep pending video initialization connected until the library can stop it.
+      // Removing its video before loadedmetadata can leave start() pending forever.
+      element.style.cssText = 'position:fixed;left:-10000px;top:0;width:310px;height:310px;pointer-events:none';
+      element.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(element);
+    }
+  }, []);
   const lastScannedTokenRef = useRef<string | null>(null);
+  const cameraQueue = useRef<Promise<void>>(Promise.resolve());
+  const cameraGeneration = useRef(0);
+  const scanGeneration = useRef(0);
+  const scanBusy = useRef(false);
+  const checkInBusy = useRef(false);
+  const transitionGeneration = useRef(0);
 
-  // Auto-enfocar el campo de escaneo al abrir
-  useEffect(() => {
-    if (isOpen) {
-      setScanInput('');
-      setScanResult(null);
-      setCheckInSuccess(null);
-      lastScannedTokenRef.current = null;
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
-    } else {
-      stopCamera();
-    }
-    return () => {
-      stopCamera();
-    };
-  }, [isOpen]);
-
-  const stopCamera = async () => {
-    if (scannerRef.current) {
-      try {
-        if (scannerRef.current.isScanning) {
-          await scannerRef.current.stop();
-        }
-        await scannerRef.current.clear();
-      } catch (err) {
-        // Ignorar errores al limpiar el contenedor
+  const releaseCamera = useCallback(async () => {
+    const scanner = scannerRef.current;
+    if (!scanner) return;
+    const video = cameraElement.current?.querySelector('video');
+    const tracks = (video?.srcObject as MediaStream | null)?.getTracks() || [];
+    try {
+      if (video && !scanner.isScanning && scanner.getState() === Html5QrcodeScannerState.SCANNING) {
+        // Let the library's pending play() settle before removing its surface.
+        await new Promise<void>((resolve) => {
+          const finish = () => {
+            clearTimeout(timer);
+            video.removeEventListener('playing', finish);
+            video.removeEventListener('error', finish);
+            resolve();
+          };
+          const timer = window.setTimeout(finish, 1500);
+          video.addEventListener('playing', finish, { once: true });
+          video.addEventListener('error', finish, { once: true });
+        });
       }
-      scannerRef.current = null;
+      // getState() also covers the interval before the first video frame sets isScanning.
+      if (scanner.getState() !== Html5QrcodeScannerState.NOT_STARTED) await scanner.stop();
+    } finally {
+      // Release hardware even if the library's DOM cleanup fails.
+      tracks.forEach((track) => track.stop());
+      try {
+        scanner.clear();
+      } finally {
+        cameraElement.current?.remove();
+        cameraElement.current = null;
+        if (scannerRef.current === scanner) scannerRef.current = null;
+      }
     }
-    setCameraActive(false);
-    setCameraError(null);
-  };
+  }, []);
 
-  const processToken = async (token: string) => {
+  const stopCamera = useCallback(async () => {
+    cameraGeneration.current += 1;
+    setCameraActive(false);
+    setCameraLoading(false);
+    cameraQueue.current = cameraQueue.current.then(releaseCamera).catch(() => {});
+    await cameraQueue.current;
+  }, [releaseCamera]);
+
+  const processToken = useCallback(async (token: string) => {
     const trimmed = token.trim();
-    if (!trimmed) return;
+    if (!trimmed || scanBusy.current) return;
+    scanBusy.current = true;
+    const generation = scanGeneration.current;
     try {
       setIsScanning(true);
       setCheckInSuccess(null);
       const result = await qrService.scan(trimmed, currentEvent?.id);
+      if (generation !== scanGeneration.current) return;
       setScanResult(result);
+      setSelectedTshirtSize(result.registration?.tshirtSize || null);
     } catch (err: any) {
+      if (generation !== scanGeneration.current) return;
       setScanResult({
         valid: false,
         status: 'INVALID_CODE',
@@ -114,86 +156,159 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
         canCheckIn: false,
       });
     } finally {
-      setIsScanning(false);
+      if (generation === scanGeneration.current) {
+        scanBusy.current = false;
+        setIsScanning(false);
+      }
     }
-  };
+  }, [currentEvent?.id]);
 
-  const startCamera = async () => {
+  const startCamera = useCallback(async () => {
+    const generation = ++cameraGeneration.current;
+    setCameraError(null);
+    setCameraLoading(true);
+    cameraQueue.current = cameraQueue.current.then(async () => {
+      await releaseCamera();
+      if (generation !== cameraGeneration.current || !cameraHost.current) return;
     try {
-      setCameraError(null);
-      setCameraActive(true);
-
-      // Esperar a que el DOM monte el elemento contenedor
-      setTimeout(async () => {
-        try {
-          const scanner = new Html5Qrcode('qr-reader-container');
+          const element = document.createElement('div');
+          element.id = 'qr-square-viewport';
+          element.className = 'w-full h-full [&_video]:w-full [&_video]:h-full [&_video]:object-cover';
+          cameraElement.current = element;
+          cameraHost.current.appendChild(element);
+          const scanner = new Html5Qrcode('qr-square-viewport');
           scannerRef.current = scanner;
 
           await scanner.start(
             { facingMode: 'environment' },
             {
-              fps: 10,
-              qrbox: { width: 250, height: 250 },
+              fps: 12,
+              qrbox: (viewfinderWidth, viewfinderHeight) => {
+                const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                const qrboxSize = Math.floor(minEdge * 0.82);
+                return { width: qrboxSize, height: qrboxSize };
+              },
             },
             async (decodedText) => {
-              // Prevenir lecturas repetidas instantáneas (QA-04)
-              if (lastScannedTokenRef.current === decodedText) return;
+              // Prevenir lecturas repetidas instantáneas del mismo código
+              if (generation !== cameraGeneration.current || scanBusy.current || lastScannedTokenRef.current !== null) return;
               lastScannedTokenRef.current = decodedText;
 
-              setScanInput(decodedText);
               // Pausar el escáner para evitar lecturas consecutivas mientras se revisa la ficha
               try {
                 scanner.pause(true);
               } catch {}
 
-              // QA-04: Escanear nunca marca asistencia automáticamente. Solo valida y muestra la ficha.
               await processToken(decodedText);
             },
             () => {
-              // Ignorar errores por frame no reconocido
+              // Ignorar errores por frame sin código
             }
           );
+          if (generation !== cameraGeneration.current) {
+            await releaseCamera();
+            return;
+          }
+          setCameraActive(true);
+          setCameraLoading(false);
         } catch (err: any) {
+          await releaseCamera().catch(() => {});
+          if (generation !== cameraGeneration.current) return;
           console.error('Error al inicializar cámara:', err);
-          setCameraError(
-            'No se pudo acceder a la cámara. Verifique que concedió permisos de cámara en su navegador móvil (Safari/Chrome).'
-          );
+          setCameraLoading(false);
           setCameraActive(false);
+
+          if (err?.name === 'NotAllowedError' || err?.message?.toLowerCase().includes('permission')) {
+            setCameraError(
+              'Permiso de cámara denegado. En iPhone: Ajustes > Safari > Cámara > Permitir. En Android: Permisos del sitio > Cámara.'
+            );
+          } else {
+            setCameraError(
+              'No fue posible acceder a la cámara. Verifique que otra aplicación no la esté utilizando o use el modo lector USB.'
+            );
+          }
         }
-      }, 150);
-    } catch (err: any) {
-      setCameraError('Error al iniciar la cámara en este dispositivo.');
-      setCameraActive(false);
+    }).catch(() => {
+      if (generation === cameraGeneration.current) {
+        setCameraLoading(false);
+        setCameraActive(false);
+        setCameraError('Error al iniciar la cámara en este dispositivo.');
+      }
+    });
+    await cameraQueue.current;
+  }, [processToken, releaseCamera]);
+
+  // Al abrir/cerrar modal o cambiar de modo
+  useEffect(() => {
+    scanGeneration.current += 1;
+    scanBusy.current = false;
+    setIsScanning(false);
+    setShowConfirmModal(false);
+    if (isOpen) {
+      setScanInput('');
+      setScanResult(null);
+      setCheckInSuccess(null);
+      setSelectedTshirtSize(null);
+      lastScannedTokenRef.current = null;
+      setCameraError(null);
+
+      if (scanMode === 'camera') {
+        startCamera();
+      } else {
+        stopCamera();
+        inputRef.current?.focus();
+      }
+    } else {
+      stopCamera();
     }
+    return () => {
+      scanGeneration.current += 1;
+      stopCamera();
+    };
+  }, [isOpen, scanMode, startCamera, stopCamera]);
+
+  const handleClose = async () => {
+    transitionGeneration.current += 1;
+    scanGeneration.current += 1;
+    await stopCamera();
+    onClose();
   };
+
+  const handleSwitchMode = async (mode: 'camera' | 'manual') => {
+    if (mode === scanMode) return;
+    const transition = ++transitionGeneration.current;
+    scanGeneration.current += 1;
+    await stopCamera();
+    if (transition !== transitionGeneration.current) return;
+    setScanMode(mode);
+    setScanResult(null);
+    setCheckInSuccess(null);
+    lastScannedTokenRef.current = null;
+
+  };
+
   const handleScanSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const token = scanInput.trim();
     if (!token) return;
 
-    try {
-      setIsScanning(true);
-      setCheckInSuccess(null);
-      await processToken(token);
-    } catch (err: any) {
-      setScanResult({
-        valid: false,
-        status: 'INVALID_CODE',
-        message: err?.response?.data?.message || 'Error al validar el código QR',
-        canCheckIn: false,
-      });
-    } finally {
-      setIsScanning(false);
-    }
+    await processToken(token);
   };
 
   const handleConfirmCheckIn = async (size?: string | null, tshirtDelivered?: boolean) => {
-    if (!scanResult?.registration) return;
+    if (!scanResult?.registration || !scanResult.canCheckIn || checkInBusy.current) return;
+    checkInBusy.current = true;
+    const generation = scanGeneration.current;
     const finalSize = size !== undefined ? size : selectedTshirtSize;
+
     try {
       setIsCheckingIn(true);
       await attendanceService.checkIn(scanResult.registration.id, finalSize || undefined, tshirtDelivered);
+      onAttendanceMarked?.();
+      window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
+      if (generation !== scanGeneration.current) return;
       setCheckInSuccess(`¡Llegada confirmada con éxito para ${scanResult.registration.participant.fullName}!`);
+
       // Actualizar el estado del resultado a asistido
       setScanResult({
         ...scanResult,
@@ -209,11 +324,10 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
         },
       });
       setShowConfirmModal(false);
-      if (onAttendanceMarked) onAttendanceMarked();
-      window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
     } catch (err: any) {
       alert(err?.response?.data?.message || 'Error al registrar asistencia');
     } finally {
+      checkInBusy.current = false;
       setIsCheckingIn(false);
     }
   };
@@ -224,119 +338,219 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     setCheckInSuccess(null);
     setSelectedTshirtSize(null);
     lastScannedTokenRef.current = null;
-    if (scannerRef.current && cameraActive) {
-      try { scannerRef.current.resume(); } catch {}
+
+    if (scanMode === 'camera') {
+      if (scannerRef.current && cameraActive) {
+        try {
+          scannerRef.current.resume();
+        } catch {
+          startCamera();
+        }
+      } else {
+        startCamera();
+      }
+    } else {
+      inputRef.current?.focus();
     }
-    inputRef.current?.focus();
   };
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-lg bg-card rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+  return createPortal(
+    <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="relative w-full max-w-lg bg-card rounded-2xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden flex flex-col max-h-[92dvh] max-sm:max-h-full" role="dialog" aria-modal="true" aria-label="Escáner de entradas QR">
         {/* Cabecera */}
-        <div className="flex items-center justify-between p-4 border-b border-border bg-muted/40">
+        <div className="flex items-center justify-between p-3.5 sm:p-4 border-b border-border bg-card/60 shrink-0">
           <div className="flex items-center gap-2">
-            <QrCode className="w-5 h-5 text-primary" />
-            <h3 className="font-bold text-foreground text-sm">Escáner de Entradas QR (Check-in)</h3>
+            <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+              <QrCode className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-bold text-foreground text-sm leading-tight">Escáner de Entradas QR</h3>
+              <p className="text-[11px] text-muted-foreground leading-tight">Control de asistencia y check-in</p>
+            </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+            aria-label="Cerrar escáner"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
+        {/* Selector de Modo: Cámara vs Lector Externo/Manual */}
+        <div className="px-4 pt-3 shrink-0">
+          <div className="grid grid-cols-2 p-1 rounded-xl bg-muted/60 border border-border text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => handleSwitchMode('camera')}
+              className={`py-2 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                scanMode === 'camera'
+                  ? 'bg-card text-foreground shadow-sm font-bold border border-border/80'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Camera className="w-4 h-4 text-primary" />
+              <span>Modo Cámara</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwitchMode('manual')}
+              className={`py-2 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                scanMode === 'manual'
+                  ? 'bg-card text-foreground shadow-sm font-bold border border-border/80'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Keyboard className="w-4 h-4 text-primary" />
+              <span>Lector USB / Manual</span>
+            </button>
+          </div>
+        </div>
+
         {/* Cuerpo del Modal */}
-        <div className="p-6 overflow-y-auto space-y-5">
-          {/* Cámara en vivo opcional */}
-          {cameraActive ? (
-            <div className="space-y-2">
-              <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-border">
-                <div id="qr-reader-container" className="w-full h-full [&_video]:w-full [&_video]:h-full [&_video]:object-cover" />
-              </div>
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-muted-foreground">Apunte la cámara al código QR de la entrada</span>
-                <button
-                  onClick={stopCamera}
-                  className="text-primary hover:underline font-semibold cursor-pointer"
-                >
-                  Cerrar cámara
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border">
-              <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Camera className="w-4 h-4 text-primary" />
-                ¿Desea escanear con la cámara del dispositivo?
-              </span>
-              <button
-                type="button"
-                onClick={startCamera}
-                className="px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold border border-primary/20 transition-colors cursor-pointer"
-              >
-                Activar Cámara
-              </button>
-            </div>
-          )}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+          {/* MODO 1: CÁMARA CON GUÍA CUADRADA */}
+          {scanMode === 'camera' && (
+            <div className="space-y-3">
+              {/* Contenedor Cuadrado con Retícula y Láser */}
+              <div className="relative w-full max-w-[310px] aspect-square mx-auto rounded-2xl overflow-hidden bg-black border-2 border-primary/40 shadow-inner flex items-center justify-center">
+                {/* Contenedor del video html5-qrcode con recorte cuadrado perfecto y sin deformación */}
+                <div
+                  ref={attachCameraHost}
+                  className="w-full h-full [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
+                />
 
-          {cameraError && (
-            <p className="text-xs text-rose-500 bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/20">
-              {cameraError}
-            </p>
-          )}
+                {/* Esquinas visuales de referencia (Reticle Corners BarCamp Red) */}
+                <div className="absolute top-3 left-3 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-xl pointer-events-none z-10 shadow-sm" />
+                <div className="absolute top-3 right-3 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-xl pointer-events-none z-10 shadow-sm" />
+                <div className="absolute bottom-3 left-3 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-xl pointer-events-none z-10 shadow-sm" />
+                <div className="absolute bottom-3 right-3 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-xl pointer-events-none z-10 shadow-sm" />
 
-          {/* Formulario de Entrada / Lector USB */}
-          <form onSubmit={handleScanSubmit} className="space-y-3">
-            <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
-              Lector de Código de Barras / USB o Token QR:
-            </label>
-            <div className="flex gap-2">
-              <input
-                ref={inputRef}
-                type="text"
-                value={scanInput}
-                onChange={(e) => setScanInput(e.target.value)}
-                placeholder="Escanee con el lector USB o pegue el enlace/token..."
-                className="flex-1 px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
-                autoComplete="off"
-              />
-              <button
-                type="submit"
-                disabled={isScanning || !scanInput.trim()}
-                className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {isScanning ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <span>Validar</span>
+                {/* Láser de escaneo animado en movimiento continuo */}
+                {cameraActive && !cameraLoading && !scanResult && (
+                  <div className="absolute left-4 right-4 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent shadow-[0_0_12px_#ED2917] pointer-events-none z-10 animate-scan-line" />
                 )}
-              </button>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Compatible con pistolas lectoras USB conectadas (envían Enter automáticamente) o URLs de entrada.
-            </p>
-          </form>
 
-          {/* Notificación de Confirmación de Asistencia */}
+                {/* Estado de carga de la cámara */}
+                {cameraLoading && (
+                  <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center gap-2 p-4 text-center z-20">
+                    <RefreshCw className="w-7 h-7 text-primary animate-spin" />
+                    <span className="text-xs font-semibold text-white">
+                      Inicializando cámara...
+                    </span>
+                    <span className="text-[10px] text-zinc-400">
+                      Conceda permisos si el navegador los solicita
+                    </span>
+                  </div>
+                )}
+
+                {/* Mensaje de guía sobre la cámara */}
+                {cameraActive && !cameraLoading && !scanResult && (
+                  <div className="absolute bottom-3 inset-x-3 pointer-events-none z-10 text-center">
+                    <span className="px-3 py-1 rounded-full bg-black/70 backdrop-blur-sm text-[11px] font-medium text-white border border-white/10 shadow">
+                      Apunte al código QR del participante
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Controles de cámara bajo el visor */}
+              <div className="flex items-center justify-between text-xs px-1">
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${cameraActive ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-600'}`} />
+                  <span>{cameraActive ? 'Cámara activa' : 'Cámara pausada'}</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  {cameraActive ? (
+                    <button
+                      type="button"
+                      onClick={stopCamera}
+                      className="text-muted-foreground hover:text-foreground text-xs font-semibold cursor-pointer"
+                    >
+                      Pausar cámara
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={startCamera}
+                      className="text-primary hover:underline text-xs font-bold cursor-pointer flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Reactivar cámara</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {cameraError && (
+                <div className="p-3 rounded-xl bg-destructive/15 border border-destructive/30 text-rose-400 text-xs flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{cameraError}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* MODO 2: LECTOR USB EXTERNO O ENTRADA MANUAL */}
+          {scanMode === 'manual' && (
+            <div className="space-y-3">
+              <form onSubmit={handleScanSubmit} className="space-y-2.5">
+                <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
+                  Entrada de Lector USB o Token QR:
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={scanInput}
+                    onChange={(e) => setScanInput(e.target.value)}
+                    placeholder="Escanee con lector USB o pegue el enlace/token..."
+                    className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+                    autoComplete="off"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isScanning || !scanInput.trim()}
+                    className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+                  >
+                    {isScanning ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <span>Validar</span>
+                    )}
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Compatible con pistolas lectoras USB/Bluetooth (envían Enter automáticamente tras la lectura) y URLs completas de ticket.
+                </p>
+              </form>
+            </div>
+          )}
+
+          {/* Notificación de Confirmación de Asistencia Exitosa */}
           {checkInSuccess && (
-            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-sm flex items-center gap-3 animate-fade-in font-medium">
-              <CheckCircle2 className="w-5 h-5 shrink-0" />
-              <span>{checkInSuccess}</span>
+            <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs sm:text-sm flex items-center gap-3 animate-fade-in font-medium">
+              <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
+              <span className="flex-1">{checkInSuccess}</span>
             </div>
           )}
 
           {/* Resultado de Validación */}
           {scanResult && (
-            <div className="space-y-4 pt-2 border-t border-border animate-fade-in">
-              {/* Tarjeta de Estado */}
+            <div className="space-y-3.5 pt-3 border-t border-border animate-fade-in">
+              {!scanResult.registration && (
+                <button type="button" onClick={handleResetForNext}
+                  className="px-3 py-2 rounded-lg bg-muted text-foreground text-xs font-bold cursor-pointer">
+                  Escanear siguiente
+                </button>
+              )}
+              {/* Tarjeta de Estado del Ticket */}
               {scanResult.status === 'VALID' ? (
-                <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500">
+                <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5" />
+                    <CheckCircle2 className="w-5 h-5 shrink-0" />
                     <span className="font-bold text-sm">Entrada Válida — Listo para ingresar</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -344,19 +558,19 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                   </p>
                 </div>
               ) : scanResult.status === 'ALREADY_CHECKED_IN' ? (
-                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-500">
+                <div className="p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400">
                   <div className="flex items-center gap-2">
-                    <Clock className="w-5 h-5" />
-                    <span className="font-bold text-sm">Asistencia Ya Registrada</span>
+                    <Clock className="w-5 h-5 shrink-0" />
+                    <span className="font-bold text-sm">Asistencia Ya Registrada Anteriormente</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {scanResult.message}
                   </p>
                 </div>
               ) : scanResult.status === 'EDITION_MISMATCH' ? (
-                <div className="p-4 rounded-xl bg-orange-500/10 border border-orange-500/30 text-orange-500">
+                <div className="p-3.5 rounded-xl bg-orange-500/15 border border-orange-500/30 text-orange-400">
                   <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5" />
+                    <AlertTriangle className="w-5 h-5 shrink-0" />
                     <span className="font-bold text-sm">Edición o Evento Incorrecto</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -364,10 +578,10 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                   </p>
                 </div>
               ) : (
-                <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500">
+                <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400">
                   <div className="flex items-center gap-2">
-                    <ShieldAlert className="w-5 h-5" />
-                    <span className="font-bold text-sm">Entrada No Válida o Revocada</span>
+                    <ShieldAlert className="w-5 h-5 shrink-0" />
+                    <span className="font-bold text-sm">Código No Válido o Revocado</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {scanResult.message}
@@ -375,48 +589,49 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                 </div>
               )}
 
-              {/* Ficha Resumida del Participante Validado */}
+              {/* Ficha del Participante Identificado */}
               {scanResult.registration && (
-                <div className="p-4 rounded-xl bg-background border border-border space-y-3">
-                  <div className="flex items-start justify-between">
+                <div className="p-4 rounded-xl bg-card border border-border space-y-3">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">
-                        Participante
-                      </p>
-                      <h4 className="text-base font-bold text-foreground mt-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-white">
+                          {scanResult.registration.registrationNumber}
+                        </span>
+                        {scanResult.registration.isDemo && (
+                          <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                            DEMO
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="font-display font-bold text-base text-foreground mt-1">
                         {scanResult.registration.participant.fullName}
                       </h4>
-                      <p className="text-xs text-muted-foreground font-mono">
-                        {scanResult.registration.participant.documentId || 'Sin documento'} • {scanResult.registration.participant.email}
+                      <p className="text-xs text-muted-foreground">
+                        {scanResult.registration.participant.email}
                       </p>
                     </div>
-                    <span className="font-mono text-sm font-black text-primary bg-primary/10 px-2 py-1 rounded border border-primary/20">
-                      {scanResult.registration.registrationNumber}
-                    </span>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-3 text-xs pt-2 border-t border-border">
-                    <div>
-                      <span className="text-muted-foreground">Tipo de Entrada:</span>
-                      <p className="font-bold text-foreground">
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] font-mono uppercase text-muted-foreground block">
+                        Entrada
+                      </span>
+                      <span className="text-xs font-bold text-foreground">
                         {scanResult.registration.ticketType?.name || 'General'}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Estado de Pago:</span>
-                      <p className="font-bold text-foreground">
+                      </span>
+                      <span className="text-[10px] block mt-0.5 text-muted-foreground">
                         {scanResult.registration.isCourtesy
                           ? 'Cortesía'
                           : scanResult.registration.paymentStatus === 'PAID'
                           ? 'Pagado'
                           : 'Pendiente'}
-                      </p>
+                      </span>
                     </div>
                   </div>
 
                   {/* Selector de Talla de Camiseta (si está habilitado para el evento) */}
                   {scanResult.canCheckIn && tshirtEnabled && (
-                    <div className="p-3 rounded-xl bg-card border border-border">
+                    <div className="p-3 rounded-xl bg-background border border-border">
                       <TshirtSizeSelector
                         sizes={tshirtSizes}
                         selectedSize={selectedTshirtSize}
@@ -428,9 +643,9 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                     </div>
                   )}
 
-                  {/* Botón de Confirmación de Asistencia (Control Operativo Seguro) */}
+                  {/* Botón Principal: Confirmar Asistencia con salvaguarda anti doble clic */}
                   {scanResult.canCheckIn && (
-                    <div className="pt-2">
+                    <div className="pt-1">
                       <button
                         type="button"
                         onClick={() => setShowConfirmModal(true)}
@@ -441,19 +656,19 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                         <span>{isCheckingIn ? 'Registrando entrada...' : 'MARCAR ASISTENCIA AHORA'}</span>
                       </button>
                       <p className="text-[10px] text-muted-foreground text-center mt-1.5">
-                        El escaneo verifica la entrada sin marcarla automáticamente; confirme la identidad visual antes de pulsar.
+                        El escáner no marca automáticamente para prevenir ingresos accidentales. Confirme la identidad antes de pulsar.
                       </p>
                     </div>
                   )}
 
-                  {/* Acciones Secundarias */}
-                  <div className="flex items-center justify-between pt-2">
+                  {/* Acciones Secundarias y Botón Continuar Escaneando */}
+                  <div className="flex items-center justify-between pt-2 border-t border-border/60">
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         if (onOpenParticipantDetail && scanResult.registration) {
+                          await handleClose();
                           onOpenParticipantDetail(scanResult.registration);
-                          onClose();
                         }
                       }}
                       className="text-xs text-primary hover:underline font-semibold flex items-center gap-1 cursor-pointer"
@@ -465,9 +680,9 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                     <button
                       type="button"
                       onClick={handleResetForNext}
-                      className="text-xs text-muted-foreground hover:text-foreground font-semibold flex items-center gap-1 cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-border"
                     >
-                      <RotateCcw className="w-3.5 h-3.5" />
+                      <RotateCcw className="w-3.5 h-3.5 text-primary" />
                       <span>Escanear siguiente</span>
                     </button>
                   </div>
@@ -476,26 +691,24 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
             </div>
           )}
         </div>
-      </div>
 
-      {/* Modal de Confirmación con Selector de Talla */}
-      {scanResult?.registration && (
-        <CheckInConfirmModal
-          isOpen={showConfirmModal}
-          onClose={() => setShowConfirmModal(false)}
-          onConfirm={async (size, delivered) => {
-            await handleConfirmCheckIn(size, delivered);
-          }}
-          participantName={scanResult.registration.participant.fullName}
-          registrationNumber={scanResult.registration.registrationNumber}
-          ticketTypeName={scanResult.registration.ticketType?.name || 'General'}
-          tshirtEnabled={tshirtEnabled}
-          availableSizes={tshirtSizes}
-          eventId={currentEvent?.id}
-          initialTshirtSize={selectedTshirtSize}
-          isLoading={isCheckingIn}
-        />
-      )}
-    </div>
+        {/* Modal de Confirmación de Check-in y entrega de camiseta */}
+        {showConfirmModal && scanResult?.registration && (
+          <CheckInConfirmModal
+            isOpen={showConfirmModal}
+            onClose={() => setShowConfirmModal(false)}
+            onConfirm={handleConfirmCheckIn}
+            participantName={scanResult.registration.participant.fullName}
+            registrationNumber={scanResult.registration.registrationNumber}
+            ticketTypeName={scanResult.registration.ticketType?.name || 'General'}
+            tshirtEnabled={tshirtEnabled}
+            availableSizes={tshirtSizes}
+            eventId={currentEvent?.id}
+            initialTshirtSize={selectedTshirtSize}
+            isLoading={isCheckingIn}
+          />
+        )}
+      </div>
+    </div>, document.body
   );
 };

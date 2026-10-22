@@ -1,3 +1,4 @@
+import { CurrencyInput } from '../common/CurrencyInput';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Registration, PaymentMethod, SalesResponsible, TicketType } from '../../types';
@@ -268,8 +269,8 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4 md:p-6 animate-in fade-in duration-200" onClick={handleRequestClose}>
-      <div className="bg-card border border-border w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-3xl lg:max-w-4xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    <div className="mobile-safe-overlay fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4 md:p-6 animate-in fade-in duration-200" onClick={handleRequestClose}>
+      <div className="bg-card border border-border w-full h-full max-sm:max-h-full sm:h-auto sm:max-h-[92vh] sm:max-w-3xl lg:max-w-4xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0 bg-muted/30">
           <div>
             <h3 className="text-lg font-black text-foreground">
@@ -417,7 +418,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                 <option value="">-- Seleccionar Tarifa --</option>
                 {ticketTypes.map((tt) => (
                   <option key={tt.id} value={tt.id}>
-                    {tt.name} — RD$ {Number(tt.price).toFixed(2)}
+                    {tt.name} — RD$ {Number(tt.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </option>
                 ))}
               </select>
@@ -427,13 +428,12 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
               <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">
                 Tarifa del Boleto (RD$)
               </label>
-              <input
-                type="number"
+              <CurrencyInput
                 step="0.01"
                 min="0"
                 disabled={isCourtesy}
                 value={isCourtesy ? 0 : ticketPrice}
-                onChange={(e) => setTicketPrice(Number(e.target.value))}
+                onValueChange={setTicketPrice}
                 className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
                   isCourtesy ? 'opacity-50 cursor-not-allowed bg-muted' : ''
                 }`}
@@ -448,13 +448,12 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                 <span>Monto Pagado (RD$)</span>
                 {isCourtesy && <span className="text-[10px] text-amber-400 font-bold">Cortesía</span>}
               </label>
-              <input
-                type="number"
+              <CurrencyInput
                 step="0.01"
                 min="0"
                 disabled={isCourtesy}
                 value={isCourtesy ? 0 : amountPaid}
-                onChange={(e) => setAmountPaid(Number(e.target.value))}
+                onValueChange={setAmountPaid}
                 className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
                   isCourtesy ? 'opacity-50 cursor-not-allowed bg-muted' : ''
                 }`}
@@ -474,7 +473,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                     <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
                     <span>
                       ¡El participante pagó más de la tarifa! Saldo a favor:{' '}
-                      <strong className="text-white font-mono">+RD$ {overpaidAmount.toFixed(2)}</strong>
+                      <strong className="text-white font-mono">+RD$ {overpaidAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                     </span>
                   </div>
                   <button
@@ -482,7 +481,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                     onClick={() => setAmountPaid(ticketPrice)}
                     className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[11px] transition-colors cursor-pointer"
                   >
-                    Ajustar pago a la nueva tarifa (RD$ {ticketPrice.toFixed(2)})
+                    Ajustar pago a la nueva tarifa (RD$ {ticketPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                   </button>
                 </div>
               ) : balanceDue > 0 ? (
@@ -491,7 +490,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                     <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>
                       Balance pendiente por pagar:{' '}
-                      <strong className="text-white font-mono">RD$ {balanceDue.toFixed(2)}</strong>
+                      <strong className="text-white font-mono">RD$ {balanceDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                     </span>
                   </div>
                   <button
@@ -499,13 +498,13 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                     onClick={() => setAmountPaid(ticketPrice)}
                     className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-[11px] transition-colors cursor-pointer"
                   >
-                    Liquidar completo (RD$ {ticketPrice.toFixed(2)})
+                    Liquidar completo (RD$ {ticketPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                   </button>
                 </div>
               ) : (
                 <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Pago liquidado exacto (RD$ {ticketPrice.toFixed(2)})</span>
+                  <span>Pago liquidado exacto (RD$ {ticketPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
                 </div>
               )}
             </div>

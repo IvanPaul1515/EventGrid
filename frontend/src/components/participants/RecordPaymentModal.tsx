@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+import { CurrencyInput } from '../common/CurrencyInput';
 import React, { useState } from 'react';
 import { PaymentMethod } from '../../types';
 import { CreditCard, X, DollarSign } from 'lucide-react';
@@ -52,9 +54,9 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-2xl max-w-md w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+  return createPortal(
+    <div className="mobile-safe-overlay fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-card border border-border rounded-2xl max-w-md w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between pb-3 border-b border-border">
           <div className="flex items-center gap-2 text-primary font-bold text-sm">
             <DollarSign className="w-5 h-5 shrink-0" />
@@ -97,12 +99,11 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">
               Monto a Abonar (RD$) *
             </label>
-            <input
-              type="number"
+            <CurrencyInput
               step="0.01"
               min="1"
               value={amount}
-              onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+              onValueChange={setAmount}
               required
               className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             />
@@ -169,6 +170,6 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </div>, document.body
   );
 };
