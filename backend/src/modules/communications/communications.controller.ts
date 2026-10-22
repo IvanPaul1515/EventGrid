@@ -18,7 +18,7 @@ import { BadRequestError } from '../../utils/errors.js';
 export class CommunicationsController {
   static async getConfig(req: Request, res: Response, next: NextFunction) {
     try {
-      const eventId = (req.query.eventId as string) || null;
+      const eventId = (req.user?.role !== 'ADMIN' ? req.eventId : req.query.eventId as string) || null;
       const config = await CommunicationsService.getConfig(eventId);
       return res.status(200).json({ status: 'success', data: config });
     } catch (error) {
@@ -84,7 +84,7 @@ export class CommunicationsController {
 
   static async getTemplates(req: Request, res: Response, next: NextFunction) {
     try {
-      const eventId = (req.query.eventId as string) || null;
+      const eventId = (req.user?.role !== 'ADMIN' ? req.eventId : req.query.eventId as string) || null;
       const templates = await CommunicationsService.getTemplates(eventId);
       return res.status(200).json({ status: 'success', data: templates });
     } catch (error) {
@@ -199,7 +199,7 @@ export class CommunicationsController {
   static async getLogs(req: Request, res: Response, next: NextFunction) {
     try {
       const parsed = QueryLogsSchema.parse(req.query);
-      const eventId = parsed.eventId || (req.query.eventId as string) || null;
+      const eventId = req.eventId || parsed.eventId || (req.user?.role !== 'ADMIN' ? req.eventId : req.query.eventId as string) || null;
       const result = await CommunicationsService.getLogs(eventId, parsed);
       return res.status(200).json({
         status: 'success',
@@ -322,7 +322,7 @@ export class CommunicationsController {
 
   static async getSmtpSummary(req: Request, res: Response, next: NextFunction) {
     try {
-      const eventId = (req.query.eventId as string) || null;
+      const eventId = (req.user?.role !== 'ADMIN' ? req.eventId : req.query.eventId as string) || null;
       const summary = await CommunicationsService.getSmtpSummary(eventId);
       return res.status(200).json({ status: 'success', data: summary });
     } catch (error) {

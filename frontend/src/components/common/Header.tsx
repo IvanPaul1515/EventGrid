@@ -45,11 +45,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'ADMIN':
-        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-primary/15 text-primary border border-primary/30">ADMIN</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-primary/15 text-primary border border-primary/30">Administrador</span>;
       case 'OPERATOR':
-        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">OPERADOR</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">Operador</span>;
       default:
-        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-muted text-muted-foreground border border-border">CONSULTA</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-muted text-muted-foreground border border-border">Consulta</span>;
     }
   };
 
@@ -87,20 +87,21 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
         {/* Selector de Edición Activa (BarCamp RD) */}
         <div className="relative min-w-0">
           <button
-            onClick={() => setEditionDropdownOpen(!editionDropdownOpen)}
+            disabled={user?.role !== 'ADMIN'}
+            onClick={() => user?.role === 'ADMIN' && setEditionDropdownOpen(!editionDropdownOpen)}
             className="flex items-center gap-1.5 sm:gap-2.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-background hover:bg-muted/70 border border-border text-foreground transition-all duration-150 group shadow-sm cursor-pointer max-w-full sm:max-w-none"
-            title="Cambiar edición del evento"
+            title={user?.role === 'ADMIN' ? 'Cambiar edición del evento' : 'Edición asignada'}
           >
             <div className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
             <span className="font-display font-bold text-xs sm:text-sm tracking-tight whitespace-normal text-left break-words sm:whitespace-nowrap">
               {currentEvent ? `${currentEvent.name}${currentEvent.name.includes(String(currentEvent.year)) ? '' : ` · ${currentEvent.year}`}` : 'Seleccionar Edición'}
             </span>
             {currentEvent && <span className="hidden sm:inline-flex">{getStatusBadge(currentEvent.status)}</span>}
-            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-transform shrink-0" />
+            {user?.role === 'ADMIN' && <ChevronDown className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-transform shrink-0" />}
           </button>
 
           {/* Menú Desplegable de Ediciones */}
-          {editionDropdownOpen && (
+          {user?.role === 'ADMIN' && editionDropdownOpen && (
             <>
               <div
                 className="fixed inset-0 z-40"

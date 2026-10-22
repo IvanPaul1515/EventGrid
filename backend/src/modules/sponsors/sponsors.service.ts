@@ -33,7 +33,25 @@ function resolveStatus(
   return 'PENDING';
 }
 
+export const SPONSOR_CATEGORIES = ['Geek Gold', 'Geek Silver', 'Geek'] as const;
+
 export class SponsorsService {
+  static async getCategories(eventId: string) {
+    const [settings, legacy] = await Promise.all([
+      prisma.eventSettings.findUnique({ where: { eventId }, select: { sponsorCategoryValues: true } }),
+      prisma.sponsor.findMany({ where: { eventId, category: { not: null } }, select: { category: true }, distinct: ['category'] }),
+    ]);
+    let values: Record<string, number | null> = {};
+    try { values = JSON.parse(settings?.sponsorCategoryValues || '{}'); } catch { /* Unconfigured */ }
+    const names = [...new Set([...SPONSOR_CATEGORIES, ...Object.keys(values), ...legacy.map(s => s.category!).filter(Boolean)])];
+    return names.map(name => ({ name, value: values[name] ?? null }));
+  }
+
+  static async configureCategories(eventId: string, values: Record<string, number | null>) {
+    await prisma.eventSettings.update({ where: { eventId }, data: { sponsorCategoryValues: JSON.stringify(values) } });
+    return this.getCategories(eventId);
+  }
+
   /**
    * Obtener resumen de KPIs de patrocinadores y colaboradores para la edición
    */
@@ -80,7 +98,14 @@ export class SponsorsService {
     totalReceived = roundMoney(totalReceived);
     const totalPending = Math.max(0, roundMoney(totalCommitted - totalReceived));
 
+    const byCategory = [...new Set([...SPONSOR_CATEGORIES, ...sponsors.map(s => s.category || 'Sin categoría')])].map(category => {
+      const items = sponsors.filter(s => (s.category || 'Sin categoría') === category);
+      const committed = roundMoney(items.reduce((sum, s) => sum + (s.status === 'CANCELLED' ? 0 : Number(s.committedAmount)), 0));
+      const received = roundMoney(items.reduce((sum, s) => sum + s.payments.reduce((n, p) => n + Number(p.amount), 0), 0));
+      return { category, count: items.length, committed, received, pending: Math.max(0, roundMoney(committed - received)) };
+    });
     return {
+      byCategory,
       totalSponsors,
       totalCollaborators,
       totalCount: sponsors.length,
@@ -108,6 +133,8 @@ export class SponsorsService {
     if (query.type && query.type !== 'ALL') {
       where.type = query.type;
     }
+
+    if (query.category) where.category = query.category;
 
     if (query.status && query.status !== 'ALL') {
       where.status = query.status;

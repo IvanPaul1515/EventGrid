@@ -2,12 +2,14 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { ENV } from '../config/env.js';
 import { UnauthorizedError } from '../utils/errors.js';
+import { enforceEditionAccess } from './editionAccess.js';
 import { prisma } from '../config/db.js';
 
 export interface AuthUser {
   id: string;
   email: string;
   fullName: string;
+  assignedEventId?: string | null;
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
 }
 
@@ -53,7 +55,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
     // Verificar que el usuario continúe activo en la base de datos
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, email: true, fullName: true, role: true, isActive: true },
+      select: { id: true, email: true, fullName: true, role: true, assignedEventId: true, isActive: true },
     });
 
     if (!user || !user.isActive) {
@@ -65,9 +67,10 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       email: user.email,
       fullName: user.fullName,
       role: user.role as any,
+      assignedEventId: user.assignedEventId,
     };
 
-    next();
+    await enforceEditionAccess(req, res, next);
   } catch (error: any) {
     if (error.name === 'TokenExpiredError') {
       return next(new UnauthorizedError('La sesión ha expirado. Inicie sesión nuevamente'));

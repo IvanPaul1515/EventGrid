@@ -41,6 +41,7 @@ export const AnnullPaymentSchema = z.object({
 
 export const QuerySponsorsSchema = z.object({
   search: z.string().optional(),
+  category: z.string().trim().max(100).optional(),
   type: z.enum(['ALL', 'SPONSOR', 'COLLABORATOR']).default('ALL'),
   status: z.enum(['ALL', 'PENDING', 'PARTIALLY_PAID', 'PAID', 'CANCELLED']).default('ALL'),
   contributionType: z.enum(['ALL', 'MONETARY', 'IN_KIND', 'MIXED']).default('ALL'),

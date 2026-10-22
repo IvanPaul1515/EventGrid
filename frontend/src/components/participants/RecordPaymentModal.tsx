@@ -56,7 +56,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
   return createPortal(
     <div className="mobile-safe-overlay fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-2xl max-w-md w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200">
+      <div role="dialog" aria-modal="true" className="mobile-form-dialog bg-card border border-border rounded-2xl max-w-md w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between pb-3 border-b border-border">
           <div className="flex items-center gap-2 text-primary font-bold text-sm">
             <DollarSign className="w-5 h-5 shrink-0" />
@@ -71,7 +71,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        <form onSubmit={handleSubmit} className="mobile-form-body mt-4 space-y-4">
           <div className="p-3.5 rounded-xl bg-muted/40 border border-border">
             <div className="flex items-center justify-between">
               <div>
@@ -144,7 +144,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
           {error && <div className="p-2.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs">{error}</div>}
 
-          <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-border">
+          <div className="mobile-form-actions flex items-center justify-end gap-2.5 pt-2 border-t border-border">
             <button
               type="button"
               onClick={onClose}

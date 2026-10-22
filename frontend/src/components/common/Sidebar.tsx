@@ -33,7 +33,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) => {
   const [collapsed, setCollapsed] = useState(false);
   const { currentEvent } = useEdition();
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
 
   // Bloquear el desplazamiento del fondo en móviles cuando el menú lateral está abierto
   useEffect(() => {
@@ -105,7 +105,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       to: '/editions',
       label: 'Ediciones',
       icon: CalendarDays,
-      roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
+      roles: ['ADMIN'],
     },
     {
       to: '/schedule',
@@ -189,10 +189,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
               {(!collapsed || mobileOpen) && (
                 <div className="flex flex-col">
                   <span className="font-display font-black text-sm tracking-tight text-foreground flex items-center gap-1">
-                    BARCAMP <span className="text-primary font-black">2026</span>
+                    {currentEvent?.name || 'BarCamp RD 2026'}
                   </span>
-                  <span className="text-[10px] text-muted-foreground font-mono tracking-widest uppercase">
-                    EventGrid Admin
+                  <span className="text-[10px] text-muted-foreground font-mono uppercase">
+                    EventGrid · {user?.role === 'ADMIN' ? 'Administrador' : user?.role === 'OPERATOR' ? 'Operador' : 'Consulta'}
                   </span>
                 </div>
               )}

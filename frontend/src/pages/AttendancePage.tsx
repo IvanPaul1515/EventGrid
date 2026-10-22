@@ -1,3 +1,5 @@
+import { MobileSearchInput } from '../components/common/MobileSearchInput';
+import { useLocation, useNavigate } from 'react-router-dom';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
@@ -87,7 +89,15 @@ export const AttendancePage: React.FC = () => {
   const [isOnsiteSaleOpen, setIsOnsiteSaleOpen] = useState(false);
   const [isNewParticipantOpen, setIsNewParticipantOpen] = useState(false);
   const [registrationToEdit, setRegistrationToEdit] = useState<Registration | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
   const [isQrScanOpen, setIsQrScanOpen] = useState(false);
+  useEffect(() => {
+    if (location.state?.openQr && hasRole(['ADMIN', 'OPERATOR'])) {
+      setIsQrScanOpen(true);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.state, location.pathname, navigate, user?.role]);
 
   // Feedback temporal
   const [feedback, setFeedback] = useState<{
@@ -587,7 +597,7 @@ export const AttendancePage: React.FC = () => {
       <div className="p-4 rounded-2xl bg-card border border-border shadow-md space-y-3">
         <div className="relative">
           <Search className="w-6 h-6 absolute left-4 top-1/2 -translate-y-1/2 text-primary pointer-events-none" />
-          <input
+          <MobileSearchInput
             ref={searchInputRef}
             type="text"
             value={search}
@@ -927,6 +937,8 @@ export const AttendancePage: React.FC = () => {
         isOpen={isQrScanOpen}
         onClose={() => setIsQrScanOpen(false)}
         onAttendanceMarked={async () => {
+          setIsQrScanOpen(false);
+          showFeedback('success', 'Asistencia confirmada', 'La llegada se registró correctamente. Puede continuar en Control de asistencia.');
           await fetchAttendance();
         }}
         onOpenParticipantDetail={async (reg) => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
@@ -13,7 +13,12 @@ export const LoginPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const isDev = import.meta.env.DEV;
+  const [demoAccess, setDemoAccess] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api.get('/auth/demo-access').then(res => { if (active) setDemoAccess(res.data.enabled === true); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,9 +51,17 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  // En entorno local de desarrollo, permite rellenar únicamente el correo (nunca la contraseña)
-  const handleQuickEmailFill = (roleEmail: string) => {
-    setEmail(roleEmail);
+  const handleQuickAccess = async (role: 'ADMIN' | 'OPERATOR' | 'VIEWER') => {
+    if (loading || !demoAccess) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.post('/auth/demo-login', { role });
+      login(res.data.data.token, res.data.data.user);
+      navigate('/', { replace: true });
+    } catch {
+      setError('No fue posible iniciar el acceso de demostración.');
+    } finally { setLoading(false); }
   };
 
   return (
@@ -166,37 +179,37 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          {/* Accesos rápidos sólo en entorno local aislado de desarrollo, autocompletando únicamente el email */}
-          {isDev && (
+          {/* Accesos habilitados explícitamente por el servidor de demostración. */}
+          {demoAccess && (
             <div className="mt-6 pt-5 border-t border-[#261a1a]">
               <p className="text-[10px] uppercase tracking-wider font-mono text-[#a8a09a] mb-2 flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-[#ED2917]" />
-                Completar correo de prueba (dev local):
+                Accesos de demostración:
               </p>
               <div className="grid grid-cols-3 gap-2 text-[11px] font-mono">
                 <button
                   type="button"
-                  onClick={() => handleQuickEmailFill('admin@barcamp.org.do')}
+                  onClick={() => handleQuickAccess('ADMIN')}
                   className="px-2 py-1.5 rounded-xl bg-[#1a1212] hover:bg-[#251919] border border-[#2d1e1e] text-[#e5dfd8] hover:text-white transition-colors text-center cursor-pointer"
-                  title="Autocompletar correo de Administrador"
+                  title="Ingresar como Administrador"
                 >
                   <strong className="block text-[#ED2917] font-bold">Admin</strong>
                   <span className="text-[9px] text-[#6b6460]">admin@...</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleQuickEmailFill('operador@barcamp.org.do')}
+                  onClick={() => handleQuickAccess('OPERATOR')}
                   className="px-2 py-1.5 rounded-xl bg-[#1a1212] hover:bg-[#251919] border border-[#2d1e1e] text-[#e5dfd8] hover:text-white transition-colors text-center cursor-pointer"
-                  title="Autocompletar correo de Operador"
+                  title="Ingresar como Operador"
                 >
                   <strong className="block text-blue-400 font-bold">Operador</strong>
                   <span className="text-[9px] text-[#6b6460]">operador@...</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleQuickEmailFill('consulta@barcamp.org.do')}
+                  onClick={() => handleQuickAccess('VIEWER')}
                   className="px-2 py-1.5 rounded-xl bg-[#1a1212] hover:bg-[#251919] border border-[#2d1e1e] text-[#e5dfd8] hover:text-white transition-colors text-center cursor-pointer"
-                  title="Autocompletar correo de Consulta"
+                  title="Ingresar como Consulta"
                 >
                   <strong className="block text-[#a8a09a] font-bold">Consulta</strong>
                   <span className="text-[9px] text-[#6b6460]">consulta@...</span>

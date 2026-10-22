@@ -38,8 +38,12 @@ export class QrController {
     try {
       const parsed = ScanQrSchema.parse(req.body);
       const codeOrToken = (parsed.codeOrToken || parsed.qrToken)!.trim();
-      const eventId = parsed.eventId || parsed.activeEventId || (req.headers['x-event-id'] as string) || undefined;
+      const eventId = req.eventId || parsed.eventId || parsed.activeEventId || (req.headers['x-event-id'] as string) || undefined;
       const result = await QrService.validateAndScan(codeOrToken, eventId);
+      if (req.user?.role !== 'ADMIN' && result.status === 'EDITION_MISMATCH') {
+        result.registration = null;
+        result.message = 'Esta entrada no pertenece a su edición asignada.';
+      }
 
       if (!result.valid) {
         await recordAuditLog({

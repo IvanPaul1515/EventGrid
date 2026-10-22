@@ -14,13 +14,15 @@ interface EditionContextType {
 const EditionContext = createContext<EditionContextType | undefined>(undefined);
 
 export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [events, setEvents] = useState<EventEdition[]>([]);
   const [currentEvent, setCurrentEvent] = useState<EventEdition | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const fetchEditions = async () => {
     if (!isAuthenticated) {
+      setEvents([]);
+      setCurrentEvent(null);
       setIsLoading(false);
       return;
     }
@@ -53,6 +55,7 @@ export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
       setEvents(loadedEvents);
 
+      setCurrentEvent(null);
       if (loadedEvents.length > 0) {
         const storedId = localStorage.getItem('barcamp_current_event_id');
         let selected = loadedEvents.find((e) => e.id === storedId);
@@ -78,9 +81,10 @@ export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     fetchEditions();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.id]);
 
   const switchEdition = (eventId: string) => {
+    if (user?.role !== 'ADMIN') return;
     const selected = events.find((e) => e.id === eventId);
     if (selected) {
       setCurrentEvent(selected);

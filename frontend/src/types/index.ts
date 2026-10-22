@@ -4,6 +4,7 @@ export type RegistrationStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED';
 export type PaymentStatus = 'PENDING' | 'PARTIAL' | 'PAID' | 'COURTESY';
 
 export interface User {
+  assignedEventId?: string | null;
   id: string;
   email: string;
   fullName: string;
@@ -496,6 +497,7 @@ export interface Sponsor {
 }
 
 export interface SponsorSummary {
+  byCategory?: { category: string; count: number; committed: number; received: number; pending: number }[];
   totalSponsors: number;
   totalCollaborators: number;
   totalCount: number;
@@ -510,6 +512,7 @@ export interface SponsorSummary {
 }
 
 export interface SponsorFilterQuery {
+  category?: string;
   search?: string;
   type?: 'ALL' | SponsorType;
   status?: 'ALL' | SponsorStatus;

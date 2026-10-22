@@ -39,8 +39,9 @@ export class EventsService {
     };
   }
 
-  static async getAll() {
+  static async getAll(eventId?: string) {
     const events = await prisma.event.findMany({
+      where: eventId ? { id: eventId } : undefined,
       orderBy: { year: 'desc' },
       include: {
         settings: true,

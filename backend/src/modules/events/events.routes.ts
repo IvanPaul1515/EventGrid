@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { EventsController } from './events.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
 import { requireAdmin, requireAnyRole, requirePermission } from '../../middleware/rbac.js';
+import { enforceEditionAccess } from '../../middleware/editionAccess.js';
 
 const router = Router();
 
 // Todas las rutas requieren estar autenticado
 router.use(authenticateToken);
+router.param('id', (req, res, next) => enforceEditionAccess(req, res, next));
 
 // Listar y ver detalles: accesible para cualquier rol autenticado (Admin, Operador, Consulta)
 router.get('/', requireAnyRole, EventsController.getAll);
