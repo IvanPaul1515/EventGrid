@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { DetailedRegistration, participantsService } from '../../services/participants.service';
 import { attendanceService } from '../../services/attendance.service';
 import { inventoryService } from '../../services/inventory.service';
@@ -51,6 +52,7 @@ interface ParticipantDetailDrawerProps {
   onClose: () => void;
   onEdit?: (reg: DetailedRegistration) => void;
   onUpdated?: (updatedReg: DetailedRegistration) => void;
+  onCheckInSuccess?: (message: string) => void;
   paymentMethods?: PaymentMethod[];
   onNavigate?: (direction: 'prev' | 'next') => void;
   hasPrev?: boolean;
@@ -63,6 +65,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   onClose,
   onEdit,
   onUpdated,
+  onCheckInSuccess,
   paymentMethods = [],
   onNavigate,
   hasPrev = false,
@@ -577,7 +580,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
     );
   };
 
-  return (
+  return createPortal(
     <>
       <div className="fixed inset-0 z-50 overflow-hidden">
         {/* Backdrop */}
@@ -588,7 +591,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
         />
 
         <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-8 pointer-events-none">
-          <div className="w-screen max-w-full sm:max-w-xl h-full max-h-screen bg-card border-l border-border shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+          <div className="w-screen max-w-full sm:w-[480px] md:w-[520px] lg:w-[35vw] lg:min-w-[480px] lg:max-w-[640px] h-full max-h-screen bg-card border-l border-border shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             {/* Cabecera de la Ficha con Navegación Anterior/Siguiente */}
             <div className="border-b border-border bg-gradient-to-b from-primary/15 via-background to-background p-4 sm:p-6 shrink-0">
               <div className="flex items-center justify-between mb-3">
@@ -1744,6 +1747,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
         onConfirm={handleReturnTshirt}
       />
       </div>
-    </>
+    </>,
+    document.body
   );
 };

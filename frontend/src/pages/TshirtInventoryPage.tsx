@@ -56,7 +56,7 @@ export const TshirtInventoryPage: React.FC = () => {
       console.error('Error al cargar inventario de T-shirts:', err);
       setFeedback({
         type: 'error',
-        text: err.response?.data?.message || 'Error al consultar inventario de T-shirts',
+        text: err.response?.status === 403 ? 'Acceso denegado: No tiene permisos suficientes para consultar el inventario de T-shirts.' : (err.response?.data?.message || 'Error al consultar inventario de T-shirts'),
       });
     } finally {
       setLoading(false);

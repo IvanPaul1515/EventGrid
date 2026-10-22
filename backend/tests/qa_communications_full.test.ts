@@ -11,6 +11,7 @@ describe('QA Communications Full Module — SMTP, Encryption, Bulk, Preview & Se
   let generalTicketTypeId: string;
   let testRegId: string;
   let testParticipantId: string;
+  let originalEmailConfig: any = null;
   const createdLogsBatchIds: string[] = [];
 
   beforeAll(async () => {
@@ -33,6 +34,7 @@ describe('QA Communications Full Module — SMTP, Encryption, Bulk, Preview & Se
     // 2. Evento activo
     const event = await prisma.event.findFirst({ where: { year: 2026 } });
     activeEventId = event!.id;
+    originalEmailConfig = await prisma.emailConfig.findFirst({ where: { eventId: activeEventId } });
 
     // 3. Ticket type
     let ticketType = await prisma.ticketType.findFirst({ where: { eventId: activeEventId } });
@@ -81,6 +83,22 @@ describe('QA Communications Full Module — SMTP, Encryption, Bulk, Preview & Se
   });
 
   afterAll(async () => {
+    if (originalEmailConfig) {
+      await prisma.emailConfig.update({
+        where: { id: originalEmailConfig.id },
+        data: {
+          host: originalEmailConfig.host,
+          port: originalEmailConfig.port,
+          secure: originalEmailConfig.secure,
+          user: originalEmailConfig.user,
+          password: originalEmailConfig.password,
+          fromEmail: originalEmailConfig.fromEmail,
+          fromName: originalEmailConfig.fromName,
+          replyToEmail: originalEmailConfig.replyToEmail,
+          isEnabled: originalEmailConfig.isEnabled,
+        },
+      }).catch(() => {});
+    }
     if (createdLogsBatchIds.length > 0) {
       await prisma.emailLog.deleteMany({
         where: { batchId: { in: createdLogsBatchIds } },

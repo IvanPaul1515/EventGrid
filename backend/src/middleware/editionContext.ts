@@ -5,7 +5,7 @@ import { BadRequestError, NotFoundError } from '../utils/errors.js';
 export async function editionContext(req: Request, res: Response, next: NextFunction) {
   try {
     let eventId =
-      (req.headers['x-event-id'] as string) ||
+      (req.headers['x-event-id'] as string) || (req.headers['x-edition-id'] as string) ||
       (req.query.eventId as string) ||
       (req.params.eventId as string);
 

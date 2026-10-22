@@ -11,6 +11,7 @@ describe('EventGrid Alpha 1.2 — Validación de Modo Demo, Códigos QR y Sistem
   let realRegistrationId: string;
   let demoRegistrationId: string;
   let realQrToken: string;
+  let originalEmailConfig: any = null;
 
   beforeAll(async () => {
     // 1. Iniciar sesión con los 3 usuarios del sistema
@@ -35,6 +36,7 @@ describe('EventGrid Alpha 1.2 — Validación de Modo Demo, Códigos QR y Sistem
       .set('Authorization', `Bearer ${adminToken}`);
     const active = eventsRes.body.data.find((e: any) => e.isDefault) || eventsRes.body.data[0];
     activeEventId = active.id;
+    originalEmailConfig = await prisma.emailConfig.findFirst({ where: { eventId: activeEventId } });
 
     // 3. Crear una inscripción real garantizada para pruebas
     const realPart = await prisma.participant.create({
@@ -68,6 +70,22 @@ describe('EventGrid Alpha 1.2 — Validación de Modo Demo, Códigos QR y Sistem
   });
 
   afterAll(async () => {
+    if (originalEmailConfig) {
+      await prisma.emailConfig.update({
+        where: { id: originalEmailConfig.id },
+        data: {
+          host: originalEmailConfig.host,
+          port: originalEmailConfig.port,
+          secure: originalEmailConfig.secure,
+          user: originalEmailConfig.user,
+          password: originalEmailConfig.password,
+          fromEmail: originalEmailConfig.fromEmail,
+          fromName: originalEmailConfig.fromName,
+          replyToEmail: originalEmailConfig.replyToEmail,
+          isEnabled: originalEmailConfig.isEnabled,
+        },
+      }).catch(() => {});
+    }
     if (realRegistrationId) {
       await prisma.emailLog.deleteMany({ where: { registrationId: realRegistrationId } });
       await prisma.registration.deleteMany({ where: { id: realRegistrationId } });
