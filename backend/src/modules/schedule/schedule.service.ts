@@ -4,7 +4,11 @@ import {
   CreateScheduleItemInput,
   UpdateScheduleItemInput,
   QueryScheduleInput,
+  PublishKeynoteInput,
+  NotifyScheduleChangeInput,
+  CreateAnnouncementInput,
 } from './schedule.dto.js';
+import { CommunicationsService } from '../communications/communications.service.js';
 import * as XLSX from 'xlsx';
 
 export class ScheduleService {
@@ -113,10 +117,15 @@ export class ScheduleService {
         day: input.day?.trim() || 'Día 1',
         startTime: input.startTime.trim(),
         endTime: input.endTime.trim(),
-        category: input.category?.trim() || null,
+        category: input.category?.trim() || (input.isKeynote ? 'Keynote' : null),
         status: input.status || 'CONFIRMED',
         description: input.description?.trim() || null,
         order: input.order ?? 0,
+        isKeynote: Boolean(input.isKeynote),
+        visibility: input.visibility || 'PUBLISHED',
+        publishAt: input.publishAt ? new Date(input.publishAt) : null,
+        imageUrl: input.imageUrl?.trim() || null,
+        announcementText: input.announcementText?.trim() || null,
       },
     });
 
@@ -124,10 +133,74 @@ export class ScheduleService {
   }
 
   /**
-   * Actualizar ítem existente
+   * Actualizar ítem existente con detección de cambios y bitácora
    */
-  static async updateItem(eventId: string, id: string, input: UpdateScheduleItemInput) {
-    await this.getItemById(eventId, id);
+  static async updateItem(eventId: string, id: string, input: UpdateScheduleItemInput, userId?: string) {
+    const existing = await this.getItemById(eventId, id);
+
+    // Detectar modificaciones en campos de impacto
+    const changedFields: string[] = [];
+    const previousValues: Record<string, any> = {};
+    const newValues: Record<string, any> = {};
+
+    const fieldsToTrack: Array<keyof UpdateScheduleItemInput> = [
+      'title', 'speakerName', 'speakerCompany', 'room', 'day', 'startTime', 'endTime', 'category', 'status', 'visibility'
+    ];
+
+    for (const field of fieldsToTrack) {
+      if (input[field] !== undefined) {
+        const oldVal = (existing as any)[field];
+        const newVal = input[field];
+        if (oldVal !== newVal && String(oldVal ?? '').trim() !== String(newVal ?? '').trim()) {
+          changedFields.push(String(field));
+          previousValues[String(field)] = oldVal;
+          newValues[String(field)] = newVal;
+        }
+      }
+    }
+
+    const hasRelevantChanges = changedFields.length > 0;
+    let changeLog: any = null;
+
+    if (hasRelevantChanges) {
+      const summaries: string[] = [];
+      if (newValues.startTime || newValues.endTime) {
+        summaries.push(`Horario: ${previousValues.startTime || existing.startTime}-${previousValues.endTime || existing.endTime} → ${newValues.startTime || existing.startTime}-${newValues.endTime || existing.endTime}`);
+      }
+      if (newValues.room) {
+        summaries.push(`Salón: "${previousValues.room || 'Sin salón'}" → "${newValues.room}"`);
+      }
+      if (newValues.speakerName) {
+        summaries.push(`Ponente: "${previousValues.speakerName || 'Sin ponente'}" → "${newValues.speakerName}"`);
+      }
+      if (newValues.day) {
+        summaries.push(`Día: "${previousValues.day || existing.day}" → "${newValues.day}"`);
+      }
+      if (newValues.status) {
+        summaries.push(`Estado: ${previousValues.status} → ${newValues.status}`);
+      }
+      if (newValues.title) {
+        summaries.push(`Título: "${previousValues.title}" → "${newValues.title}"`);
+      }
+      if (newValues.visibility) {
+        summaries.push(`Visibilidad: ${previousValues.visibility} → ${newValues.visibility}`);
+      }
+
+      const changeSummary = summaries.length > 0 ? summaries.join(' | ') : `Modificación de ${changedFields.join(', ')}`;
+
+      changeLog = await prisma.scheduleChangeLog.create({
+        data: {
+          eventId,
+          scheduleItemId: id,
+          changedByUserId: userId || null,
+          changeSummary,
+          previousValues: JSON.stringify(previousValues),
+          newValues: JSON.stringify(newValues),
+          notified: false,
+          deliveryStatus: 'NONE',
+        },
+      });
+    }
 
     const updated = await prisma.scheduleItem.update({
       where: { id },
@@ -144,10 +217,26 @@ export class ScheduleService {
         ...(input.status !== undefined ? { status: input.status } : {}),
         ...(input.description !== undefined ? { description: input.description?.trim() || null } : {}),
         ...(input.order !== undefined ? { order: input.order } : {}),
+        ...(input.isKeynote !== undefined ? { isKeynote: Boolean(input.isKeynote) } : {}),
+        ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
+        ...(input.publishAt !== undefined ? { publishAt: input.publishAt ? new Date(input.publishAt) : null } : {}),
+        ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl?.trim() || null } : {}),
+        ...(input.announcementText !== undefined ? { announcementText: input.announcementText?.trim() || null } : {}),
       },
     });
 
-    return updated;
+    const diffs = changedFields.map((field) => ({
+      field,
+      oldValue: previousValues[field],
+      newValue: newValues[field],
+    }));
+
+    return {
+      item: updated,
+      hasRelevantChanges,
+      changeLog,
+      diffs,
+    };
   }
 
   /**
@@ -309,6 +398,13 @@ export class ScheduleService {
       where: {
         eventId,
         status: { not: 'CANCELLED' },
+        OR: [
+          { visibility: 'PUBLISHED' },
+          {
+            visibility: 'SCHEDULED',
+            publishAt: { lte: new Date() },
+          },
+        ],
       },
       orderBy: [
         { day: 'asc' },
@@ -463,6 +559,409 @@ export class ScheduleService {
       success: true,
       deletedCount: deleteResult.count,
       message: `Se eliminaron ${deleteResult.count} actividades de demostración.`,
+    };
+  }
+
+
+  /**
+   * Publicar y/o anunciar Keynote
+   */
+  static async publishKeynote(
+    eventId: string,
+    id: string,
+    input: PublishKeynoteInput,
+    userId?: string
+  ) {
+    const item = await this.getItemById(eventId, id);
+    const action = (input as any).action;
+    const scheduledFor = (input as any).scheduledFor || input.scheduleNotificationAt || input.schedulePublicationAt;
+    const isPublishOnly = Boolean(input.publishOnly || action === 'PUBLISH_ONLY');
+    const isSchedule = Boolean(action === 'SCHEDULE_PUBLISH_AND_NOTIFY' || input.schedulePublicationAt || input.scheduleNotificationAt);
+    const shouldSendNow = Boolean(action === 'PUBLISH_AND_NOTIFY' || (!isPublishOnly && !isSchedule));
+
+    // 1. Solo publicar (hacer visible en cronograma sin enviar correos)
+    if (isPublishOnly) {
+      const updated = await prisma.scheduleItem.update({
+        where: { id },
+        data: { visibility: 'PUBLISHED', isKeynote: true },
+      });
+      return {
+        success: true,
+        item: updated,
+        message: 'Keynote publicado en el cronograma exitosamente sin envío de correos.',
+      };
+    }
+
+    // 2. Programar publicación y/o envío
+    if (isSchedule && scheduledFor) {
+      const pubDate = new Date(input.schedulePublicationAt || scheduledFor);
+      if (isNaN(pubDate.getTime())) throw new BadRequestError('Fecha de publicación inválida');
+
+      const notifDate = new Date(input.scheduleNotificationAt || scheduledFor);
+      if (isNaN(notifDate.getTime())) throw new BadRequestError('Fecha de notificación inválida');
+
+      await prisma.scheduleItem.update({
+        where: { id },
+        data: {
+          isKeynote: true,
+          visibility: pubDate && pubDate > new Date() ? 'SCHEDULED' : 'PUBLISHED',
+          publishAt: pubDate || null,
+        },
+      });
+
+      const scheduledNotif = await prisma.scheduledNotification.create({
+        data: {
+          eventId,
+          title: input.customSubject || `¡Ya tenemos keynote! — ${item.title}`,
+          message: input.customMessage || (input as any).customNote || item.announcementText || item.description || '',
+          targetGroup: input.targetGroup,
+          templateCode: 'KEYNOTE_ANNOUNCEMENT',
+          scheduledFor: notifDate,
+          status: 'SCHEDULED',
+          mode: input.mode,
+          scheduleItemId: id,
+          createdByUserId: userId || null,
+        },
+      });
+
+      return {
+        success: true,
+        scheduled: true,
+        notification: scheduledNotif,
+        scheduledNotification: scheduledNotif,
+        message: 'Keynote programado para publicación y anuncio.',
+      };
+    }
+
+    // 3. Publicar y enviar ahora
+    const updated = await prisma.scheduleItem.update({
+      where: { id },
+      data: { visibility: 'PUBLISHED', isKeynote: true },
+    });
+
+    let batchResult: any = null;
+    if (shouldSendNow) {
+      batchResult = await CommunicationsService.sendBulkEmail(
+        {
+          eventId,
+          targetGroup: input.targetGroup as any,
+          templateCode: 'KEYNOTE_ANNOUNCEMENT',
+          customSubject: input.customSubject || undefined,
+          customMessage: input.customMessage || (input as any).customNote || item.announcementText || undefined,
+          mode: input.mode as any,
+          simulateOnly: input.mode === 'SIMULATION',
+          activityTitle: item.title,
+          speakerName: item.speakerName || 'Invitado Especial',
+          speakerCompany: item.speakerCompany || '',
+          activityTime: `${item.startTime} - ${item.endTime}`,
+          activityDay: item.day,
+          activityRoom: item.room || 'Principal',
+          keynoteDescriptionHtml: item.description ? `<p style="margin: 8px 0; color: #cbd5e1; font-size: 13px;">${item.description}</p>` : '',
+        } as any,
+        userId
+      );
+    }
+
+    return {
+      success: true,
+      item: updated,
+      batchId: batchResult?.batchId || null,
+      batchJobId: batchResult?.batchId || null,
+      totalRecipients: (batchResult as any)?.totalTargeted || 0,
+      totalTargeted: (batchResult as any)?.totalTargeted || 0,
+      message: shouldSendNow
+        ? `Keynote publicado y campaña de anuncio enviada a ${(batchResult as any)?.totalTargeted || 0} asistentes.`
+        : 'Keynote publicado exitosamente en el cronograma.',
+    };
+  }
+
+  /**
+   * Notificar cambio de cronograma a los asistentes
+   */
+  static async notifyScheduleChange(
+    eventId: string,
+    input: NotifyScheduleChangeInput,
+    userId?: string
+  ) {
+    let changeLogId = input.changeLogId;
+    if (!changeLogId && (input as any).scheduleItemId) {
+      const latest = await prisma.scheduleChangeLog.findFirst({
+        where: { scheduleItemId: (input as any).scheduleItemId, eventId },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (latest) {
+        changeLogId = latest.id;
+      }
+    }
+
+    if (!changeLogId) {
+      throw new NotFoundError('Registro de cambio no encontrado');
+    }
+
+    const changeLog = await prisma.scheduleChangeLog.findFirst({
+      where: { id: changeLogId, eventId },
+      include: { scheduleItem: true },
+    });
+
+    if (!changeLog) {
+      throw new NotFoundError('Registro de cambio no encontrado');
+    }
+
+    const item = changeLog.scheduleItem;
+    const prev = JSON.parse(changeLog.previousValues || '{}');
+    const curr = JSON.parse(changeLog.newValues || '{}');
+
+    // Construir tabla HTML con los cambios exactos
+    const diffRows: string[] = [];
+    if (curr.startTime || curr.endTime || prev.startTime || prev.endTime) {
+      diffRows.push(`
+        <tr>
+          <td style="padding: 6px 12px; font-weight: bold; color: #94a3b8;">Horario</td>
+          <td style="padding: 6px 12px; color: #ef4444; text-decoration: line-through;">${prev.startTime || item.startTime} - ${prev.endTime || item.endTime}</td>
+          <td style="padding: 6px 12px; color: #22c55e; font-weight: bold;">${curr.startTime || item.startTime} - ${curr.endTime || item.endTime}</td>
+        </tr>
+      `);
+    }
+    if (curr.room && curr.room !== prev.room) {
+      diffRows.push(`
+        <tr>
+          <td style="padding: 6px 12px; font-weight: bold; color: #94a3b8;">Salón</td>
+          <td style="padding: 6px 12px; color: #ef4444; text-decoration: line-through;">${prev.room || 'Sin salón'}</td>
+          <td style="padding: 6px 12px; color: #22c55e; font-weight: bold;">${curr.room}</td>
+        </tr>
+      `);
+    }
+    if (curr.day && curr.day !== prev.day) {
+      diffRows.push(`
+        <tr>
+          <td style="padding: 6px 12px; font-weight: bold; color: #94a3b8;">Día</td>
+          <td style="padding: 6px 12px; color: #ef4444; text-decoration: line-through;">${prev.day || item.day}</td>
+          <td style="padding: 6px 12px; color: #22c55e; font-weight: bold;">${curr.day}</td>
+        </tr>
+      `);
+    }
+    if (curr.status && curr.status !== prev.status) {
+      diffRows.push(`
+        <tr>
+          <td style="padding: 6px 12px; font-weight: bold; color: #94a3b8;">Estado</td>
+          <td style="padding: 6px 12px; color: #ef4444; text-decoration: line-through;">${prev.status || item.status}</td>
+          <td style="padding: 6px 12px; color: #22c55e; font-weight: bold;">${curr.status}</td>
+        </tr>
+      `);
+    }
+    if (curr.speakerName && curr.speakerName !== prev.speakerName) {
+      diffRows.push(`
+        <tr>
+          <td style="padding: 6px 12px; font-weight: bold; color: #94a3b8;">Ponente</td>
+          <td style="padding: 6px 12px; color: #ef4444; text-decoration: line-through;">${prev.speakerName || 'Sin ponente'}</td>
+          <td style="padding: 6px 12px; color: #22c55e; font-weight: bold;">${curr.speakerName}</td>
+        </tr>
+      `);
+    }
+
+    const changeSummaryHtml = diffRows.length > 0
+      ? `<table style="width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px;">
+           <thead>
+             <tr style="text-align: left; color: #64748b; font-size: 12px; text-transform: uppercase;">
+               <th style="padding: 4px 12px;">Campo</th>
+               <th style="padding: 4px 12px;">Anterior</th>
+               <th style="padding: 4px 12px;">Nuevo</th>
+             </tr>
+           </thead>
+           <tbody>${diffRows.join('')}</tbody>
+         </table>`
+      : `<p style="margin: 8px 0; color: #cbd5e1;">${changeLog.changeSummary}</p>`;
+
+    const action = (input as any).action;
+    const isSchedule = action === 'SCHEDULE' || Boolean(input.scheduleAt) || Boolean((input as any).scheduledFor);
+    const scheduleDateStr = input.scheduleAt || (input as any).scheduledFor;
+
+    // Si es programación diferida
+    if (isSchedule && scheduleDateStr) {
+      const scheduledDate = new Date(scheduleDateStr);
+      if (isNaN(scheduledDate.getTime())) {
+        throw new BadRequestError('Fecha de programación inválida');
+      }
+
+      const scheduled = await prisma.scheduledNotification.create({
+        data: {
+          eventId,
+          title: input.customSubject || `Actualización del cronograma — ${item.title}`,
+          message: input.customMessage || (input as any).customNote || changeLog.changeSummary,
+          targetGroup: input.targetGroup,
+          templateCode: 'SCHEDULE_CHANGE_ALERT',
+          scheduledFor: scheduledDate,
+          status: 'SCHEDULED',
+          mode: input.mode,
+          scheduleItemId: item.id,
+          createdByUserId: userId || null,
+        },
+      });
+
+      await prisma.scheduleChangeLog.update({
+        where: { id: changeLog.id },
+        data: { deliveryStatus: 'SCHEDULED' },
+      });
+
+      return {
+        success: true,
+        scheduled: true,
+        action: 'SCHEDULED',
+        notification: scheduled,
+        scheduledNotification: scheduled,
+        message: `Notificación de cambio programada exitosamente para ${scheduledDate.toLocaleString()}`,
+      };
+    }
+
+    // Envío inmediato
+    const batch = await CommunicationsService.sendBulkEmail(
+      {
+        eventId,
+        targetGroup: input.targetGroup as any,
+        templateCode: 'SCHEDULE_CHANGE_ALERT',
+        customSubject: input.customSubject || `Actualización del cronograma — ${item.title}`,
+        customMessage: input.customMessage || (input as any).customNote || undefined,
+        mode: input.mode as any,
+        simulateOnly: input.mode === 'SIMULATION',
+        activityTitle: item.title,
+        changeSummaryHtml,
+      } as any,
+      userId
+    );
+
+    await prisma.scheduleChangeLog.update({
+      where: { id: changeLog.id },
+      data: {
+        notified: true,
+        notifiedAt: new Date(),
+        batchJobId: batch.batchId,
+        deliveryStatus: input.mode === 'SIMULATION' ? 'SIMULATED' : 'SENT',
+      },
+    });
+
+    return {
+      success: true,
+      action: 'SENT_NOW',
+      batchId: batch.batchId,
+      batchJobId: batch.batchId,
+      totalRecipients: (batch as any)?.totalTargeted || 0,
+      totalTargeted: (batch as any)?.totalTargeted || 0,
+      message: `Notificación enviada a ${(batch as any)?.totalTargeted || 0} asistentes (${input.mode === 'SIMULATION' ? 'Modo Simulación' : 'Enviado'}).`,
+    };
+  }
+
+  /**
+   * Crear anuncio durante las pausas del evento
+   */
+  static async createAnnouncement(
+    eventId: string,
+    input: CreateAnnouncementInput,
+    userId?: string
+  ) {
+    const title = input.title || (input as any).subject || 'Anuncio Oficial del Evento';
+    const message = input.message;
+    const action = (input as any).action;
+    const isSchedule = action === 'SCHEDULE' || Boolean(input.scheduleAt) || Boolean((input as any).scheduledFor);
+    const scheduleDateStr = input.scheduleAt || (input as any).scheduledFor;
+
+    if (isSchedule && scheduleDateStr) {
+      const scheduledDate = new Date(scheduleDateStr);
+      if (isNaN(scheduledDate.getTime())) throw new BadRequestError('Fecha de programación inválida');
+
+      const scheduled = await prisma.scheduledNotification.create({
+        data: {
+          eventId,
+          title,
+          message,
+          targetGroup: input.targetGroup,
+          templateCode: 'GENERAL_ANNOUNCEMENT',
+          scheduledFor: scheduledDate,
+          status: 'SCHEDULED',
+          mode: input.mode,
+          scheduleItemId: input.scheduleItemId || null,
+          createdByUserId: userId || null,
+        },
+      });
+
+      return {
+        success: true,
+        scheduled: true,
+        notification: scheduled,
+        scheduledNotification: scheduled,
+        message: `Anuncio programado para ${scheduledDate.toLocaleString()}`,
+      };
+    }
+
+    const batch = await CommunicationsService.sendBulkEmail(
+      {
+        eventId,
+        targetGroup: input.targetGroup as any,
+        templateCode: 'GENERAL_ANNOUNCEMENT',
+        customSubject: title,
+        customMessage: message,
+        mode: input.mode as any,
+        simulateOnly: input.mode === 'SIMULATION',
+      },
+      userId
+    );
+
+    return {
+      success: true,
+      batchId: batch.batchId,
+      batchJobId: batch.batchId,
+      totalRecipients: (batch as any)?.totalTargeted || 0,
+      totalTargeted: (batch as any)?.totalTargeted || 0,
+      message: `Anuncio enviado exitosamente a ${(batch as any)?.totalTargeted || 0} destinatarios.`,
+    };
+  }
+
+  /**
+   * Historial de cambios y modificaciones del cronograma
+   */
+  static async getChangeHistory(eventId: string) {
+    return await prisma.scheduleChangeLog.findMany({
+      where: { eventId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        scheduleItem: {
+          select: { id: true, title: true, speakerName: true, room: true },
+        },
+      },
+      take: 50,
+    });
+  }
+
+  /**
+   * Consultar notificaciones programadas
+   */
+  static async getScheduledNotifications(eventId: string) {
+    return await prisma.scheduledNotification.findMany({
+      where: { eventId },
+      orderBy: { scheduledFor: 'asc' },
+    });
+  }
+
+  /**
+   * Cancelar notificación programada
+   */
+  static async cancelScheduledNotification(eventId: string, id: string, userId?: string) {
+    const notif = await prisma.scheduledNotification.findFirst({
+      where: { id, eventId },
+    });
+    if (!notif) throw new NotFoundError('Notificación programada no encontrada');
+    if (notif.status !== 'SCHEDULED' && notif.status !== 'PENDING') {
+      throw new BadRequestError(`No se puede cancelar una notificación en estado ${notif.status}`);
+    }
+
+    const cancelled = await prisma.scheduledNotification.update({
+      where: { id },
+      data: { status: 'CANCELLED' },
+    });
+
+    return {
+      success: true,
+      notification: cancelled,
+      message: 'Notificación programada cancelada exitosamente.',
     };
   }
 

@@ -545,6 +545,73 @@ export class CommunicationsService {
         'messageContent',
       ],
     },
+    {
+      code: 'SCHEDULE_CHANGE_ALERT',
+      name: 'Actualización del Cronograma (Cambio de Horario/Actividad)',
+      subject: 'Actualización del cronograma — {{activityTitle}}',
+      bodyHtml: `
+        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #38bdf8; margin-top: 0;">¡Hola, {{participantName}}!</h2>
+          <p>Te informamos sobre una actualización en el cronograma oficial de <strong>{{eventName}}</strong>:</p>
+          <div style="background: #1e293b; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #38bdf8;">
+            <h3 style="color: #f8fafc; margin-top: 0; font-size: 16px;">{{activityTitle}}</h3>
+            {{changeSummaryHtml}}
+          </div>
+          {{messageContent}}
+          <div style="text-align: center; margin: 24px 0;">
+            <a href="{{scheduleUrl}}" style="background: #0284c7; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Consultar Cronograma Actualizado</a>
+          </div>
+          <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Nos vemos en el evento.</p>
+        </div>
+      `,
+      bodyText: 'Hola {{participantName}}, la conferencia {{activityTitle}} en {{eventName}} ha sido actualizada. Consulta el cronograma en {{scheduleUrl}}',
+      variables: [
+        'participantName',
+        'eventName',
+        'activityTitle',
+        'changeSummaryHtml',
+        'scheduleUrl',
+        'messageContent',
+      ],
+    },
+    {
+      code: 'KEYNOTE_ANNOUNCEMENT',
+      name: 'Anuncio de Keynote / Conferencia Magistral',
+      subject: '¡Ya tenemos keynote! — {{eventName}}',
+      bodyHtml: `
+        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #fbbf24; margin-top: 0;">¡Llegó el momento de anunciar nuestra presentación principal!</h2>
+          <p>Hola, <strong>{{participantName}}</strong>:</p>
+          <div style="background: #1e293b; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #fbbf24;">
+            <span style="background: #d97706; color: #ffffff; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 4px; text-transform: uppercase;">Keynote Oficial</span>
+            <h3 style="color: #f8fafc; margin: 10px 0 6px 0; font-size: 18px;">{{activityTitle}}</h3>
+            <p style="margin: 4px 0; color: #94a3b8;"><strong>Ponente:</strong> <span style="color: #f8fafc;">{{speakerName}}</span> {{speakerCompany}}</p>
+            <p style="margin: 4px 0; color: #94a3b8;"><strong>Horario:</strong> <span style="color: #f8fafc;">{{activityTime}} ({{activityDay}})</span></p>
+            <p style="margin: 4px 0; color: #94a3b8;"><strong>Lugar:</strong> <span style="color: #f8fafc;">{{activityRoom}}</span></p>
+            {{keynoteDescriptionHtml}}
+          </div>
+          {{messageContent}}
+          <p style="color: #cbd5e1;">Te esperamos para disfrutar esta presentación.</p>
+          <div style="text-align: center; margin: 24px 0;">
+            <a href="{{scheduleUrl}}" style="background: #f59e0b; color: #000000; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Ver Cronograma Completo</a>
+          </div>
+        </div>
+      `,
+      bodyText: 'Hola {{participantName}}, ¡Llegó el momento de anunciar el Keynote de {{eventName}}! {{activityTitle}} por {{speakerName}}. Horario: {{activityTime}}, Lugar: {{activityRoom}}.',
+      variables: [
+        'participantName',
+        'eventName',
+        'activityTitle',
+        'speakerName',
+        'speakerCompany',
+        'activityTime',
+        'activityDay',
+        'activityRoom',
+        'keynoteDescriptionHtml',
+        'scheduleUrl',
+        'messageContent',
+      ],
+    },
   ];
 
   /**
@@ -697,9 +764,20 @@ export class CommunicationsService {
     const rawLogoUrl = registration.event?.settings?.logoUrl || (registration.event as any)?.logoUrl || '';
     const logoUrl = rawLogoUrl ? (rawLogoUrl.startsWith('http') ? rawLogoUrl : `${publicUrlBase}${rawLogoUrl.startsWith('/') ? '' : '/'}${rawLogoUrl}`) : '';
 
+    const scheduleUrl = `${publicUrlBase}/schedule`;
+
     const variables: Record<string, string> = {
       logoUrl,
       eventLogo: logoUrl,
+      scheduleUrl,
+      activityTitle: (overrides as any)?.activityTitle || '',
+      changeSummaryHtml: (overrides as any)?.changeSummaryHtml || '',
+      speakerName: (overrides as any)?.speakerName || '',
+      speakerCompany: (overrides as any)?.speakerCompany ? `(${(overrides as any).speakerCompany})` : '',
+      activityTime: (overrides as any)?.activityTime || '',
+      activityDay: (overrides as any)?.activityDay || '',
+      activityRoom: (overrides as any)?.activityRoom || '',
+      keynoteDescriptionHtml: (overrides as any)?.keynoteDescriptionHtml || '',
       participantName: registration.participant?.fullName || 'Participante',
       participantFirstName: registration.participant?.firstName || 'Participante',
       participantEmail: registration.participant?.email || '',

@@ -27,4 +27,15 @@ router.post('/pdf', requireOperatorOrAdmin, ScheduleController.updatePdfUrl);
 router.post('/demo', requireOperatorOrAdmin, ScheduleController.seedDemoSchedule);
 router.delete('/demo', requireOperatorOrAdmin, ScheduleController.clearDemoSchedule);
 
+
+// Historial de cambios y notificaciones programadas
+router.get('/history', requireAnyRole, ScheduleController.getChangeHistory);
+router.get('/scheduled', requireAnyRole, ScheduleController.getScheduledNotifications);
+router.delete('/scheduled/:id', requireOperatorOrAdmin, ScheduleController.cancelScheduledNotification);
+
+// Anuncios y notificaciones de cronograma
+router.post('/notify-change', requireOperatorOrAdmin, ScheduleController.notifyScheduleChange);
+router.post('/announcement', requireOperatorOrAdmin, ScheduleController.createAnnouncement);
+router.post('/:id/publish-keynote', requireOperatorOrAdmin, ScheduleController.publishKeynote);
+
 export default router;
