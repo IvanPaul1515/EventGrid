@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { DeleteExcelModal } from '../components/participants/DeleteExcelModal';
 import {
   importService,
   AnalyzeResult,
@@ -105,6 +106,7 @@ export const ImportPage: React.FC = () => {
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
   const [isDeleteAllOpen, setIsDeleteAllOpen] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1107,14 +1109,14 @@ export const ImportPage: React.FC = () => {
             </h3>
           </div>
           <div className="flex items-center gap-2">
-            {hasRole(['ADMIN']) && batches.length > 0 && (
+            {hasRole(['ADMIN']) && (
               <button
-                onClick={() => setIsDeleteAllOpen(true)}
+                onClick={() => setIsDeleteModalOpen(true)}
                 className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 hover:text-rose-300 font-bold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                 title="Eliminar todas las importaciones de Excel de esta edición"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Borrar todas las importaciones</span>
+                <span>Eliminar participantes importados desde Excel</span>
               </button>
             )}
             <button
@@ -1285,6 +1287,8 @@ export const ImportPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      <DeleteExcelModal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} onDeleted={() => { fetchBatches(); handleReset(); }} />
     </div>
   );
 };

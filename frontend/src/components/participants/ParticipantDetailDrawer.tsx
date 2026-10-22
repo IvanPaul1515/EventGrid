@@ -141,6 +141,50 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
     }
   }, [registration?.id]);
 
+  // Manejo de tecla Escape y bloqueo de scroll de fondo para la ficha
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (
+          showPaymentModal ||
+          showCourtesyModal ||
+          showCancelModal ||
+          showReactivateModal ||
+          showRevertModal ||
+          showCheckInConfirmModal ||
+          showReturnTshirtModal ||
+          showTicketModal ||
+          showEmailModal
+        ) {
+          return;
+        }
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [
+    isOpen,
+    onClose,
+    showPaymentModal,
+    showCourtesyModal,
+    showCancelModal,
+    showReactivateModal,
+    showRevertModal,
+    showCheckInConfirmModal,
+    showReturnTshirtModal,
+    showTicketModal,
+    showEmailModal,
+  ]);
+
   if (!isOpen || !registration) return null;
 
   const p = registration.participant;
@@ -538,12 +582,13 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       <div className="fixed inset-0 z-50 overflow-hidden">
         {/* Backdrop */}
         <div
-          className="absolute inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
+          aria-hidden="true"
           onClick={onClose}
         />
 
-        <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-8">
-          <div className="w-screen max-w-full sm:max-w-xl bg-card border-l border-border shadow-2xl flex flex-col justify-between animate-in slide-in-from-right duration-250">
+        <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-8 pointer-events-none">
+          <div className="w-screen max-w-full sm:max-w-xl h-full max-h-screen bg-card border-l border-border shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             {/* Cabecera de la Ficha con Navegación Anterior/Siguiente */}
             <div className="border-b border-border bg-gradient-to-b from-primary/15 via-background to-background p-4 sm:p-6 shrink-0">
               <div className="flex items-center justify-between mb-3">
@@ -642,7 +687,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
             </div>
 
             {/* Cuerpo de la Ficha */}
-            <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 overflow-y-auto max-h-[calc(100vh-210px)]">
+            <div className="flex-1 min-h-0 p-4 sm:p-6 space-y-5 sm:space-y-6 overflow-y-auto">
               {/* CONTROL DE ENTRADA (CHECK-IN DESTACADO) */}
               <div className="p-4 rounded-2xl border bg-muted/20 border-border space-y-3">
                 <div className="flex items-center justify-between">
@@ -1608,7 +1653,8 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
         </div>
       </div>
 
-      {/* Modales Secundarios Integrados */}
+      {/* Modales Secundarios Integrados (Capa z-[60] por encima de la ficha) */}
+      <div className="relative z-[60]">
       <RecordPaymentModal
         isOpen={showPaymentModal}
         participantName={p.fullName}
@@ -1697,6 +1743,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
         onClose={() => setShowReturnTshirtModal(false)}
         onConfirm={handleReturnTshirt}
       />
+      </div>
     </>
   );
 };

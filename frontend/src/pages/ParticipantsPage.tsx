@@ -325,6 +325,13 @@ export const ParticipantsPage: React.FC = () => {
     );
   });
 
+  useRealtimeEvent('PARTICIPANTS_DELETED', () => {
+    setIsDetailOpen(false);
+    setSelectedForDetail(null);
+    fetchParticipants();
+    showNotification('success', 'Participantes actualizados tras eliminación administrativa.');
+  });
+
   // Compatibilidad con eventos locales
   useEffect(() => {
     const handleDataRefresh = () => {
@@ -572,7 +579,7 @@ export const ParticipantsPage: React.FC = () => {
               title="Gestionar y borrar datos de Excel importados"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-rose-400" />
-              <span>Borrar Excel</span>
+              <span>Eliminar Importados / Vaciar</span>
             </button>
           )}
 

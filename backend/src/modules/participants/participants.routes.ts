@@ -14,6 +14,11 @@ router.post('/demo', requireOperatorOrAdmin, ParticipantsController.generateDemo
 router.delete('/demo', requireOperatorOrAdmin, ParticipantsController.clearDemo);
 router.post('/onsite-sale', requireOperatorOrAdmin, ParticipantsController.onsiteSale);
 
+// Rutas administrativas de eliminación segura (ADMIN)
+router.get('/deletion-preview', requireAdmin, ParticipantsController.getDeletionPreview);
+router.post('/delete-imported', requireAdmin, ParticipantsController.deleteImported);
+router.post('/purge-edition', requireAdmin, ParticipantsController.purgeEdition);
+
 // Rutas de consulta y exportación
 router.get('/', requireAnyRole, ParticipantsController.list);
 router.get('/export', requirePermission('PARTICIPANTS_EXPORT'), ParticipantsController.exportData);

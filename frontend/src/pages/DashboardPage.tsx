@@ -204,6 +204,10 @@ export const DashboardPage: React.FC = () => {
     loadAllData(true);
   });
 
+  useRealtimeEvent('PARTICIPANTS_DELETED', () => {
+    loadAllData(true);
+  });
+
   useRealtimeEvent('PAYMENT_RECORDED', () => {
     loadAllData(true);
   });
