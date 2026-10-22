@@ -105,6 +105,7 @@ enum AuditEntity {
 model User {
   id           String        @id @default(uuid())
   email        String        @unique
+  assignedEventId String?
   passwordHash String
   fullName     String
   role         Role          @default(OPERATOR)
@@ -187,6 +188,7 @@ model EventSettings {
   demoModeEnabled      Boolean  @default(false)
   tshirtSizesEnabled   Boolean  @default(false)
   tshirtSizes          Json?    // e.g. ["XS","S","M","L","XL","XXL","XXXL"]
+  sponsorCategoryValues String?
   customCss            Json?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt

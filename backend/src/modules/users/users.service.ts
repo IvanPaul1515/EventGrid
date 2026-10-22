@@ -5,6 +5,11 @@ import { BadRequestError, NotFoundError } from '../../utils/errors.js';
 import { CreateUserInput, UpdateUserInput, QueryUsersInput, ResetPasswordInput } from './users.dto.js';
 
 export class UsersService {
+  private static async validateAssignment(id?: string | null) {
+    if (id && !await prisma.event.findUnique({ where: { id }, select: { id: true } })) {
+      throw new BadRequestError('Edición asignada no encontrada');
+    }
+  }
   /**
    * Listar usuarios con búsqueda, filtros por rol y estado, y paginación
    */
@@ -40,6 +45,7 @@ export class UsersService {
           email: true,
           fullName: true,
           role: true,
+          assignedEventId: true,
           isActive: true,
           lastLoginAt: true,
           createdAt: true,
@@ -73,6 +79,7 @@ export class UsersService {
         email: true,
         fullName: true,
         role: true,
+        assignedEventId: true,
         isActive: true,
         lastLoginAt: true,
         createdAt: true,
@@ -91,6 +98,7 @@ export class UsersService {
    * Crear un nuevo usuario administrativo u operador
    */
   static async createUser(input: CreateUserInput, actorUserId?: string) {
+    await this.validateAssignment(input.assignedEventId);
     const existing = await prisma.user.findUnique({
       where: { email: input.email },
     });
@@ -108,6 +116,7 @@ export class UsersService {
         email: input.email,
         fullName: input.fullName,
         role: input.role,
+        assignedEventId: input.assignedEventId,
         isActive: input.isActive ?? true,
         passwordHash,
       },
@@ -116,6 +125,7 @@ export class UsersService {
         email: true,
         fullName: true,
         role: true,
+        assignedEventId: true,
         isActive: true,
         lastLoginAt: true,
         createdAt: true,
@@ -169,7 +179,9 @@ export class UsersService {
       }
     }
 
+    await this.validateAssignment(input.assignedEventId);
     const data: any = {};
+    if (input.assignedEventId !== undefined) data.assignedEventId = input.assignedEventId;
     if (input.fullName !== undefined) data.fullName = input.fullName;
     if (input.role !== undefined) data.role = input.role;
     if (input.isActive !== undefined) data.isActive = input.isActive;
@@ -182,6 +194,7 @@ export class UsersService {
         email: true,
         fullName: true,
         role: true,
+        assignedEventId: true,
         isActive: true,
         lastLoginAt: true,
         createdAt: true,
@@ -236,6 +249,7 @@ export class UsersService {
         email: true,
         fullName: true,
         role: true,
+        assignedEventId: true,
         isActive: true,
         lastLoginAt: true,
         createdAt: true,

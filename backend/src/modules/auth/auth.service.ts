@@ -48,6 +48,7 @@ export class AuthService {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
+        assignedEventId: user.assignedEventId,
         lastLoginAt: user.lastLoginAt,
       },
     };
@@ -61,6 +62,7 @@ export class AuthService {
         email: true,
         fullName: true,
         role: true,
+        assignedEventId: true,
         isActive: true,
         lastLoginAt: true,
         createdAt: true,

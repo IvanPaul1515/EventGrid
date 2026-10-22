@@ -43,7 +43,7 @@ export class SponsorsController {
   static async getSponsorById(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const eventId = req.params.eventId as string | undefined;
+      const eventId = SponsorsController.getEventId(req);
       const sponsor = await SponsorsService.getSponsorById(id, eventId);
       return res.status(200).json({ status: 'success', data: sponsor });
     } catch (error) {
@@ -85,7 +85,7 @@ export class SponsorsController {
   static async updateSponsor(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const eventId = req.params.eventId as string | undefined;
+      const eventId = SponsorsController.getEventId(req);
       const parsed = UpdateSponsorSchema.parse(req.body);
       const userId = req.user?.id;
 
@@ -113,7 +113,7 @@ export class SponsorsController {
     try {
       const { id } = req.params;
       const { isArchived } = req.body;
-      const eventId = req.params.eventId as string | undefined;
+      const eventId = SponsorsController.getEventId(req);
       const userId = req.user?.id;
 
       const sponsor = await SponsorsService.archiveSponsor(id, Boolean(isArchived), userId, eventId);
@@ -139,7 +139,7 @@ export class SponsorsController {
   static async registerPayment(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const eventId = req.params.eventId as string | undefined;
+      const eventId = SponsorsController.getEventId(req);
       const parsed = CreatePaymentSchema.parse(req.body);
       const userId = req.user?.id;
 
@@ -171,7 +171,7 @@ export class SponsorsController {
   static async annullPayment(req: Request, res: Response, next: NextFunction) {
     try {
       const { paymentId } = req.params;
-      const eventId = req.params.eventId as string | undefined;
+      const eventId = SponsorsController.getEventId(req);
       const parsed = AnnullPaymentSchema.parse(req.body);
       const userId = req.user?.id;
 

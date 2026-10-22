@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const CreateUserSchema = z.object({
   email: z.string().email('Correo electrónico inválido').toLowerCase().trim(),
+  assignedEventId: z.string().uuid().nullable().optional(),
   fullName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').trim(),
   role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER']).default('OPERATOR'),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').optional(),
@@ -9,6 +10,7 @@ export const CreateUserSchema = z.object({
 });
 
 export const UpdateUserSchema = z.object({
+  assignedEventId: z.string().uuid().nullable().optional(),
   fullName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').trim().optional(),
   role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER']).optional(),
   isActive: z.boolean().optional(),

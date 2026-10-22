@@ -14,7 +14,7 @@ import { recordAuditLog } from '../../middleware/audit.js';
 export class EventsController {
   static async getAll(req: Request, res: Response, next: NextFunction) {
     try {
-      const events = await EventsService.getAll();
+      const events = await EventsService.getAll(req.user?.role === 'ADMIN' ? undefined : req.eventId);
       return res.status(200).json({
         status: 'success',
         data: events,

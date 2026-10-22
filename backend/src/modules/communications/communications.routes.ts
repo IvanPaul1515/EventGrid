@@ -1,3 +1,5 @@
+import { prisma } from '../../config/db.js';
+import { ForbiddenError } from '../../utils/errors.js';
 import { Router } from 'express';
 import { CommunicationsController } from './communications.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
@@ -9,6 +11,12 @@ const router = Router();
 router.post('/webhooks/brevo', CommunicationsController.handleBrevoWebhook);
 
 router.use(authenticateToken);
+router.param('registrationId', async (req, _res, next) => {
+  try {
+    if (req.user?.role !== 'ADMIN' && !await prisma.registration.findFirst({ where: { id: req.params.registrationId, eventId: req.eventId } })) throw new ForbiddenError('Inscripción fuera de su edición');
+    next();
+  } catch (error) { next(error); }
+});
 
 // Configuración SMTP y prueba (solo ADMIN)
 router.get('/config', requireRole(['ADMIN']), CommunicationsController.getConfig);

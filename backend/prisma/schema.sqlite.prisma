@@ -10,6 +10,7 @@ generator client {
 model User {
   id           String    @id @default(uuid())
   email        String    @unique
+  assignedEventId String?
   passwordHash String
   fullName     String
   role         String    @default("OPERATOR") // ADMIN, OPERATOR, VIEWER
@@ -92,6 +93,7 @@ model EventSettings {
   demoModeEnabled    Boolean  @default(false)
   tshirtSizesEnabled Boolean  @default(false)
   tshirtSizes        String?  // JSON string: ["XS","S","M","L","XL","XXL","XXXL"]
+  sponsorCategoryValues String?
   customCss          String?  // JSON string
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
