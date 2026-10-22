@@ -21,6 +21,7 @@ import {
   Grid,
   Mail,
   Shirt,
+  Handshake,
   X,
 } from 'lucide-react';
 
@@ -65,6 +66,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       to: '/sales',
       label: 'Ventas y Pagos',
       icon: BadgeDollarSign,
+      roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
+    },
+    {
+      to: '/sponsors',
+      label: 'Patrocinadores',
+      icon: Handshake,
+      badge: 'Aportes',
       roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
     },
     {

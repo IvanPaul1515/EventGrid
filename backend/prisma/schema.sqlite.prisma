@@ -65,6 +65,7 @@ model Event {
   scheduleItems          ScheduleItem[]
   scheduleChangeLogs     ScheduleChangeLog[]
   scheduledNotifications ScheduledNotification[]
+  sponsors               Sponsor[]
 
   @@index([year])
   @@index([status])
@@ -621,4 +622,64 @@ model ScheduledNotification {
   @@index([status])
   @@index([scheduledFor])
   @@map("scheduled_notifications")
+}
+
+model Sponsor {
+  id                String           @id @default(uuid())
+  eventId           String
+  name              String
+  type              String           @default("SPONSOR") // SPONSOR, COLLABORATOR
+  category          String?          // Platino, Oro, Plata, Bronce, Aliado, etc.
+  contactName       String?
+  contactPhone      String?
+  contactEmail      String?
+  logoUrl           String?
+  notes             String?
+  contributionType  String           @default("MONETARY") // MONETARY, IN_KIND, MIXED
+  inKindDescription String?
+  committedAmount   Float            @default(0.0)
+  receivedAmount    Float            @default(0.0)
+  pendingBalance    Float            @default(0.0)
+  commitmentDate    DateTime         @default(now())
+  status            String           @default("PENDING") // PENDING, PARTIALLY_PAID, PAID, CANCELLED
+  isArchived        Boolean          @default(false)
+  createdByUserId   String?
+  updatedByUserId   String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  event             Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  payments          SponsorPayment[]
+
+  @@unique([eventId, name])
+  @@index([eventId])
+  @@index([type])
+  @@index([status])
+  @@index([isArchived])
+  @@map("sponsors")
+}
+
+model SponsorPayment {
+  id               String    @id @default(uuid())
+  sponsorId        String
+  amount           Float
+  paymentDate      DateTime  @default(now())
+  paymentMethod    String    @default("TRANSFER") // TRANSFER, CHECK, CASH, CREDIT_CARD, OTHER
+  reference        String?
+  receiptNumber    String?
+  notes            String?
+  status           String    @default("ACTIVE") // ACTIVE, ANNULLED
+  annulledAt       DateTime?
+  annulledReason   String?
+  annulledByUserId String?
+  recordedByUserId String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  sponsor          Sponsor   @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
+
+  @@index([sponsorId])
+  @@index([status])
+  @@index([paymentDate])
+  @@map("sponsor_payments")
 }

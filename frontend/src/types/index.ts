@@ -437,3 +437,84 @@ export interface FinancialSummary {
     isDirectPayment: boolean;
   }>;
 }
+
+
+export type SponsorType = 'SPONSOR' | 'COLLABORATOR';
+export type ContributionType = 'MONETARY' | 'IN_KIND' | 'MIXED';
+export type SponsorStatus = 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED';
+export type SponsorPaymentMethod = 'TRANSFER' | 'CHECK' | 'CASH' | 'CREDIT_CARD' | 'OTHER';
+export type SponsorPaymentStatus = 'ACTIVE' | 'ANNULLED';
+
+export interface SponsorPayment {
+  id: string;
+  sponsorId: string;
+  amount: number;
+  paymentDate: string;
+  paymentMethod: SponsorPaymentMethod;
+  reference?: string | null;
+  receiptNumber?: string | null;
+  notes?: string | null;
+  status: SponsorPaymentStatus;
+  annulledAt?: string | null;
+  annulledReason?: string | null;
+  registeredByUserId: string;
+  annulledByUserId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Sponsor {
+  id: string;
+  eventId: string;
+  name: string;
+  type: SponsorType;
+  category?: string | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  logoUrl?: string | null;
+  notes?: string | null;
+  contributionType: ContributionType;
+  inKindDescription?: string | null;
+  committedAmount: number;
+  receivedAmount: number;
+  pendingBalance: number;
+  commitmentDate: string;
+  status: SponsorStatus;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  payments?: SponsorPayment[];
+  _count?: {
+    payments: number;
+  };
+  event?: {
+    id: string;
+    name: string;
+    year: number;
+  };
+}
+
+export interface SponsorSummary {
+  totalSponsors: number;
+  totalCollaborators: number;
+  totalCount: number;
+  totalCommitted: number;
+  totalReceived: number;
+  totalPending: number;
+  inKindCount: number;
+  paidCount: number;
+  partiallyPaidCount: number;
+  pendingCount: number;
+  cancelledCount: number;
+}
+
+export interface SponsorFilterQuery {
+  search?: string;
+  type?: 'ALL' | SponsorType;
+  status?: 'ALL' | SponsorStatus;
+  contributionType?: 'ALL' | ContributionType;
+  includeArchived?: boolean;
+  page?: number;
+  limit?: number;
+}

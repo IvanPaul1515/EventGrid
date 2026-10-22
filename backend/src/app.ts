@@ -32,6 +32,7 @@ import inventoryRoutes from './modules/inventory/inventory.routes.js';
 import usersRoutes from './modules/users/users.routes.js';
 import scheduleRoutes from './modules/schedule/schedule.routes.js';
 import realtimeRoutes from './modules/realtime/realtime.routes.js';
+import sponsorsRoutes from './modules/sponsors/sponsors.routes.js';
 
 export const app = express();
 
@@ -112,6 +113,7 @@ app.use(`${ENV.API_PREFIX}/events/:eventId/import`, importRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/attendance`, attendanceRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/inventory`, inventoryRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/schedule`, scheduleRoutes);
+app.use(`${ENV.API_PREFIX}/events/:eventId/sponsors`, sponsorsRoutes);
 app.use(`${ENV.API_PREFIX}/events`, eventsRoutes);
 app.use(`${ENV.API_PREFIX}/participants`, participantsRoutes);
 app.use(`${ENV.API_PREFIX}/import`, importRoutes);
@@ -123,6 +125,7 @@ app.use(`${ENV.API_PREFIX}/communications`, communicationsRoutes);
 app.use(`${ENV.API_PREFIX}/inventory`, inventoryRoutes);
 app.use(`${ENV.API_PREFIX}/users`, usersRoutes);
 app.use(`${ENV.API_PREFIX}/schedule`, scheduleRoutes);
+app.use(`${ENV.API_PREFIX}/sponsors`, sponsorsRoutes);
 
 // Manejador centralizado de errores
 app.use(errorHandler);
