@@ -11,7 +11,7 @@ dotenv.config({ path: path.resolve(process.cwd(), 'backend/.env'), override: tru
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config();
 
-if (!process.env.DATABASE_URL || process.env.DATABASE_URL.startsWith('postgresql://')) {
+if (!process.env.DATABASE_URL && process.env.NODE_ENV !== 'production') {
   process.env.DATABASE_URL = 'file:./dev.db';
 }
 

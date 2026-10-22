@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "node scripts/prisma-detect.js generate && tsc",
-    "start": "node dist/server.js",
+    "start": "node scripts/prisma-detect.js db push && npx tsx prisma/seed.ts && node dist/server.js",
     "prisma:generate": "node scripts/prisma-detect.js generate",
     "prisma:migrate": "node scripts/prisma-detect.js migrate dev",
     "prisma:push": "node scripts/prisma-detect.js db push",
