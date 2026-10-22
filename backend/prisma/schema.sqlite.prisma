@@ -558,6 +558,7 @@ model ScheduleItem {
   description    String?
   order          Int      @default(0)
   isKeynote      Boolean  @default(false)
+  isDemo         Boolean  @default(false)
   visibility     String   @default("PUBLISHED") // DRAFT, SCHEDULED, PUBLISHED, CANCELLED
   publishAt      DateTime?
   imageUrl       String?

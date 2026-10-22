@@ -51,16 +51,13 @@ export class CommunicationsService {
       const editionConfig = await prisma.emailConfig.findFirst({
         where: { eventId },
       });
-      if (editionConfig && editionConfig.isEnabled) {
+      if (editionConfig) {
         return editionConfig;
       }
       const globalConfig = await prisma.emailConfig.findFirst({
         where: { eventId: null },
       });
-      if (globalConfig && globalConfig.isEnabled) {
-        return globalConfig;
-      }
-      return editionConfig || globalConfig || null;
+      return globalConfig || null;
     }
 
     return await prisma.emailConfig.findFirst({
@@ -109,14 +106,6 @@ export class CommunicationsService {
       config = await prisma.emailConfig.findFirst({
         where: { eventId },
       });
-      if (!config || !config.isEnabled) {
-        const globalConfig = await prisma.emailConfig.findFirst({
-          where: { eventId: null },
-        });
-        if (globalConfig && globalConfig.isEnabled) {
-          config = globalConfig;
-        }
-      }
     }
 
     // Si no hay configuración específica para la edición, buscar la configuración global

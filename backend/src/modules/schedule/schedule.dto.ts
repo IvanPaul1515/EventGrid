@@ -14,6 +14,7 @@ export const CreateScheduleItemSchema = z.object({
   description: z.string().optional().nullable(),
   order: z.number().int().optional().default(0),
   isKeynote: z.boolean().optional().default(false),
+  isDemo: z.boolean().optional().default(false),
   visibility: z.enum(['DRAFT', 'SCHEDULED', 'PUBLISHED', 'CANCELLED']).optional().default('PUBLISHED'),
   publishAt: z.string().optional().nullable(),
   imageUrl: z.string().optional().nullable(),

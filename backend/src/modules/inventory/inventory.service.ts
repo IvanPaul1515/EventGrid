@@ -158,16 +158,27 @@ export class InventoryService {
       throw new NotFoundError('Edición no encontrada');
     }
 
-    // Si aún no tiene inventario inicial para esta edición, inicializarlo automáticamente
-    const count = await prisma.tshirtInventory.count({ where: { eventId } });
-    if (count === 0) {
-      await this.initDefaultInventory(eventId);
-    }
-
     const rawItems = await prisma.tshirtInventory.findMany({
       where: { eventId },
       orderBy: [{ isActive: 'desc' }, { initialQuantity: 'desc' }],
     });
+
+    if (rawItems.length === 0) {
+      return {
+        stats: {
+          totalInitial: 0,
+          totalDelivered: 0,
+          totalAvailable: 0,
+          totalPendingDelivery: 0,
+          outOfStockCount: 0,
+          lowStockCount: 0,
+          deliveryRate: 0,
+        },
+        items: [],
+      };
+    }
+
+    const isDemoFilter = !event.settings?.demoModeEnabled ? { isDemo: false } : {};
 
     // Consultar conteos reales de inscripciones en esta edición
     const registrations = await prisma.registration.findMany({
@@ -175,6 +186,7 @@ export class InventoryService {
         eventId,
         status: { not: 'CANCELLED' },
         tshirtSize: { not: null },
+        ...isDemoFilter,
       },
       select: {
         id: true,
@@ -377,12 +389,19 @@ export class InventoryService {
       throw new NotFoundError('Talla de inventario no encontrada');
     }
 
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { settings: true },
+    });
+    const isDemoFilter = !event?.settings?.demoModeEnabled ? { isDemo: false } : {};
+
     // Verificar si existen camisetas entregadas para esa talla
     const deliveredCount = await prisma.registration.count({
       where: {
         eventId,
         tshirtSize: item.size,
         tshirtDelivered: true,
+        ...isDemoFilter,
       },
     });
 
@@ -433,18 +452,29 @@ export class InventoryService {
   static async getStaffInventory(eventId: string) {
     const event = await prisma.event.findUnique({
       where: { id: eventId },
+      include: { settings: true },
     });
     if (!event) throw new NotFoundError('Edición no encontrada');
-
-    const count = await prisma.tshirtInventory.count({ where: { eventId } });
-    if (count === 0) {
-      await this.initDefaultInventory(eventId);
-    }
 
     const rawItems = await prisma.tshirtInventory.findMany({
       where: { eventId, isActive: true },
       orderBy: { size: 'asc' },
     });
+
+    if (rawItems.length === 0) {
+      return {
+        items: [],
+        summary: {
+          totalInitialInventory: 0,
+          totalDeliveredParticipants: 0,
+          totalStaffReserved: 0,
+          totalStaffDelivered: 0,
+          totalRealAvailable: 0,
+        },
+      };
+    }
+
+    const isDemoFilter = !event.settings?.demoModeEnabled ? { isDemo: false } : {};
 
     // Conteo de entregas a participantes
     const participantDeliveries = await prisma.registration.groupBy({
@@ -454,6 +484,7 @@ export class InventoryService {
         status: { not: 'CANCELLED' },
         tshirtDelivered: true,
         tshirtSize: { not: null },
+        ...isDemoFilter,
       },
       _count: { id: true },
     });

@@ -146,10 +146,15 @@ describe('FASE 10 — PRESERVACIÓN DE DATOS, CRONOGRAMA DEMO Y CORREOS INTEGRAD
     });
 
     it('debe responder en la vista pública móvil agrupada por días', async () => {
+      await prisma.eventSettings.update({
+        where: { eventId: BARCAMP_EVENT_ID },
+        data: { demoModeEnabled: true },
+      });
       const pub = await ScheduleService.getPublicSchedule(BARCAMP_EVENT_ID);
       expect(pub.total).toBeGreaterThanOrEqual(4);
       expect(pub.currentTime).toMatch(/^\d{2}:\d{2}$/);
       expect(pub.groupedByDay.length).toBeGreaterThan(0);
+      await prisma.eventSettings.update({ where: { eventId: BARCAMP_EVENT_ID }, data: { demoModeEnabled: false } });
     });
   });
 
