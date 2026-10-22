@@ -357,4 +357,113 @@ export class ScheduleService {
       items,
     };
   }
+
+  public static readonly DEMO_ACTIVITIES = [
+    {
+      title: 'Registro y acreditación de participantes',
+      speakerName: null,
+      speakerBio: null,
+      speakerCompany: null,
+      room: 'Lobby Principal',
+      day: 'Día 1',
+      startTime: '08:00',
+      endTime: '08:45',
+      category: 'Registro',
+      status: 'CONFIRMED',
+      description: 'Acreditación, entrega de gafetes y kits de bienvenida para participantes.',
+      order: 0,
+    },
+    {
+      title: 'Inteligencia artificial aplicada al desarrollo de software',
+      speakerName: 'Dra. Sofía Valerio',
+      speakerBio: 'Investigadora en Inteligencia Artificial y arquitecturas de software.',
+      speakerCompany: 'Tech Innovations Lab',
+      room: 'Auditorio A',
+      day: 'Día 1',
+      startTime: '08:45',
+      endTime: '09:15',
+      category: 'Demostración',
+      status: 'CONFIRMED',
+      description: 'Charla demostrativa sobre agentes autónomos, pair programming y optimización de flujos de desarrollo.',
+      order: 1,
+    },
+    {
+      title: 'Ciberseguridad: amenazas y buenas prácticas',
+      speakerName: 'Ing. Alejandro Morales',
+      speakerBio: 'Especialista en seguridad ofensiva y auditoría de infraestructuras críticas.',
+      speakerCompany: 'CyberShield Security',
+      room: 'Auditorio B',
+      day: 'Día 1',
+      startTime: '09:15',
+      endTime: '09:50',
+      category: 'Demostración',
+      status: 'CONFIRMED',
+      description: 'Estrategias prácticas de seguridad defensiva, autenticación robusta y protección de endpoints.',
+      order: 2,
+    },
+    {
+      title: 'Desarrollo web moderno y aplicaciones progresivas',
+      speakerName: 'Lic. Mariana Reyes',
+      speakerBio: 'Desarrolladora frontend y conferencista internacional en tecnologías web.',
+      speakerCompany: 'Cloud Web Solutions',
+      room: 'Auditorio A',
+      day: 'Día 1',
+      startTime: '09:50',
+      endTime: '10:30',
+      category: 'Demostración',
+      status: 'CONFIRMED',
+      description: 'Arquitecturas frontend desacopladas, rendimiento web y experiencias nativas con PWAs.',
+      order: 3,
+    },
+  ];
+
+  static async seedDemoSchedule(eventId: string) {
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) throw new NotFoundError('Edición no encontrada');
+
+    const createdItems = [];
+    for (const act of this.DEMO_ACTIVITIES) {
+      const exists = await prisma.scheduleItem.findFirst({
+        where: { eventId, title: act.title },
+      });
+      if (!exists) {
+        const item = await prisma.scheduleItem.create({
+          data: {
+            eventId,
+            ...act,
+          },
+        });
+        createdItems.push(item);
+      }
+    }
+
+    return {
+      success: true,
+      createdCount: createdItems.length,
+      items: createdItems,
+      message: createdItems.length > 0
+        ? `Se agregaron ${createdItems.length} actividades de demostración al cronograma.`
+        : 'Las actividades de prueba ya existían en el cronograma.',
+    };
+  }
+
+  static async clearDemoSchedule(eventId: string) {
+    const demoTitles = this.DEMO_ACTIVITIES.map((a) => a.title);
+    const deleteResult = await prisma.scheduleItem.deleteMany({
+      where: {
+        eventId,
+        OR: [
+          { title: { in: demoTitles } },
+          { category: 'Demostración' },
+        ],
+      },
+    });
+
+    return {
+      success: true,
+      deletedCount: deleteResult.count,
+      message: `Se eliminaron ${deleteResult.count} actividades de demostración.`,
+    };
+  }
+
 }

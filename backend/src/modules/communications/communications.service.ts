@@ -512,6 +512,39 @@ export class CommunicationsService {
       bodyText: 'Estimado(a) {{participantName}}, comunicado oficial de {{eventName}}.',
       variables: ['participantName', 'eventName', 'registrationNumber', 'messageContent'],
     },
+    {
+      code: 'SCHEDULE_ANNOUNCEMENT',
+      name: 'Cronograma Oficial del Evento',
+      subject: 'Cronograma Oficial y Charlas — {{eventName}}',
+      bodyHtml: `
+        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px; max-width: 650px; margin: 0 auto;">
+          <h2 style="color: #38bdf8; margin-top: 0;">¡Hola, {{participantName}}!</h2>
+          <p>Te compartimos la agenda y cronograma de actividades confirmadas para <strong>{{eventName}}</strong>:</p>
+          <div style="background: #1e293b; padding: 16px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 4px 0;"><strong>Fecha:</strong> {{eventDate}}</p>
+            <p style="margin: 4px 0;"><strong>Lugar:</strong> {{eventVenue}}</p>
+            <p style="margin: 4px 0;"><strong>Tu Entrada:</strong> {{registrationNumber}} ({{ticketType}})</p>
+          </div>
+          {{messageContent}}
+          <div style="margin-top: 24px;">
+            <h3 style="color: #fbbf24; border-bottom: 1px solid #334155; padding-bottom: 8px;">Agenda de Actividades</h3>
+            {{scheduleHtml}}
+          </div>
+          <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Las actividades pueden estar sujetas a cambios de última hora por imprevistos. Te recomendamos llegar puntual.</p>
+        </div>
+      `,
+      bodyText: 'Hola {{participantName}}, consulta el cronograma oficial de {{eventName}} en {{eventVenue}}.',
+      variables: [
+        'participantName',
+        'eventName',
+        'registrationNumber',
+        'ticketType',
+        'eventVenue',
+        'eventDate',
+        'scheduleHtml',
+        'messageContent',
+      ],
+    },
   ];
 
   /**
@@ -523,9 +556,12 @@ export class CommunicationsService {
       orderBy: { createdAt: 'asc' },
     });
 
-    // Si aún no existen plantillas en la base de datos, inicializar las plantillas predeterminadas
-    if (existing.length === 0) {
-      for (const t of this.DEFAULT_TEMPLATES) {
+    // Asegurar que todas las plantillas estándar del sistema existan
+    const existingCodes = new Set(existing.map((t) => t.code));
+    let hasInsertedMissing = false;
+
+    for (const t of this.DEFAULT_TEMPLATES) {
+      if (!existingCodes.has(t.code)) {
         await prisma.emailTemplate.create({
           data: {
             eventId: eventId || null,
@@ -538,8 +574,11 @@ export class CommunicationsService {
             isSystem: true,
           },
         }).catch(() => {});
+        hasInsertedMissing = true;
       }
+    }
 
+    if (hasInsertedMissing) {
       return this.getTemplates(eventId);
     }
 
@@ -614,6 +653,46 @@ export class CommunicationsService {
     });
     const qrDataUrl = `data:image/png;base64,${qrBuffer.toString('base64')}`;
 
+    const eventId = registration.eventId || registration.event?.id;
+    let scheduleHtml = '';
+    if (eventId) {
+      try {
+        const scheduleItems = await prisma.scheduleItem.findMany({
+          where: { eventId, status: { not: 'CANCELLED' } },
+          orderBy: [{ day: 'asc' }, { startTime: 'asc' }, { order: 'asc' }],
+        });
+        if (scheduleItems.length > 0) {
+          scheduleHtml = `
+            <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-family: Arial, sans-serif; font-size: 14px;">
+              <thead>
+                <tr style="background: #1e293b; color: #94a3b8; text-align: left;">
+                  <th style="padding: 10px 12px; border-radius: 6px 0 0 6px;">Hora</th>
+                  <th style="padding: 10px 12px;">Actividad / Charla</th>
+                  <th style="padding: 10px 12px;">Salón</th>
+                  <th style="padding: 10px 12px; border-radius: 0 6px 6px 0;">Expositor</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${scheduleItems.map((item, idx) => `
+                  <tr style="border-bottom: 1px solid #334155; background: ${idx % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent'};">
+                    <td style="padding: 10px 12px; color: #38bdf8; font-weight: bold; white-space: nowrap;">${item.startTime} - ${item.endTime}</td>
+                    <td style="padding: 10px 12px; color: #f8fafc;">
+                      <div style="font-weight: 600;">${item.title}</div>
+                      ${item.category ? `<span style="display: inline-block; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #334155; color: #cbd5e1; margin-top: 4px;">${item.category}</span>` : ''}
+                    </td>
+                    <td style="padding: 10px 12px; color: #cbd5e1;">${item.room || 'Principal'}</td>
+                    <td style="padding: 10px 12px; color: #cbd5e1;">${item.speakerName || '—'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+        } else {
+          scheduleHtml = '<p style="color: #94a3b8; font-style: italic;">El cronograma detallado de actividades será anunciado próximamente.</p>';
+        }
+      } catch {}
+    }
+
     const currencySymbol = registration.event?.settings?.currencySymbol || 'RD$';
     const rawLogoUrl = registration.event?.settings?.logoUrl || (registration.event as any)?.logoUrl || '';
     const logoUrl = rawLogoUrl ? (rawLogoUrl.startsWith('http') ? rawLogoUrl : `${publicUrlBase}${rawLogoUrl.startsWith('/') ? '' : '/'}${rawLogoUrl}`) : '';
@@ -640,6 +719,7 @@ export class CommunicationsService {
       amountPaid: Number(registration.amountPaid ?? registration.totalAmount ?? 0).toFixed(2),
       balanceDue: Number(registration.balanceDue || 0).toFixed(2),
       currencySymbol,
+      scheduleHtml,
       qrUrl,
       qrDataUrl,
       messageContent: overrides?.customMessage
@@ -690,26 +770,30 @@ export class CommunicationsService {
   }) {
     let preparedHtml = html;
     const attachments: Array<{
-      filename: string;
       content: Buffer;
       cid: string;
       contentType: string;
       contentDisposition?: string;
     }> = [];
 
-    // 1. QR Code inline attachment para Gmail
-    if (options?.qrBuffer) {
+    // 1. QR Code inline attachment para clientes de correo (Gmail, etc.)
+    // SOLO adjuntar si el correo realmente requiere el QR (ej. Entrada Digital o referencias explícitas)
+    const requiresQr = preparedHtml.includes('cid:ticket-qr-code') ||
+                       preparedHtml.includes('{{qrDataUrl}}') ||
+                       (options?.qrDataUrl && preparedHtml.includes(options.qrDataUrl)) ||
+                       preparedHtml.includes('src="data:image/png;base64,');
+
+    if (requiresQr && options?.qrBuffer) {
       if (options.qrDataUrl && preparedHtml.includes(options.qrDataUrl)) {
         preparedHtml = preparedHtml.split(options.qrDataUrl).join('cid:ticket-qr-code');
       } else if (preparedHtml.includes('src="data:image/png;base64,')) {
-
         preparedHtml = preparedHtml.replace(/src="data:image\/png;base64,[^"]+"/g, 'src="cid:ticket-qr-code"');
       } else if (preparedHtml.includes('{{qrDataUrl}}')) {
         preparedHtml = preparedHtml.split('{{qrDataUrl}}').join('cid:ticket-qr-code');
       }
 
+      // Omitir filename para evitar que Gmail lo trate como archivo adjunto descargable al pie del correo
       attachments.push({
-        filename: 'ticket-qr.png',
         content: options.qrBuffer,
         cid: 'ticket-qr-code',
         contentType: 'image/png',
@@ -717,24 +801,26 @@ export class CommunicationsService {
       });
     }
 
-    // 2. Logo de edición inline attachment si existe en disco
+    // 2. Logo de edición inline attachment si existe en disco y está referenciado
     if (options?.logoUrl) {
       const cleanPath = options.logoUrl.replace(/^\/?(uploads\/logos\/.*)/, '$1');
       const resolvedDiskPath = path.resolve(process.cwd(), cleanPath);
       if (fs.existsSync(resolvedDiskPath)) {
         try {
           const logoBuffer = fs.readFileSync(resolvedDiskPath);
-          if (preparedHtml.includes(options.logoUrl) || preparedHtml.includes('/uploads/logos/') || preparedHtml.includes('cid:event-logo')) {
+          const requiresLogo = preparedHtml.includes(options.logoUrl) ||
+                               preparedHtml.includes('/uploads/logos/') ||
+                               preparedHtml.includes('cid:event-logo');
+          if (requiresLogo) {
             preparedHtml = preparedHtml.split(options.logoUrl).join('cid:event-logo');
             preparedHtml = preparedHtml.replace(/src="[^"]*\/uploads\/logos\/[^"]*"/g, 'src="cid:event-logo"');
+            attachments.push({
+              content: logoBuffer,
+              cid: 'event-logo',
+              contentType: 'image/png',
+              contentDisposition: 'inline',
+            });
           }
-          attachments.push({
-            filename: 'event-logo.png',
-            content: logoBuffer,
-            cid: 'event-logo',
-            contentType: 'image/png',
-            contentDisposition: 'inline',
-          });
         } catch {}
       }
     }

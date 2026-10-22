@@ -24,4 +24,7 @@ router.delete('/:id', requireOperatorOrAdmin, ScheduleController.deleteItem);
 router.post('/import', requireOperatorOrAdmin, ScheduleController.importSchedule);
 router.post('/pdf', requireOperatorOrAdmin, ScheduleController.updatePdfUrl);
 
+router.post('/demo', requireOperatorOrAdmin, ScheduleController.seedDemoSchedule);
+router.delete('/demo', requireOperatorOrAdmin, ScheduleController.clearDemoSchedule);
+
 export default router;

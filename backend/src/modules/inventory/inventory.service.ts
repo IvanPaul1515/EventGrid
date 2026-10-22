@@ -115,23 +115,40 @@ export class InventoryService {
   /**
    * Validar que una talla pertenezca a las permitidas de la edición (QA-06)
    */
-  static async validateSize(eventId: string, size?: string | null): Promise<string | null> {
-    if (!size || !size.trim()) return null;
-    const trimmed = size.trim();
-    const allowed = await this.getAllowedSizes(eventId);
-    if (!allowed.includes(trimmed)) {
-      throw new BadRequestError(
-        `TALLA NO PERMITIDA: La talla "${trimmed}" no es válida para esta edición. Tallas permitidas: ${allowed.join(', ')}`
-      );
-    }
-    return trimmed;
+  /**
+   * Normalizar alias y variaciones de tallas para consistencia total
+   */
+  static normalizeSizeAlias(size?: string | null): string {
+    if (!size || !size.trim()) return '';
+    const s = size.trim();
+    const upper = s.toUpperCase();
+    if (upper === 'M' || upper === 'MEDIUM' || upper === 'MEDIUM (M)') return 'Medium (M)';
+    if (upper === 'S' || upper === 'SMALL') return 'S';
+    if (upper === 'L' || upper === 'LARGE') return 'L';
+    if (upper === 'XL' || upper === 'EXTRA LARGE') return 'XL';
+    if (upper === '2XL' || upper === 'XXL' || upper === '2-XL' || upper === 'EXTRA EXTRA LARGE') return '2XL';
+    if (upper === '12' || upper === 'SIZE 12' || upper === 'TALLA 12') return 'Size 12';
+    if (upper === '14' || upper === 'SIZE 14' || upper === 'TALLA 14') return 'Size 14';
+    if (upper === '16' || upper === 'SIZE 16' || upper === 'TALLA 16') return 'Size 16';
+    return s;
   }
 
-
   /**
-   * Obtener inventario detallado y estadísticas en tiempo real
+   * Validar que una talla pertenezca a las permitidas de la edición (QA-06)
    */
-  static async getInventory(eventId: string) {
+  static async validateSize(eventId: string, size?: string | null): Promise<string | null> {
+    if (!size || !size.trim()) return null;
+    const normalized = this.normalizeSizeAlias(size);
+    const allowed = await this.getAllowedSizes(eventId);
+    if (!allowed.includes(normalized)) {
+      throw new BadRequestError(
+        `TALLA NO PERMITIDA: La talla "${size}" no es válida para esta edición. Tallas permitidas: ${allowed.join(', ')}`
+      );
+    }
+    return normalized;
+  }
+
+    static async getInventory(eventId: string) {
     const event = await prisma.event.findUnique({
       where: { id: eventId },
       include: { settings: true },
@@ -171,10 +188,11 @@ export class InventoryService {
 
     for (const reg of registrations) {
       if (reg.tshirtSize) {
+        const canonicalSize = this.normalizeSizeAlias(reg.tshirtSize);
         if (reg.tshirtDelivered) {
-          deliveredCounts[reg.tshirtSize] = (deliveredCounts[reg.tshirtSize] || 0) + 1;
+          deliveredCounts[canonicalSize] = (deliveredCounts[canonicalSize] || 0) + 1;
         } else {
-          pendingCounts[reg.tshirtSize] = (pendingCounts[reg.tshirtSize] || 0) + 1;
+          pendingCounts[canonicalSize] = (pendingCounts[canonicalSize] || 0) + 1;
         }
       }
     }
