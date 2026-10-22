@@ -108,8 +108,12 @@ export const CommunicationsPage: React.FC = () => {
   // ==========================================
   const [bulkStep, setBulkStep] = useState<1 | 2 | 3 | 4>(1);
   const [bulkTargetGroup, setBulkTargetGroup] = useState<
-    'ALL' | 'CONFIRMED' | 'PAID' | 'PENDING' | 'PENDING_PAYMENT' | 'ATTENDED' | 'NOT_ATTENDED'
+    'ALL' | 'CONFIRMED' | 'PAID' | 'PENDING' | 'PENDING_PAYMENT' | 'PARTIAL' | 'COURTESY' | 'ATTENDED' | 'NOT_ATTENDED'
   >('ALL');
+  const [bulkTicketTypeId, setBulkTicketTypeId] = useState<string>('');
+  const [bulkDateFrom, setBulkDateFrom] = useState<string>('');
+  const [bulkDateTo, setBulkDateTo] = useState<string>('');
+  const [bulkQuotaWarning, setBulkQuotaWarning] = useState<string | null>(null);
   const [bulkTemplateCode, setBulkTemplateCode] = useState<string>('EVENT_REMINDER');
   const [bulkSubject, setBulkSubject] = useState('');
   const [bulkCustomMessage, setBulkCustomMessage] = useState('');
@@ -409,7 +413,7 @@ export const CommunicationsPage: React.FC = () => {
     if (activeTab === 'bulk' && currentEvent) {
       loadBulkRecipients();
     }
-  }, [bulkTargetGroup, currentEvent, activeTab]);
+  }, [bulkTargetGroup, bulkTicketTypeId, bulkDateFrom, bulkDateTo, currentEvent, activeTab]);
 
   const loadBulkRecipients = async () => {
     if (!currentEvent) return;
@@ -418,6 +422,9 @@ export const CommunicationsPage: React.FC = () => {
       const res = await communicationsService.validateRecipients({
         eventId: currentEvent.id,
         targetGroup: bulkTargetGroup,
+        ticketTypeId: bulkTicketTypeId || undefined,
+        dateFrom: bulkDateFrom || undefined,
+        dateTo: bulkDateTo || undefined,
       });
       setBulkStats({
         total: res.totalSelected,
@@ -429,6 +436,7 @@ export const CommunicationsPage: React.FC = () => {
         duplicates: res.duplicateCount,
       });
       setBulkSampleRecipients(res.sampleRecipients || []);
+      setBulkQuotaWarning(res.quotaWarning || null);
     } catch (err) {
       console.error('Error al prevalidar destinatarios:', err);
     } finally {
@@ -446,6 +454,9 @@ export const CommunicationsPage: React.FC = () => {
         eventId: currentEvent.id,
         templateCode: bulkTemplateCode,
         targetGroup: bulkTargetGroup,
+        ticketTypeId: bulkTicketTypeId || undefined,
+        dateFrom: bulkDateFrom || undefined,
+        dateTo: bulkDateTo || undefined,
         customSubject: bulkSubject || undefined,
         customMessage: bulkCustomMessage || undefined,
         mode: bulkDeliveryMode,
@@ -1047,6 +1058,8 @@ export const CommunicationsPage: React.FC = () => {
                   { id: 'CONFIRMED', label: 'Confirmados', desc: 'Estado Confirmado' },
                   { id: 'PAID', label: 'Pagos Completos', desc: 'Pagados y Cortesías' },
                   { id: 'PENDING_PAYMENT', label: 'Pagos Pendientes', desc: 'Con saldo pendiente' },
+                  { id: 'COURTESY', label: 'Cortesías / Becas', desc: 'Inscripciones de cortesía' },
+                  { id: 'PARTIAL', label: 'Pagos Parciales', desc: 'Abonado con saldo restante' },
                   { id: 'ATTENDED', label: 'Ya Asistieron', desc: 'Con Check-in realizado' },
                   { id: 'NOT_ATTENDED', label: 'No Han Asistido', desc: 'Pendientes de ingreso' },
                 ].map((g) => (
@@ -1065,6 +1078,57 @@ export const CommunicationsPage: React.FC = () => {
                   </button>
                 ))}
               </div>
+
+              {/* Filtros avanzados de segmentación */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-xl bg-background border border-border">
+                <div>
+                  <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">
+                    Tipo de Entrada
+                  </label>
+                  <select
+                    value={bulkTicketTypeId}
+                    onChange={(e) => setBulkTicketTypeId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground"
+                  >
+                    <option value="">Todos los tipos de entrada</option>
+                    {(currentEvent?.ticketTypes || []).map((t: any) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({currentEvent?.settings?.currencySymbol || 'RD$'} {t.price})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">
+                    Registrados Desde
+                  </label>
+                  <input
+                    type="date"
+                    value={bulkDateFrom}
+                    onChange={(e) => setBulkDateFrom(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">
+                    Registrados Hasta
+                  </label>
+                  <input
+                    type="date"
+                    value={bulkDateTo}
+                    onChange={(e) => setBulkDateTo(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-border bg-background text-foreground"
+                  />
+                </div>
+              </div>
+
+              {/* Alerta de Cuota Diaria Brevo */}
+              {bulkQuotaWarning && (
+                <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center gap-2 text-xs text-blue-400">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{bulkQuotaWarning}</span>
+                </div>
+              )}
 
               {/* Resumen Exacto de Destinatarios y Exclusiones (Sección 8) */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-xl bg-background border border-border">

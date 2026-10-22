@@ -1,3 +1,4 @@
+import { resolveImageUrl } from '../../utils/imageUrl';
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useEdition } from '../../context/EditionContext';
@@ -85,7 +86,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
           >
             {currentEvent?.settings?.logoUrl ? (
               <img
-                src={currentEvent.settings.logoUrl}
+                src={resolveImageUrl(currentEvent.settings.logoUrl)}
                 alt={currentEvent.name}
                 className="w-5 h-5 rounded object-contain shrink-0"
               />

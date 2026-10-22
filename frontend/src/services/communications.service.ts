@@ -23,6 +23,8 @@ export interface RecipientStatsResult {
   cancelledCount: number;
   demoCount: number;
   duplicateCount: number;
+  dailyQuotaLimit?: number;
+  quotaWarning?: string;
   sampleRecipients: Array<{
     id: string;
     fullName: string;
@@ -120,7 +122,10 @@ export const communicationsService = {
 
   async validateRecipients(payload: {
     eventId: string;
-    targetGroup: 'ALL' | 'CONFIRMED' | 'PAID' | 'PENDING' | 'PENDING_PAYMENT' | 'ATTENDED' | 'NOT_ATTENDED' | 'SELECTED';
+    targetGroup: 'ALL' | 'CONFIRMED' | 'PAID' | 'PENDING' | 'PENDING_PAYMENT' | 'PARTIAL' | 'COURTESY' | 'ATTENDED' | 'NOT_ATTENDED' | 'SELECTED';
+    ticketTypeId?: string;
+    dateFrom?: string;
+    dateTo?: string;
     selectedRegistrationIds?: string[];
   }): Promise<RecipientStatsResult> {
     const res = await api.post<ApiResponse<RecipientStatsResult>>('/communications/recipients/validate', payload);
@@ -130,7 +135,10 @@ export const communicationsService = {
   async sendBulkEmail(payload: {
     eventId: string;
     templateCode: string;
-    targetGroup: 'ALL' | 'CONFIRMED' | 'PAID' | 'PENDING' | 'PENDING_PAYMENT' | 'ATTENDED' | 'NOT_ATTENDED' | 'SELECTED';
+    targetGroup: 'ALL' | 'CONFIRMED' | 'PAID' | 'PENDING' | 'PENDING_PAYMENT' | 'PARTIAL' | 'COURTESY' | 'ATTENDED' | 'NOT_ATTENDED' | 'SELECTED';
+    ticketTypeId?: string;
+    dateFrom?: string;
+    dateTo?: string;
     selectedRegistrationIds?: string[];
     customSubject?: string;
     customBodyHtml?: string;

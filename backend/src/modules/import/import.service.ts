@@ -1,5 +1,6 @@
 import { prisma } from '../../config/db.js';
 import { BadRequestError, NotFoundError } from '../../utils/errors.js';
+import { ParticipantsService } from '../participants/participants.service.js';
 import * as XLSX from 'xlsx';
 import crypto from 'crypto';
 
@@ -715,16 +716,36 @@ export class ImportService {
           : (n.amountPaid ? Number(n.amountPaid) : Number(n.totalAmount || 0));
         const balanceDue = Math.max(0, ticketPrice - amountPaid);
 
-        // Generar número de registro único
-        let regNum = n.registrationNumber ? String(n.registrationNumber).trim() : '';
-        if (!regNum) {
-          let candidate = `${prefix}${String(nextRegNum).padStart(4, '0')}`;
-          while (await prisma.registration.findUnique({ where: { eventId_registrationNumber: { eventId, registrationNumber: candidate } } })) {
-            nextRegNum++;
-            candidate = `${prefix}${String(nextRegNum).padStart(4, '0')}`;
+        // Generar número de registro único utilizando la secuencia unificada
+        let rawRegNum = n.registrationNumber ? String(n.registrationNumber).trim() : '';
+        let regNum = '';
+
+        const isPlainSmallNumber = /^\d{1,4}$/.test(rawRegNum);
+        if (rawRegNum && !isPlainSmallNumber) {
+          const existingSameNum = await prisma.registration.findUnique({
+            where: { eventId_registrationNumber: { eventId, registrationNumber: rawRegNum } },
+          });
+
+          if (!existingSameNum) {
+            regNum = rawRegNum;
+            if (rawRegNum.startsWith(prefix)) {
+              const suffix = rawRegNum.slice(prefix.length);
+              const numVal = parseInt(suffix, 10);
+              if (!isNaN(numVal) && numVal > 0) {
+                const currentSeq = await prisma.registrationSequence.findUnique({ where: { eventId } });
+                const base = Math.max(numVal, currentSeq?.current || 0);
+                await prisma.registrationSequence.upsert({
+                  where: { eventId },
+                  create: { eventId, current: base },
+                  update: { current: base },
+                });
+              }
+            }
           }
-          regNum = candidate;
-          nextRegNum++;
+        }
+
+        if (!regNum) {
+          regNum = await ParticipantsService.getNextRegistrationNumber(eventId, event.year, prefix);
         }
 
         const paymentStatus = n.isCourtesy

@@ -15,6 +15,8 @@ import { QrService } from '../qr/qr.service.js';
 import nodemailer from 'nodemailer';
 import QRCode from 'qrcode';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 export class CommunicationsService {
   private static customTransporterFactory: ((config: any) => any) | null = null;
@@ -605,15 +607,20 @@ export class CommunicationsService {
     const publicUrlBase = process.env.PUBLIC_APP_URL || 'https://eventgrid.app';
     const qrUrl = `${publicUrlBase}/t/${qrToken}`;
 
-    const qrDataUrl = await QRCode.toDataURL(qrUrl, {
+    const qrBuffer = await QRCode.toBuffer(qrUrl, {
       width: 280,
       margin: 2,
       errorCorrectionLevel: 'H',
     });
+    const qrDataUrl = `data:image/png;base64,${qrBuffer.toString('base64')}`;
 
     const currencySymbol = registration.event?.settings?.currencySymbol || 'RD$';
+    const rawLogoUrl = registration.event?.settings?.logoUrl || (registration.event as any)?.logoUrl || '';
+    const logoUrl = rawLogoUrl ? (rawLogoUrl.startsWith('http') ? rawLogoUrl : `${publicUrlBase}${rawLogoUrl.startsWith('/') ? '' : '/'}${rawLogoUrl}`) : '';
 
     const variables: Record<string, string> = {
+      logoUrl,
+      eventLogo: logoUrl,
       participantName: registration.participant?.fullName || 'Participante',
       participantFirstName: registration.participant?.firstName || 'Participante',
       participantEmail: registration.participant?.email || '',
@@ -664,6 +671,7 @@ export class CommunicationsService {
       text,
       qrUrl,
       qrDataUrl,
+      qrBuffer,
       variables,
     };
   }
@@ -671,6 +679,72 @@ export class CommunicationsService {
   /**
    * Vista previa real del correo (QA-11: Sin efectos secundarios)
    */
+  /**
+   * Prepara el contenido y los archivos adjuntos inline (CID) para que clientes
+   * estrictos como Gmail rendericen el QR y el logotipo sin bloqueos.
+   */
+  static prepareEmailPayload(html: string, options?: {
+    qrBuffer?: Buffer | null;
+    qrDataUrl?: string | null;
+    logoUrl?: string | null;
+  }) {
+    let preparedHtml = html;
+    const attachments: Array<{
+      filename: string;
+      content: Buffer;
+      cid: string;
+      contentType: string;
+      contentDisposition?: string;
+    }> = [];
+
+    // 1. QR Code inline attachment para Gmail
+    if (options?.qrBuffer) {
+      if (options.qrDataUrl && preparedHtml.includes(options.qrDataUrl)) {
+        preparedHtml = preparedHtml.split(options.qrDataUrl).join('cid:ticket-qr-code');
+      } else if (preparedHtml.includes('src="data:image/png;base64,')) {
+
+        preparedHtml = preparedHtml.replace(/src="data:image\/png;base64,[^"]+"/g, 'src="cid:ticket-qr-code"');
+      } else if (preparedHtml.includes('{{qrDataUrl}}')) {
+        preparedHtml = preparedHtml.split('{{qrDataUrl}}').join('cid:ticket-qr-code');
+      }
+
+      attachments.push({
+        filename: 'ticket-qr.png',
+        content: options.qrBuffer,
+        cid: 'ticket-qr-code',
+        contentType: 'image/png',
+        contentDisposition: 'inline',
+      });
+    }
+
+    // 2. Logo de edición inline attachment si existe en disco
+    if (options?.logoUrl) {
+      const cleanPath = options.logoUrl.replace(/^\/?(uploads\/logos\/.*)/, '$1');
+      const resolvedDiskPath = path.resolve(process.cwd(), cleanPath);
+      if (fs.existsSync(resolvedDiskPath)) {
+        try {
+          const logoBuffer = fs.readFileSync(resolvedDiskPath);
+          if (preparedHtml.includes(options.logoUrl) || preparedHtml.includes('/uploads/logos/') || preparedHtml.includes('cid:event-logo')) {
+            preparedHtml = preparedHtml.split(options.logoUrl).join('cid:event-logo');
+            preparedHtml = preparedHtml.replace(/src="[^"]*\/uploads\/logos\/[^"]*"/g, 'src="cid:event-logo"');
+          }
+          attachments.push({
+            filename: 'event-logo.png',
+            content: logoBuffer,
+            cid: 'event-logo',
+            contentType: 'image/png',
+            contentDisposition: 'inline',
+          });
+        } catch {}
+      }
+    }
+
+    return {
+      html: preparedHtml,
+      attachments,
+    };
+  }
+
   static async previewEmail(input: EmailPreviewInput) {
     let registration: any = null;
 
@@ -857,13 +931,20 @@ export class CommunicationsService {
     try {
       const transporter = this.createTransporter(config);
 
+      const prepared = this.prepareEmailPayload(rendered.html, {
+        qrBuffer: (rendered as any).qrBuffer,
+        qrDataUrl: rendered.qrDataUrl,
+        logoUrl: registration.event?.settings?.logoUrl || (registration.event as any)?.logoUrl,
+      });
+
       await transporter.sendMail({
         from: `"${config.fromName}" <${config.fromEmail}>`,
         to: registration.participant.email,
         replyTo: config.replyToEmail || undefined,
         subject: rendered.subject,
         text: rendered.text,
-        html: rendered.html,
+        html: prepared.html,
+        attachments: prepared.attachments.length > 0 ? prepared.attachments : undefined,
       });
 
       const log = await prisma.emailLog.create({
@@ -932,12 +1013,26 @@ export class CommunicationsService {
       where.paymentStatus = { in: ['PAID', 'COURTESY'] };
     } else if (input.targetGroup === 'PENDING' || input.targetGroup === 'PENDING_PAYMENT') {
       where.paymentStatus = { in: ['PENDING', 'PARTIAL'] };
+    } else if (input.targetGroup === 'COURTESY') {
+      where.isCourtesy = true;
+    } else if (input.targetGroup === 'PARTIAL') {
+      where.paymentStatus = 'PARTIAL';
     } else if (input.targetGroup === 'ATTENDED') {
       where.attended = true;
     } else if (input.targetGroup === 'NOT_ATTENDED') {
       where.attended = false;
     } else if (input.targetGroup === 'SELECTED' && input.selectedRegistrationIds?.length) {
       where.id = { in: input.selectedRegistrationIds };
+    }
+
+    if (input.ticketTypeId) {
+      where.ticketTypeId = input.ticketTypeId;
+    }
+
+    if (input.dateFrom || input.dateTo) {
+      where.createdAt = {};
+      if (input.dateFrom) where.createdAt.gte = new Date(input.dateFrom);
+      if (input.dateTo) where.createdAt.lte = new Date(input.dateTo);
     }
 
     // QA-09: Obtener TODOS los destinatarios elegibles (sin límite artificial de 200)
@@ -1178,12 +1273,26 @@ export class CommunicationsService {
       baseWhere.paymentStatus = { in: ['PAID', 'COURTESY'] };
     } else if (input.targetGroup === 'PENDING' || input.targetGroup === 'PENDING_PAYMENT') {
       baseWhere.paymentStatus = { in: ['PENDING', 'PARTIAL'] };
+    } else if (input.targetGroup === 'COURTESY') {
+      baseWhere.isCourtesy = true;
+    } else if (input.targetGroup === 'PARTIAL') {
+      baseWhere.paymentStatus = 'PARTIAL';
     } else if (input.targetGroup === 'ATTENDED') {
       baseWhere.attended = true;
     } else if (input.targetGroup === 'NOT_ATTENDED') {
       baseWhere.attended = false;
     } else if (input.targetGroup === 'SELECTED' && input.selectedRegistrationIds?.length) {
       baseWhere.id = { in: input.selectedRegistrationIds };
+    }
+
+    if (input.ticketTypeId) {
+      baseWhere.ticketTypeId = input.ticketTypeId;
+    }
+
+    if (input.dateFrom || input.dateTo) {
+      baseWhere.createdAt = {};
+      if (input.dateFrom) baseWhere.createdAt.gte = new Date(input.dateFrom);
+      if (input.dateTo) baseWhere.createdAt.lte = new Date(input.dateTo);
     }
 
     const allRegistrations = await prisma.registration.findMany({
@@ -1247,6 +1356,10 @@ export class CommunicationsService {
       cancelledCount,
       demoCount,
       duplicateCount,
+      dailyQuotaLimit: 300,
+      quotaWarning: eligibleCount > 300
+        ? `Atención: El lote contiene ${eligibleCount} destinatarios, lo que supera el límite de 300 correos/día del plan gratuito de Brevo. Brevo rechazará los envíos que excedan su cuota diaria.`
+        : `Brevo cuenta gratuita incluye 300 correos/día. Su lote actual contiene ${eligibleCount} destinatarios (${Math.max(0, 300 - eligibleCount)} cupos restantes hoy).`,
       sampleRecipients,
     };
   }

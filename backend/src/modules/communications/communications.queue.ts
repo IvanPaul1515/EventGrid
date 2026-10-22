@@ -2,6 +2,8 @@ import nodemailer, { type Transporter } from 'nodemailer';
 import { prisma } from '../../config/db.js';
 import { decryptSecret } from '../../utils/crypto.js';
 import { BadRequestError } from '../../utils/errors.js';
+import QRCode from 'qrcode';
+import { QrService } from '../qr/qr.service.js';
 
 export interface EnqueueCustomParams {
   customSubject?: string;
@@ -443,7 +445,27 @@ export class EmailQueueWorker {
                     },
                   }).catch(() => {});
                 } else {
-                  // Modo REAL: Ejecuta el envío real a través del transporte SMTP
+                  // Modo REAL: Ejecuta el envío real a través del transporte SMTP con attachments inline para Gmail
+                  let preparedHtml = rendered.html;
+                  let attachments: any[] = [];
+
+                  if (item.registrationId) {
+                    try {
+                      const ticketInfo = await QrService.getTicketQr(item.registrationId);
+                      if (ticketInfo?.qrToken) {
+                        const publicUrlBase = process.env.PUBLIC_APP_URL || 'https://eventgrid.app';
+                        const qrUrl = `${publicUrlBase}/t/${ticketInfo.qrToken}`;
+                        const qrBuffer = await QRCode.toBuffer(qrUrl, { width: 280, margin: 2, errorCorrectionLevel: 'H' });
+                        const payload = CommunicationsService.prepareEmailPayload(preparedHtml, {
+                          qrBuffer,
+                          logoUrl: job.event?.settings?.logoUrl || (job.event as any)?.logoUrl,
+                        });
+                        preparedHtml = payload.html;
+                        attachments = payload.attachments;
+                      }
+                    } catch {}
+                  }
+
                   const sendResult = await transporter.sendMail({
                     from: `"${config?.fromName || 'EventGrid'}" <${config?.fromEmail || 'noreply@eventgrid.app'}>`,
                     to: email,
@@ -451,7 +473,8 @@ export class EmailQueueWorker {
                     messageId: item.messageId || undefined,
                     subject: rendered.subject,
                     text: rendered.text,
-                    html: rendered.html,
+                    html: preparedHtml,
+                    attachments: attachments.length > 0 ? attachments : undefined,
                   });
 
                   // QA-34: Validación verificable de aceptación SMTP (excluye messageId como prueba suficiente)

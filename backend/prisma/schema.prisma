@@ -148,6 +148,7 @@ model Event {
   staffTshirtDeliveries  StaffTshirtDelivery[]
   registrationSequence   RegistrationSequence?
   emailBatchJobs         EmailBatchJob[]
+  scheduleItems          ScheduleItem[]
 
   @@index([year])
   @@index([status])
@@ -170,6 +171,7 @@ model EventSettings {
   coverImageUrl      String?
   subtitle           String   @default("Tecnología, Innovación y Comunidad")
   registrationPrefix String   @default("EV-")
+  schedulePdfUrl     String?
   demoModeEnabled      Boolean  @default(false)
   tshirtSizesEnabled   Boolean  @default(false)
   tshirtSizes          Json?    // e.g. ["XS","S","M","L","XL","XXL","XXXL"]
@@ -624,4 +626,30 @@ model EmailBatchItem {
   @@index([recipientEmail])
   @@index([messageId])
   @@map("email_batch_items")
+}
+
+model ScheduleItem {
+  id             String   @id @default(uuid())
+  eventId        String
+  title          String
+  speakerName    String?
+  speakerBio     String?
+  speakerCompany String?
+  room           String?
+  day            String   @default("Día 1")
+  startTime      String
+  endTime        String
+  category       String?
+  status         String   @default("CONFIRMED")
+  description    String?
+  order          Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([day])
+  @@index([status])
+  @@map("schedule_items")
 }

@@ -3,12 +3,20 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { ENV } from './config/env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.resolve(__dirname, '../uploads');
+
+// Asegurar que las carpetas de almacenamiento existan
+const logosDir = path.join(uploadsDir, 'logos');
+const schedulesDir = path.join(uploadsDir, 'schedules');
+if (!fs.existsSync(logosDir)) fs.mkdirSync(logosDir, { recursive: true });
+if (!fs.existsSync(schedulesDir)) fs.mkdirSync(schedulesDir, { recursive: true });
+
 import { errorHandler } from './middleware/errorHandler.js';
 import { checkDatabaseConnection } from './config/db.js';
 import authRoutes from './modules/auth/auth.routes.js';
@@ -22,6 +30,7 @@ import qrRoutes from './modules/qr/qr.routes.js';
 import communicationsRoutes from './modules/communications/communications.routes.js';
 import inventoryRoutes from './modules/inventory/inventory.routes.js';
 import usersRoutes from './modules/users/users.routes.js';
+import scheduleRoutes from './modules/schedule/schedule.routes.js';
 
 export const app = express();
 
@@ -41,8 +50,12 @@ if (trustProxyConfig) {
   app.set('trust proxy', process.env.NODE_ENV === 'production' ? 1 : 'loopback');
 }
 
-// Seguridad con Helmet
-app.use(helmet());
+// Seguridad con Helmet (Permitiendo recursos cross-origin para logos e imágenes)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
 
 // CORS configurado para admitir los orígenes permitidos
 app.use(
@@ -63,8 +76,17 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser(ENV.COOKIE_SECRET));
 
-// Archivos estáticos públicos (Logos subidos de eventos y ediciones)
-app.use('/uploads', express.static(uploadsDir));
+// Archivos estáticos públicos (Logos subidos de eventos, ediciones y cronogramas)
+app.use(
+  '/uploads',
+  (req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    next();
+  },
+  express.static(uploadsDir)
+);
 
 // Endpoint de salud y diagnóstico
 app.get(`${ENV.API_PREFIX}/health`, async (req, res) => {
@@ -73,32 +95,25 @@ app.get(`${ENV.API_PREFIX}/health`, async (req, res) => {
     status: isDbConnected ? 'healthy' : 'degraded',
     platform: 'EventGrid',
     service: 'eventgrid-backend-api',
-    version: '1.0.0',
     timestamp: new Date().toISOString(),
-    database: {
-      connected: isDbConnected,
-      engine: 'PostgreSQL (Prisma)',
-    },
-    environment: ENV.NODE_ENV,
+    database: isDbConnected ? 'connected' : 'disconnected',
   });
 });
 
-// Rutas de la API v1
+// Rutas de módulos
 app.use(`${ENV.API_PREFIX}/auth`, authRoutes);
 app.use(`${ENV.API_PREFIX}/events`, eventsRoutes);
-app.use(`${ENV.API_PREFIX}/events/:eventId/participants`, participantsRoutes);
 app.use(`${ENV.API_PREFIX}/participants`, participantsRoutes);
-app.use(`${ENV.API_PREFIX}/events/:eventId/import`, importRoutes);
 app.use(`${ENV.API_PREFIX}/import`, importRoutes);
-app.use(`${ENV.API_PREFIX}/events/:eventId/attendance`, attendanceRoutes);
 app.use(`${ENV.API_PREFIX}/attendance`, attendanceRoutes);
 app.use(`${ENV.API_PREFIX}/activity`, activityRoutes);
 app.use(`${ENV.API_PREFIX}/demo`, demoRoutes);
 app.use(`${ENV.API_PREFIX}/qr`, qrRoutes);
 app.use(`${ENV.API_PREFIX}/communications`, communicationsRoutes);
-app.use(`${ENV.API_PREFIX}/events/:eventId/inventory`, inventoryRoutes);
 app.use(`${ENV.API_PREFIX}/inventory`, inventoryRoutes);
 app.use(`${ENV.API_PREFIX}/users`, usersRoutes);
+app.use(`${ENV.API_PREFIX}/events/:eventId/schedule`, scheduleRoutes);
+app.use(`${ENV.API_PREFIX}/schedule`, scheduleRoutes);
 
-// Manejo central de errores
+// Manejador centralizado de errores
 app.use(errorHandler);

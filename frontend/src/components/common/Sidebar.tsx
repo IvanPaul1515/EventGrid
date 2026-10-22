@@ -1,3 +1,4 @@
+import { resolveImageUrl } from '../../utils/imageUrl';
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useEdition } from '../../context/EditionContext';
@@ -9,6 +10,7 @@ import {
   FileSpreadsheet,
   BadgeDollarSign,
   CalendarDays,
+  Clock,
   Palette,
   Settings,
   UserCog,
@@ -79,6 +81,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
     },
     {
+      to: '/schedule',
+      label: 'Cronograma',
+      icon: Clock,
+      badge: 'Agenda',
+      roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
+    },
+    {
       to: '/communications',
       label: 'Comunicaciones',
       icon: Mail,
@@ -127,7 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
               <div className="w-9 h-9 rounded-xl bg-background border border-border flex items-center justify-center shrink-0 shadow-lg shadow-primary/25 overflow-hidden">
                 {currentEvent?.settings?.logoUrl ? (
                   <img
-                    src={currentEvent.settings.logoUrl}
+                    src={resolveImageUrl(currentEvent.settings.logoUrl)}
                     alt={currentEvent.name}
                     className="w-full h-full object-contain p-1"
                   />

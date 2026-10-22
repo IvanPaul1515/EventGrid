@@ -1,3 +1,4 @@
+import { resolveImageUrl } from '../utils/imageUrl';
 import React, { useState, useEffect, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useTheme } from '../context/ThemeContext';
@@ -697,9 +698,9 @@ export const SettingsPage: React.FC = () => {
 
               <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-xl bg-background border border-border">
                 {/* Previsualización del Logo */}
-                <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-border bg-zinc-900/60 flex items-center justify-center overflow-hidden shrink-0">
+                <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-border bg-muted/40 border border-border flex items-center justify-center overflow-hidden shrink-0">
                   {logoUrl ? (
-                    <img src={logoUrl} alt="Logo Edición" className="w-full h-full object-contain p-2" />
+                    <img src={resolveImageUrl(logoUrl)} alt="Logo Edición" className="w-full h-full object-contain p-2" />
                   ) : (
                     <div className="text-center p-2">
                       <FileImage className="w-7 h-7 text-muted-foreground mx-auto mb-1 opacity-50" />
@@ -901,7 +902,7 @@ export const SettingsPage: React.FC = () => {
                 <div className="flex items-center justify-between border-b border-border pb-2">
                   <div className="flex items-center gap-2">
                     {logoUrl ? (
-                      <img src={logoUrl} alt="Logo" className="w-6 h-6 object-contain" />
+                      <img src={resolveImageUrl(logoUrl)} alt="Logo" className="w-6 h-6 object-contain" />
                     ) : (
                       <span className="text-xs font-black tracking-tight" style={{ color: primaryColor }}>
                         BARCAMP RD
