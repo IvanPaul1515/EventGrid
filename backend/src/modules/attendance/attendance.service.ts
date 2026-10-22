@@ -4,6 +4,7 @@ import { InventoryService } from '../inventory/inventory.service.js';
 import { BadRequestError, NotFoundError } from '../../utils/errors.js';
 import * as XLSX from 'xlsx';
 import { SearchAttendanceQuery } from './attendance.dto.js';
+import { participantNameIds } from '../../utils/participantSearch.js';
 
 export class AttendanceService {
   /**
@@ -61,6 +62,7 @@ export class AttendanceService {
       }
       const digits = term.replace(/\D/g, '');
       const orClauses: any[] = [
+        { participantId: { in: await participantNameIds(prisma, eventId, term) } },
         { registrationNumber: { contains: term } },
         { qrCode: { contains: term } },
         { participant: { firstName: { contains: term } } },
@@ -479,6 +481,7 @@ export class AttendanceService {
     if (search && search.trim()) {
       const term = search.trim();
       where.OR = [
+        { participantId: { in: await participantNameIds(prisma, eventId, term) } },
         { registrationNumber: { contains: term } },
         { participant: { firstName: { contains: term } } },
         { participant: { lastName: { contains: term } } },

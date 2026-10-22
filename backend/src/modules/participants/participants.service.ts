@@ -6,6 +6,7 @@ import { NotFoundError, ConflictError, BadRequestError } from '../../utils/error
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { participantNameIds } from '../../utils/participantSearch.js';
 import {
   CreateRegistrationInput,
   UpdateRegistrationInput,
@@ -63,6 +64,7 @@ export class ParticipantsService {
       }
       const digits = s.replace(/\D/g, '');
       const orClauses: any[] = [
+        { participantId: { in: await participantNameIds(prisma, eventId, s) } },
         { registrationNumber: { contains: s } },
         { qrCode: { contains: s } },
         { participant: { fullName: { contains: s } } },
@@ -1361,6 +1363,7 @@ export class ParticipantsService {
     if (query.search && query.search.trim() !== '') {
       const s = query.search.trim();
       whereClause.OR = [
+        { participantId: { in: await participantNameIds(prisma, eventId, s) } },
         { registrationNumber: { contains: s } },
         { participant: { fullName: { contains: s } } },
         { participant: { email: { contains: s } } },
