@@ -21,10 +21,12 @@ import {
   UserX,
   X,
 } from 'lucide-react';
+import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { usersService, UserItem } from '../services/users.service';
 
 export const UsersPage: React.FC = () => {
+  const { events } = useEdition();
   const { user: currentUser } = useAuth();
 
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -56,6 +58,7 @@ export const UsersPage: React.FC = () => {
     fullName: '',
     role: 'OPERATOR' as 'ADMIN' | 'OPERATOR' | 'VIEWER',
     password: '',
+    assignedEventId: '',
   });
 
   // Formulario de edición
@@ -63,6 +66,7 @@ export const UsersPage: React.FC = () => {
     fullName: '',
     role: 'OPERATOR' as 'ADMIN' | 'OPERATOR' | 'VIEWER',
     isActive: true,
+    assignedEventId: '',
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -103,11 +107,12 @@ export const UsersPage: React.FC = () => {
         email: createForm.email.trim(),
         fullName: createForm.fullName.trim(),
         role: createForm.role,
+        assignedEventId: createForm.assignedEventId || null,
         password: createForm.password.trim() || undefined,
       });
 
       setIsCreateModalOpen(false);
-      setCreateForm({ email: '', fullName: '', role: 'OPERATOR', password: '' });
+      setCreateForm({ email: '', fullName: '', role: 'OPERATOR', password: '', assignedEventId: '' });
 
       if (res.temporaryPassword) {
         setResetResult({
@@ -134,6 +139,7 @@ export const UsersPage: React.FC = () => {
       fullName: u.fullName,
       role: u.role,
       isActive: u.isActive,
+      assignedEventId: u.assignedEventId || '',
     });
     setIsEditModalOpen(true);
   };
@@ -145,7 +151,7 @@ export const UsersPage: React.FC = () => {
       setSubmitting(true);
       setError(null);
 
-      const updated = await usersService.updateUser(selectedUser.id, editForm);
+      const updated = await usersService.updateUser(selectedUser.id, { ...editForm, assignedEventId: editForm.assignedEventId || null });
       setIsEditModalOpen(false);
       setSelectedUser(null);
       setSuccessMsg(`Usuario ${updated.fullName} actualizado correctamente.`);
@@ -632,6 +638,13 @@ export const UsersPage: React.FC = () => {
                   <option value="VIEWER">Auditor (Consulta y Reportes)</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Edición asignada (Operador / Consulta)</label>
+                <select aria-label="Edición asignada" value={createForm.assignedEventId} onChange={e => setCreateForm({ ...createForm, assignedEventId: e.target.value })} className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground">
+                  <option value="">Edición predeterminada</option>
+                  {events.map(event => <option key={event.id} value={event.id}>{event.name} · {event.year}</option>)}
+                </select>
+              </div>
 
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">
@@ -709,6 +722,13 @@ export const UsersPage: React.FC = () => {
                   <option value="OPERATOR">Operador</option>
                   <option value="ADMIN">Administrador</option>
                   <option value="VIEWER">Auditor (Consulta)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Edición asignada (Operador / Consulta)</label>
+                <select aria-label="Edición asignada" value={editForm.assignedEventId} onChange={e => setEditForm({ ...editForm, assignedEventId: e.target.value })} className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground">
+                  <option value="">Edición predeterminada</option>
+                  {events.map(event => <option key={event.id} value={event.id}>{event.name} · {event.year}</option>)}
                 </select>
               </div>
 

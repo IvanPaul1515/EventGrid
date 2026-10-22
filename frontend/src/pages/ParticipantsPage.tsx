@@ -1,3 +1,4 @@
+import { MobileSearchInput } from '../components/common/MobileSearchInput';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
@@ -664,7 +665,7 @@ export const ParticipantsPage: React.FC = () => {
           {/* Búsqueda Rápida Universal */}
           <div className="relative flex-1 min-w-[260px]">
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
+            <MobileSearchInput
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}

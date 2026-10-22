@@ -44,17 +44,21 @@ export const App: React.FC = () => {
                       <Route path="/" element={<DashboardPage />} />
                       <Route path="/attendance" element={<AttendancePage />} />
                       <Route path="/participants" element={<ParticipantsPage />} />
-                      <Route path="/import" element={<ImportPage />} />
+                      <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'OPERATOR']} />}>
+                        <Route path="/import" element={<ImportPage />} />
+                        <Route path="/communications" element={<CommunicationsPage />} />
+                      </Route>
                       <Route path="/sales" element={<SalesPage />} />
                       <Route path="/sponsors" element={<SponsorsPage />} />
                       <Route path="/inventory" element={<TshirtInventoryPage />} />
-                      <Route path="/editions" element={<EditionsPage />} />
                       <Route path="/schedule" element={<SchedulePage />} />
-                      <Route path="/communications" element={<CommunicationsPage />} />
-                      <Route path="/settings" element={<SettingsPage />} />
-                      <Route path="/users" element={<UsersPage />} />
-                      <Route path="/audit" element={<AuditPage />} />
-                      <Route path="/activity" element={<AuditPage />} />
+                      <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
+                        <Route path="/editions" element={<EditionsPage />} />
+                        <Route path="/settings" element={<SettingsPage />} />
+                        <Route path="/users" element={<UsersPage />} />
+                        <Route path="/audit" element={<AuditPage />} />
+                        <Route path="/activity" element={<AuditPage />} />
+                      </Route>
                     </Route>
                   </Route>
 

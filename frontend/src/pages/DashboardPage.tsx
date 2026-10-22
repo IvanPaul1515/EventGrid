@@ -8,6 +8,7 @@ import { eventsService } from '../services/events.service';
 import { Registration, FinancialSummary } from '../types';
 import { CardSkeleton, ChartSkeleton } from '../components/common/Skeleton';
 import {
+  QrCode,
   Users,
   DollarSign,
   TrendingUp,
@@ -293,6 +294,15 @@ export const DashboardPage: React.FC = () => {
 
           {/* Botones de Acción Rápida Responsivos */}
           <div className="grid grid-cols-1 sm:grid-cols-3 md:flex md:flex-wrap items-center gap-2 sm:gap-3 shrink-0 w-full md:w-auto mt-2 md:mt-0">
+            {user?.role !== 'VIEWER' && (
+              <button
+                onClick={() => navigate('/attendance', { state: { openQr: true } })}
+                className="w-full md:w-auto justify-center px-4 py-2.5 rounded-xl sm:rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer"
+              >
+                <QrCode className="w-4 h-4" />
+                <span>Escanear QR</span>
+              </button>
+            )}
             <button
               onClick={() => navigate('/attendance', { viewTransition: true })}
               className="w-full md:w-auto justify-center px-4 py-2.5 rounded-xl sm:rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-md sm:shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
@@ -307,6 +317,7 @@ export const DashboardPage: React.FC = () => {
               <Users className="w-4 h-4 shrink-0" />
               <span>Participantes ({totalCount})</span>
             </button>
+            {user?.role !== 'VIEWER' && (
             <button
               onClick={() => navigate('/import', { viewTransition: true })}
               className="w-full md:w-auto justify-center px-4 py-2.5 rounded-xl sm:rounded-full bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
@@ -314,6 +325,7 @@ export const DashboardPage: React.FC = () => {
               <FileSpreadsheet className="w-4 h-4 shrink-0" />
               <span>Importar Excel</span>
             </button>
+            )}
           </div>
         </div>
       </div>
@@ -724,12 +736,14 @@ export const DashboardPage: React.FC = () => {
                   Aislamiento estricto de participantes y métricas por cada edición.
                 </p>
               </div>
+              {user?.role === 'ADMIN' && (
               <button
                 onClick={() => navigate('/editions', { viewTransition: true })}
                 className="text-xs text-primary hover:underline font-semibold flex items-center gap-1 cursor-pointer"
               >
                 Administrar todas &rarr;
               </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

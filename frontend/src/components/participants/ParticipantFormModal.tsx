@@ -364,7 +364,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                 Teléfono Principal
               </label>
               <input
-                type="text"
+                type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="809-580-1962"

@@ -47,7 +47,14 @@ export interface CreatePaymentData {
   notes?: string | null;
 }
 
+export interface SponsorCategory { name: string; value: number | null }
 export const sponsorsService = {
+  async getCategories(): Promise<SponsorCategory[]> {
+    return (await api.get('/sponsors/categories')).data.data;
+  },
+  async configureCategories(values: Record<string, number | null>): Promise<SponsorCategory[]> {
+    return (await api.put('/sponsors/categories', { values })).data.data;
+  },
   async getSponsors(params: SponsorFilterQuery = {}): Promise<SponsorListResponse> {
     const res = await api.get('/sponsors', { params });
     return res.data.data;

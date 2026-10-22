@@ -296,7 +296,39 @@ html:not(.dark) .on-dark-only { display: none !important; }
 }
 
 /* Mobile corrections only: preserve desktop typography and spacing. */
+.mobile-search-example { display: none; }
+@keyframes search-example-pan {
+  0%, 15% { transform: translateX(0); }
+  85%, 100% { transform: translateX(var(--search-travel)); }
+}
 @media (max-width: 767px), (max-width: 1023px) and (pointer: coarse) {
+  .mobile-search-empty::placeholder { color: transparent; }
+  .mobile-search-example {
+    display: block;
+    position: absolute;
+    transform: translateY(-50%);
+    overflow: hidden;
+    pointer-events: none;
+    color: hsl(var(--muted-foreground));
+    font-size: 16px;
+  }
+  .mobile-search-example > span { display: block; width: max-content; white-space: nowrap; }
+  .mobile-search-example > span[data-overflow='true'] { animation: search-example-pan 12s ease-in-out infinite alternate; }
+  .mobile-search-example.invisible > span { animation-play-state: paused; }
+  body:has(.mobile-safe-overlay) [data-app-scroll] { overflow: hidden; }
+  .mobile-safe-overlay { overflow: hidden; overscroll-behavior: contain; width: 100%; }
+  .mobile-safe-overlay > div {
+    min-width: 0;
+    max-width: 100%;
+    margin-block: 0;
+    overscroll-behavior: contain;
+    animation: none;
+  }
+  .mobile-safe-overlay :is(form, input, select, textarea) { min-width: 0; max-width: 100%; }
+  .mobile-safe-overlay :is(form, .overflow-y-auto) { overscroll-behavior: contain; overflow-x: clip; }
+  .mobile-form-dialog { display: flex; flex-direction: column; overflow: hidden !important; }
+  .mobile-form-body { min-height: 0; overflow-y: auto; }
+  .mobile-form-actions { position: sticky; bottom: 0; background: hsl(var(--card)); padding-bottom: env(safe-area-inset-bottom, 0px); }
   input:not([type='checkbox']):not([type='radio']):not([type='file']),
   select, textarea {
     font-size: 16px !important;
@@ -334,4 +366,7 @@ html:not(.dark) .on-dark-only { display: none !important; }
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-search-example > span[data-overflow='true'] { animation: none; }
 }

@@ -2,6 +2,8 @@ import { createPortal } from 'react-dom';
 import { CurrencyInput } from '../common/CurrencyInput';
 import React, { useState, useEffect } from 'react';
 import { X, Building2, DollarSign, Gift, Loader2 } from 'lucide-react';
+import { sponsorsService, SponsorCategory } from '../../services/sponsors.service';
+import { useEdition } from '../../context/EditionContext';
 import { Sponsor, SponsorType, ContributionType } from '../../types';
 import { CreateSponsorData, UpdateSponsorData } from '../../services/sponsors.service';
 
@@ -19,6 +21,16 @@ export const SponsorFormModal: React.FC<SponsorFormModalProps> = ({
   onSave,
 }) => {
 
+  const { currentEvent } = useEdition();
+  const [categories, setCategories] = useState<SponsorCategory[]>([]);
+  const [customCategory, setCustomCategory] = useState(false);
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    sponsorsService.getCategories().then(data => { if (active) setCategories(data); }).catch(() => {});
+    setCustomCategory(false);
+    return () => { active = false; };
+  }, [isOpen, currentEvent?.id]);
   const isEditing = Boolean(sponsorToEdit);
 
   const [name, setName] = useState('');
@@ -123,7 +135,7 @@ export const SponsorFormModal: React.FC<SponsorFormModalProps> = ({
 
   return createPortal(
     <div className="mobile-safe-overlay fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-2xl max-w-2xl w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200 my-8 max-h-[90vh] flex flex-col">
+      <div role="dialog" aria-modal="true" className="mobile-form-dialog bg-card border border-border rounded-2xl max-w-2xl w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200 my-8 max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2 text-primary font-bold text-sm">
@@ -140,7 +152,7 @@ export const SponsorFormModal: React.FC<SponsorFormModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4 overflow-y-auto pr-1 flex-1">
+        <form onSubmit={handleSubmit} className="mobile-form-body mt-4 space-y-4 overflow-y-auto pr-1 flex-1">
           {/* Tipo y Nombre */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="sm:col-span-1">
@@ -180,14 +192,16 @@ export const SponsorFormModal: React.FC<SponsorFormModalProps> = ({
               <label className="block text-xs font-semibold text-muted-foreground mb-1">
                 Nivel / Categoría
               </label>
-              <input
-                type="text"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="Ej. Platino, Oro, Plata, Bebidas, Alimentos..."
-                className="w-full px-3 py-2 text-sm rounded-xl bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none text-foreground"
-                disabled={loading}
-              />
+              <select aria-label="Categoría de patrocinio" value={customCategory ? '__custom' : category} onChange={e => {
+                if (e.target.value === '__custom') { setCustomCategory(true); return; }
+                setCustomCategory(false); setCategory(e.target.value);
+              }} className="w-full px-3 py-2 text-sm rounded-xl bg-background border border-border text-foreground" disabled={loading}>
+                <option value="">Sin categoría</option>
+                {[...new Set(['Geek Gold', 'Geek Silver', 'Geek', ...categories.map(c => c.name), ...(category ? [category] : [])])].map(name => <option key={name} value={name}>{name}</option>)}
+                <option value="__custom">Otra categoría / clasificación anterior</option>
+              </select>
+              {customCategory && <input aria-label="Otra categoría" value={category} onChange={e => setCategory(e.target.value)} className="w-full mt-2 px-3 py-2 rounded-xl bg-background border border-border text-foreground" />}
+              {categories.find(c => c.name === category)?.value != null && <p className="text-xs text-muted-foreground mt-1">Valor de referencia: {categories.find(c => c.name === category)?.value?.toLocaleString('es-DO')} RD$. El compromiso se pacta por separado.</p>}
             </div>
 
             <div>
@@ -337,7 +351,7 @@ export const SponsorFormModal: React.FC<SponsorFormModalProps> = ({
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-border shrink-0">
+          <div className="mobile-form-actions flex items-center justify-end gap-3 pt-3 border-t border-border shrink-0">
             <button
               type="button"
               onClick={onClose}

@@ -1,3 +1,4 @@
+import { MobileSearchInput } from '../components/common/MobileSearchInput';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
@@ -363,7 +364,7 @@ export const SalesPage: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-[200px]">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
+              <MobileSearchInput
                 type="text"
                 value={searchTx}
                 onChange={(e) => setSearchTx(e.target.value)}

@@ -3,6 +3,7 @@ import { api } from './api';
 export interface UserItem {
   id: string;
   email: string;
+  assignedEventId?: string | null;
   fullName: string;
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
   isActive: boolean;
@@ -23,6 +24,7 @@ export interface ListUsersResponse {
 
 export interface CreateUserData {
   email: string;
+  assignedEventId?: string | null;
   fullName: string;
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
   password?: string;
@@ -30,6 +32,7 @@ export interface CreateUserData {
 }
 
 export interface UpdateUserData {
+  assignedEventId?: string | null;
   fullName?: string;
   role?: 'ADMIN' | 'OPERATOR' | 'VIEWER';
   isActive?: boolean;

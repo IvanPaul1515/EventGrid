@@ -1,4 +1,6 @@
+import { MobileSearchInput } from '../components/common/MobileSearchInput';
 import React, { useState, useEffect, useCallback } from 'react';
+import { SponsorCategorySettings } from '../components/sponsors/SponsorCategorySettings';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { sponsorsService, CreatePaymentData, CreateSponsorData, UpdateSponsorData } from '../services/sponsors.service';
@@ -46,6 +48,13 @@ export const SponsorsPage: React.FC = () => {
   const [totalItems, setTotalItems] = useState(0);
 
   // Filters
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [categoryNames, setCategoryNames] = useState<string[]>(['Geek Gold', 'Geek Silver', 'Geek']);
+  useEffect(() => {
+    let active = true;
+    sponsorsService.getCategories().then(data => { if (active) setCategoryNames(data.map(c => c.name)); }).catch(() => {});
+    return () => { active = false; };
+  }, [currentEvent?.id]);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | SponsorType>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | SponsorStatus>('ALL');
@@ -82,6 +91,7 @@ export const SponsorsPage: React.FC = () => {
       const res = await sponsorsService.getSponsors({
         search: search.trim() || undefined,
         type: typeFilter,
+        category: categoryFilter || undefined,
         status: statusFilter,
         contributionType: contributionFilter,
         includeArchived,
@@ -109,7 +119,7 @@ export const SponsorsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentEvent, search, typeFilter, statusFilter, contributionFilter, includeArchived, page, selectedSponsor?.id]);
+  }, [currentEvent, search, categoryFilter, typeFilter, statusFilter, contributionFilter, includeArchived, page, selectedSponsor?.id]);
 
   useEffect(() => {
     loadData();
@@ -391,7 +401,7 @@ export const SponsorsPage: React.FC = () => {
           {/* Search Input */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 absolute left-3.5 top-3 text-muted-foreground" />
-            <input
+            <MobileSearchInput
               type="text"
               value={search}
               onChange={(e) => {
@@ -449,6 +459,10 @@ export const SponsorsPage: React.FC = () => {
               <option value="MIXED">Mixto</option>
             </select>
 
+            <select aria-label="Filtrar por categoría" value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setPage(1); }} className="px-3 py-2 text-xs rounded-xl bg-background border border-border text-foreground">
+              <option value="">Todas las categorías</option>
+              {categoryNames.map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
             {/* Archivados */}
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground px-2.5 py-1.5 rounded-xl border border-border cursor-pointer hover:bg-muted/40">
               <input
@@ -475,6 +489,7 @@ export const SponsorsPage: React.FC = () => {
         </div>
       </div>
 
+      <SponsorCategorySettings key={currentEvent?.id} isAdmin={isAdmin} breakdown={summary?.byCategory} onSaved={loadData} />
       {/* Main Table / List */}
       <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         {loading ? (
