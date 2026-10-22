@@ -180,4 +180,57 @@ export const participantsService = {
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   },
+
+  async getDeletionPreview(scope: 'EXCEL_IMPORT' | 'ALL_EDITION' | 'BATCH' = 'EXCEL_IMPORT', batchId?: string): Promise<{
+    eventId: string;
+    eventName: string;
+    scope: string;
+    selectedBatchId: string | null;
+    totalRegistrations: number;
+    importedRegistrations: number;
+    manualRegistrations: number;
+    targetCount: number;
+    targetPaymentsCount: number;
+    targetAttendanceCount: number;
+    batches: Array<{
+      id: string;
+      fileName: string;
+      importedRows: number;
+      registrationsCount: number;
+      createdAt: string;
+    }>;
+  }> {
+    const res = await api.get('/participants/deletion-preview', {
+      params: { scope, batchId },
+    });
+    return res.data.data;
+  },
+
+  async deleteImported(batchId?: string): Promise<{
+    scope: string;
+    batchId: string | null;
+    fileName: string | null;
+    deletedRegistrationsCount: number;
+    deletedParticipantsCount: number;
+    deletedPaymentsCount: number;
+    deletedAttendanceCount: number;
+    message: string;
+  }> {
+    const res = await api.post('/participants/delete-imported', { batchId });
+    return res.data.data;
+  },
+
+  async purgeEdition(confirmationPhrase: string): Promise<{
+    scope: string;
+    eventName: string;
+    backupFile: string;
+    deletedRegistrationsCount: number;
+    deletedParticipantsCount: number;
+    deletedPaymentsCount: number;
+    deletedAttendanceCount: number;
+    message: string;
+  }> {
+    const res = await api.post('/participants/purge-edition', { confirmationPhrase });
+    return res.data.data;
+  },
 };

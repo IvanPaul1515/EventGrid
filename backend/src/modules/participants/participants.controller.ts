@@ -428,4 +428,84 @@ export class ParticipantsController {
       next(error);
     }
   }
+
+  static async getDeletionPreview(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = req.params.eventId || req.eventId!;
+      const scope = (req.query.scope as any) || 'EXCEL_IMPORT';
+      const batchId = (req.query.batchId as string) || undefined;
+
+      const preview = await ParticipantsService.getDeletionPreview(eventId, scope, batchId);
+      return res.status(200).json({
+        status: 'success',
+        data: preview,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteImported(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = req.params.eventId || req.eventId!;
+      const { batchId } = req.body || {};
+      const operatorUserId = req.user?.id;
+
+      const result = await ParticipantsService.deleteImported(eventId, batchId, operatorUserId);
+
+      await recordAuditLog({
+        req,
+        action: 'DELETE',
+        entity: 'REGISTRATION',
+        entityId: eventId,
+        changes: {
+          action: 'DELETE_IMPORTED_PARTICIPANTS',
+          scope: result.scope,
+          batchId: result.batchId,
+          deletedRegistrationsCount: result.deletedRegistrationsCount,
+          deletedParticipantsCount: result.deletedParticipantsCount,
+        },
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async purgeEdition(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = req.params.eventId || req.eventId!;
+      const { confirmationPhrase } = req.body || {};
+      const operatorUserId = req.user?.id;
+
+      const result = await ParticipantsService.purgeEdition(eventId, confirmationPhrase, operatorUserId);
+
+      await recordAuditLog({
+        req,
+        action: 'DELETE',
+        entity: 'EVENT',
+        entityId: eventId,
+        changes: {
+          action: 'PURGE_ALL_EDITION_PARTICIPANTS',
+          backupFile: result.backupFile,
+          deletedRegistrationsCount: result.deletedRegistrationsCount,
+          deletedParticipantsCount: result.deletedParticipantsCount,
+        },
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
 }

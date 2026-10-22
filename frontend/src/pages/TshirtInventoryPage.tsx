@@ -69,7 +69,7 @@ export const TshirtInventoryPage: React.FC = () => {
 
   // Escuchar refrescos globales de datos
   // Sincronización en tiempo real al entregar o modificar camisetas
-  useRealtimeEvent(['CHECK_IN_CONFIRMED', 'TSHIRT_DELIVERED', 'TSHIRT_UPDATED'], (event) => {
+  useRealtimeEvent(['CHECK_IN_CONFIRMED', 'TSHIRT_DELIVERED', 'TSHIRT_UPDATED', 'PARTICIPANTS_DELETED'], (event) => {
     if (event.data?.tshirtDelivered || event.type === 'TSHIRT_DELIVERED' || event.type === 'TSHIRT_UPDATED') {
       loadData();
     }

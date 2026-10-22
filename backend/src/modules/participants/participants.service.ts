@@ -3,6 +3,8 @@ import { prisma } from '../../config/db.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors.js';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import {
   CreateRegistrationInput,
   UpdateRegistrationInput,
@@ -1872,6 +1874,377 @@ export class ParticipantsService {
       }
     }
     throw new Error('No se pudo generar un número de inscripción correlativo tras varios reintentos.');
+  }
+
+  /**
+   * Generar un respaldo JSON completo y recuperable de las inscripciones de una edición
+   */
+  static async createEditionBackup(eventId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: {
+        settings: true,
+        registrations: {
+          include: {
+            participant: true,
+            payments: true,
+            attendanceLogs: true,
+            ticketType: true,
+            paymentMethod: true,
+          },
+        },
+      },
+    });
+
+    if (!event) throw new NotFoundError('Edición no encontrada');
+
+    const backupDir = path.resolve(process.cwd(), 'backups');
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFileName = `backup_edition_${event.slug || eventId}_${timestamp}.json`;
+    const backupFilePath = path.join(backupDir, backupFileName);
+
+    const backupData = {
+      createdAt: new Date().toISOString(),
+      platform: 'EventGrid',
+      eventId: event.id,
+      eventName: event.name,
+      totalRegistrations: event.registrations.length,
+      event,
+    };
+
+    fs.writeFileSync(backupFilePath, JSON.stringify(backupData, null, 2), 'utf-8');
+    return {
+      fileName: backupFileName,
+      filePath: backupFilePath,
+      totalRegistrations: event.registrations.length,
+    };
+  }
+
+  /**
+   * Obtener una vista previa detallada del impacto antes de confirmar una eliminación
+   */
+  static async getDeletionPreview(
+    eventId: string,
+    scope: 'EXCEL_IMPORT' | 'ALL_EDITION' | 'BATCH' = 'EXCEL_IMPORT',
+    batchId?: string
+  ) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { settings: true },
+    });
+    if (!event) throw new NotFoundError('Edición no encontrada');
+
+    const batches = await prisma.importBatch.findMany({
+      where: { eventId },
+      select: {
+        id: true,
+        fileName: true,
+        importedRows: true,
+        createdAt: true,
+        _count: { select: { registrations: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const totalRegistrations = await prisma.registration.count({ where: { eventId } });
+    const importedRegistrations = await prisma.registration.count({
+      where: {
+        eventId,
+        OR: [
+          { source: 'EXCEL_IMPORT' },
+          { importBatchId: { not: null } },
+        ],
+      },
+    });
+    const manualRegistrations = totalRegistrations - importedRegistrations;
+
+    let targetCount = 0;
+    let targetPaymentsCount = 0;
+    let targetAttendanceCount = 0;
+
+    let whereTarget: any = { eventId };
+    if (scope === 'BATCH' && batchId) {
+      whereTarget = { eventId, importBatchId: batchId };
+    } else if (scope === 'EXCEL_IMPORT') {
+      whereTarget = {
+        eventId,
+        OR: [
+          { source: 'EXCEL_IMPORT' },
+          { importBatchId: { not: null } },
+        ],
+      };
+    } else if (scope === 'ALL_EDITION') {
+      whereTarget = { eventId };
+    }
+
+    const targetRegs = await prisma.registration.findMany({
+      where: whereTarget,
+      select: { id: true, attended: true, _count: { select: { payments: true } } },
+    });
+
+    targetCount = targetRegs.length;
+    targetAttendanceCount = targetRegs.filter((r) => r.attended).length;
+    targetPaymentsCount = targetRegs.reduce((sum, r) => sum + r._count.payments, 0);
+
+    return {
+      eventId,
+      eventName: event.name,
+      scope,
+      selectedBatchId: batchId || null,
+      totalRegistrations,
+      importedRegistrations,
+      manualRegistrations,
+      targetCount,
+      targetPaymentsCount,
+      targetAttendanceCount,
+      batches: batches.map((b) => ({
+        id: b.id,
+        fileName: b.fileName,
+        importedRows: b.importedRows,
+        registrationsCount: b._count.registrations,
+        createdAt: b.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  /**
+   * Eliminar participantes importados desde Excel (un lote específico o todos los de la edición)
+   */
+  static async deleteImported(eventId: string, batchId?: string, operatorUserId?: string) {
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) throw new NotFoundError('Edición no encontrada');
+
+    let whereTarget: any = {
+      eventId,
+      OR: [
+        { source: 'EXCEL_IMPORT' },
+        { importBatchId: { not: null } },
+      ],
+    };
+
+    let targetBatch: any = null;
+    if (batchId) {
+      targetBatch = await prisma.importBatch.findFirst({
+        where: { id: batchId, eventId },
+      });
+      if (!targetBatch) {
+        throw new NotFoundError('Lote de importación no encontrado en esta edición');
+      }
+      whereTarget = { eventId, importBatchId: batchId };
+    }
+
+    const regs = await prisma.registration.findMany({
+      where: whereTarget,
+      select: { id: true, participantId: true },
+    });
+
+    const regIds = regs.map((r) => r.id);
+    const participantIds = Array.from(new Set(regs.map((r) => r.participantId)));
+
+    let deletedPaymentsCount = 0;
+    let deletedAttendanceCount = 0;
+    let deletedRegistrationsCount = 0;
+    let deletedParticipantsCount = 0;
+
+    if (regIds.length > 0) {
+      // 1. Eliminar pagos asociados
+      const pRes = await prisma.payment.deleteMany({
+        where: { registrationId: { in: regIds } },
+      });
+      deletedPaymentsCount = pRes.count;
+
+      // 2. Eliminar logs de asistencia asociados
+      const aRes = await prisma.attendanceLog.deleteMany({
+        where: { registrationId: { in: regIds } },
+      });
+      deletedAttendanceCount = aRes.count;
+
+      // 3. Desvincular de envíos de email
+      await prisma.emailBatchItem.updateMany({
+        where: { registrationId: { in: regIds } },
+        data: { registrationId: null },
+      });
+      await prisma.emailLog.updateMany({
+        where: { registrationId: { in: regIds } },
+        data: { registrationId: null },
+      });
+
+      // 4. Eliminar las inscripciones
+      const rRes = await prisma.registration.deleteMany({
+        where: { id: { in: regIds } },
+      });
+      deletedRegistrationsCount = rRes.count;
+    }
+
+    // 5. Eliminar participantes huérfanos que ya no tengan inscripciones en ningún evento
+    for (const pId of participantIds) {
+      const remaining = await prisma.registration.count({
+        where: { participantId: pId },
+      });
+      if (remaining === 0) {
+        await prisma.participant.delete({ where: { id: pId } }).catch(() => {});
+        deletedParticipantsCount++;
+      }
+    }
+
+    // 6. Eliminar lotes y errores de importación correspondientes
+    if (batchId) {
+      await prisma.importError.deleteMany({ where: { importBatchId: batchId } });
+      await prisma.importBatch.delete({ where: { id: batchId } }).catch(() => {});
+    } else {
+      const allBatches = await prisma.importBatch.findMany({
+        where: { eventId },
+        select: { id: true },
+      });
+      const bIds = allBatches.map((b) => b.id);
+      if (bIds.length > 0) {
+        await prisma.importError.deleteMany({ where: { importBatchId: { in: bIds } } });
+        await prisma.importBatch.deleteMany({ where: { eventId } });
+      }
+    }
+
+    // 7. Notificación en tiempo real para todos los clientes conectados
+    RealtimeService.emit(eventId, {
+      type: 'PARTICIPANTS_DELETED',
+      data: {
+        eventId,
+        scope: batchId ? 'BATCH' : 'EXCEL_IMPORT',
+        batchId: batchId || null,
+        deletedRegistrationsCount,
+        deletedParticipantsCount,
+      },
+    });
+
+    return {
+      scope: batchId ? 'BATCH' : 'EXCEL_IMPORT',
+      batchId: batchId || null,
+      fileName: targetBatch?.fileName || null,
+      deletedRegistrationsCount,
+      deletedParticipantsCount,
+      deletedPaymentsCount,
+      deletedAttendanceCount,
+      message: batchId
+        ? `Lote '${targetBatch?.fileName}' y sus ${deletedRegistrationsCount} participantes importados fueron eliminados.`
+        : `Se eliminaron ${deletedRegistrationsCount} participantes importados desde Excel de la edición.`,
+    };
+  }
+
+  /**
+   * Vaciar absolutamente todos los participantes de una edición (manuales e importados)
+   * Requiere autorización explícita con frase de confirmación y crea un respaldo previo.
+   */
+  static async purgeEdition(eventId: string, confirmationPhrase: string, operatorUserId?: string) {
+    if (!confirmationPhrase || confirmationPhrase.trim().toUpperCase() !== 'ELIMINAR PARTICIPANTES') {
+      throw new BadRequestError('Frase de confirmación incorrecta. Debe escribir exactamente: ELIMINAR PARTICIPANTES');
+    }
+
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { settings: true },
+    });
+    if (!event) throw new NotFoundError('Edición no encontrada');
+
+    // 1. Respaldo previo de seguridad obligatorio
+    const backupResult = await ParticipantsService.createEditionBackup(eventId);
+
+    // 2. Obtener todas las inscripciones de esta edición
+    const allRegs = await prisma.registration.findMany({
+      where: { eventId },
+      select: { id: true, participantId: true },
+    });
+
+    const regIds = allRegs.map((r) => r.id);
+    const participantIds = Array.from(new Set(allRegs.map((r) => r.participantId)));
+
+    let deletedPaymentsCount = 0;
+    let deletedAttendanceCount = 0;
+    let deletedRegistrationsCount = 0;
+    let deletedParticipantsCount = 0;
+
+    if (regIds.length > 0) {
+      // Eliminar pagos asociados
+      const pRes = await prisma.payment.deleteMany({
+        where: { registrationId: { in: regIds } },
+      });
+      deletedPaymentsCount = pRes.count;
+
+      // Eliminar logs de asistencia asociados
+      const aRes = await prisma.attendanceLog.deleteMany({
+        where: { registrationId: { in: regIds } },
+      });
+      deletedAttendanceCount = aRes.count;
+
+      // Desvincular de envíos de email
+      await prisma.emailBatchItem.updateMany({
+        where: { registrationId: { in: regIds } },
+        data: { registrationId: null },
+      });
+      await prisma.emailLog.updateMany({
+        where: { registrationId: { in: regIds } },
+        data: { registrationId: null },
+      });
+
+      // Eliminar todas las inscripciones de la edición
+      const rRes = await prisma.registration.deleteMany({
+        where: { id: { in: regIds } },
+      });
+      deletedRegistrationsCount = rRes.count;
+    }
+
+    // Limpiar participantes huérfanos
+    for (const pId of participantIds) {
+      const remaining = await prisma.registration.count({
+        where: { participantId: pId },
+      });
+      if (remaining === 0) {
+        await prisma.participant.delete({ where: { id: pId } }).catch(() => {});
+        deletedParticipantsCount++;
+      }
+    }
+
+    // Limpiar lotes y errores de importación de la edición
+    const batches = await prisma.importBatch.findMany({
+      where: { eventId },
+      select: { id: true },
+    });
+    const bIds = batches.map((b) => b.id);
+    if (bIds.length > 0) {
+      await prisma.importError.deleteMany({ where: { importBatchId: { in: bIds } } });
+      await prisma.importBatch.deleteMany({ where: { eventId } });
+    }
+
+    // Restablecer correlativo de números de inscripción
+    await prisma.registrationSequence.upsert({
+      where: { eventId },
+      update: { current: 0 },
+      create: { eventId, current: 0 },
+    });
+
+    // Notificación en tiempo real
+    RealtimeService.emit(eventId, {
+      type: 'PARTICIPANTS_DELETED',
+      data: {
+        eventId,
+        scope: 'ALL_EDITION',
+        deletedRegistrationsCount,
+        deletedParticipantsCount,
+      },
+    });
+
+    return {
+      scope: 'ALL_EDITION',
+      eventName: event.name,
+      backupFile: backupResult.fileName,
+      deletedRegistrationsCount,
+      deletedParticipantsCount,
+      deletedPaymentsCount,
+      deletedAttendanceCount,
+      message: `Se vaciaron exitosamente todos los participantes (${deletedRegistrationsCount}) de la edición '${event.name}'. Respaldo guardado en ${backupResult.fileName}.`,
+    };
   }
 
 }

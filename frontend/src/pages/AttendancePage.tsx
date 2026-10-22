@@ -262,6 +262,11 @@ export const AttendancePage: React.FC = () => {
     });
   });
 
+  useRealtimeEvent('PARTICIPANTS_DELETED', () => {
+    setSelectedRegistration(null);
+    fetchAttendance();
+  });
+
   useRealtimeEvent('PARTICIPANT_REGISTERED', () => {
     attendanceService.getCounters().then(setCounters).catch(() => {});
   });
