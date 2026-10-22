@@ -343,6 +343,21 @@ export class EmailQueueWorker {
                 return;
               }
 
+              if (!isSimulation) {
+                // Verificar en tiempo real el estado persistido antes de CADA intento real
+                const freshConfig = await CommunicationsService.getRawConfig(job.eventId);
+                if (!freshConfig || !freshConfig.isEnabled) {
+                  await prisma.emailBatchItem.update({
+                    where: { id: item.id },
+                    data: {
+                      status: 'FAILED',
+                      errorMessage: 'Envío bloqueado: El servicio SMTP fue deshabilitado por el administrador.',
+                    },
+                  }).catch(() => {});
+                  return;
+                }
+              }
+
               // QA-30: Prioridad estricta de contenido inmutable
               // 1. Contenido final renderizado y persistido del destinatario
               // 2. Instantánea inmutable de la campaña
@@ -856,6 +871,16 @@ export class EmailQueueWorker {
       throw new Error('No tiene autorización para gestionar lotes de otra edición.');
     }
 
+    if (job.mode === 'REAL') {
+      const { CommunicationsService } = await import('./communications.service.js');
+      const config = await CommunicationsService.getRawConfig(job.eventId);
+      if (!config || !config.isEnabled) {
+        throw new BadRequestError(
+          'El servidor SMTP no está configurado o está deshabilitado. No se pueden reintentar envíos reales mientras SMTP permanezca apagado.'
+        );
+      }
+    }
+
     const resetCount = await prisma.emailBatchItem.updateMany({
       where: { jobId, status: 'FAILED' },
       data: {
@@ -900,6 +925,16 @@ export class EmailQueueWorker {
 
     if (eventId && job.eventId !== eventId) {
       throw new Error('No tiene autorización para gestionar lotes de otra edición.');
+    }
+
+    if (job.mode === 'REAL') {
+      const { CommunicationsService } = await import('./communications.service.js');
+      const config = await CommunicationsService.getRawConfig(job.eventId);
+      if (!config || !config.isEnabled) {
+        throw new BadRequestError(
+          'El servidor SMTP no está configurado o está deshabilitado. No se pueden reintentar envíos reales mientras SMTP permanezca apagado.'
+        );
+      }
     }
 
     if (!confirmation?.confirmedDuplicateRisk) {

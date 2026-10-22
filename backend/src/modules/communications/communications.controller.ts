@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { prisma } from '../../config/db.js';
 import { CommunicationsService } from './communications.service.js';
 import {
   UpdateSmtpConfigSchema,
@@ -28,7 +29,29 @@ export class CommunicationsController {
   static async saveConfig(req: Request, res: Response, next: NextFunction) {
     try {
       const validated = UpdateSmtpConfigSchema.parse(req.body);
+      const existing = validated.eventId
+        ? await prisma.emailConfig.findFirst({ where: { eventId: validated.eventId } })
+        : await prisma.emailConfig.findFirst({ where: { eventId: null } });
+
+      const previousIsEnabled = existing?.isEnabled ?? false;
+      const newIsEnabled = Boolean(validated.isEnabled);
+
       const config = await CommunicationsService.saveConfig(validated);
+
+      if (previousIsEnabled !== newIsEnabled) {
+        await recordAuditLog({
+          req,
+          action: 'SMTP_STATUS_CHANGED',
+          entity: 'EMAIL_CONFIG',
+          entityId: config.id,
+          changes: {
+            estadoAnterior: previousIsEnabled ? 'ACTIVADO' : 'DESACTIVADO',
+            nuevoEstado: newIsEnabled ? 'ACTIVADO' : 'DESACTIVADO',
+            usuario: req.user?.email || req.user?.id || 'ADMIN',
+            fecha: new Date().toISOString(),
+          },
+        });
+      }
 
       await recordAuditLog({
         req,

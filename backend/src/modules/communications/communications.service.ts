@@ -2091,6 +2091,13 @@ export class CommunicationsService {
       throw new NotFoundError('Lote no encontrado en esta edición');
     }
 
+    if (job.mode === 'REAL') {
+      const config = await this.getRawConfig(job.eventId);
+      if (!config || !config.isEnabled) {
+        throw new BadRequestError('El servidor SMTP no está configurado o está deshabilitado. No se pueden reintentar envíos reales mientras SMTP permanezca apagado.');
+      }
+    }
+
     const updatedJob = await EmailQueueWorker.retryFailed(jobId, eventId);
     return updatedJob;
   }
@@ -2109,6 +2116,13 @@ export class CommunicationsService {
     if (!job) throw new NotFoundError('Lote no encontrado');
     if (eventId && job.eventId !== eventId) {
       throw new NotFoundError('Lote no encontrado en esta edición');
+    }
+
+    if (job.mode === 'REAL') {
+      const config = await this.getRawConfig(job.eventId);
+      if (!config || !config.isEnabled) {
+        throw new BadRequestError('El servidor SMTP no está configurado o está deshabilitado. No se pueden reintentar envíos reales mientras SMTP permanezca apagado.');
+      }
     }
 
     const updatedJob = await EmailQueueWorker.retryUncertain(jobId, eventId, {

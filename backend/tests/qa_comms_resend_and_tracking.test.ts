@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app.js';
 import { prisma } from '../src/config/db.js';
@@ -24,14 +24,14 @@ describe('QA Communications — Resend Confirmation, Mock Safeguard, Brevo Webho
     const event = await prisma.event.findFirst({ where: { year: 2026 } });
     activeEventId = event!.id;
 
-    // Guardar y activar temporalmente isEnabled para verificar salvaguardas de envío sin llamadas externas
+    // Mock en memoria del servicio para pruebas de reenvío sin tocar dev.db
     originalConfig = await prisma.emailConfig.findFirst({ where: { eventId: activeEventId } });
-    if (originalConfig) {
-      await prisma.emailConfig.update({
-        where: { id: originalConfig.id },
-        data: { isEnabled: true },
-      });
-    }
+    vi.spyOn(CommunicationsService, 'getRawConfig').mockImplementation(async (eventId?: string | null) => {
+      const targetId = eventId || activeEventId;
+      const cfg = await prisma.emailConfig.findFirst({ where: { eventId: targetId } });
+      if (!cfg) return null;
+      return { ...cfg, isEnabled: true };
+    });
 
     // 3. Ticket type
     let ticketType = await prisma.ticketType.findFirst({ where: { eventId: activeEventId } });
@@ -81,6 +81,7 @@ describe('QA Communications — Resend Confirmation, Mock Safeguard, Brevo Webho
   });
 
   afterAll(async () => {
+    vi.restoreAllMocks();
     if (testRegId) {
       await prisma.emailLog.deleteMany({ where: { registrationId: testRegId } }).catch(() => {});
       await prisma.auditLog.deleteMany({ where: { entityId: testRegId } }).catch(() => {});
@@ -89,6 +90,7 @@ describe('QA Communications — Resend Confirmation, Mock Safeguard, Brevo Webho
     if (testParticipantId) {
       await prisma.participant.deleteMany({ where: { id: testParticipantId } }).catch(() => {});
     }
+    await prisma.emailConfig.updateMany({ data: { isEnabled: false } });
   });
 
   describe('1. Salvaguarda Absoluta contra Envíos Reales Externos (Mock Guard)', () => {
@@ -116,7 +118,7 @@ describe('QA Communications — Resend Confirmation, Mock Safeguard, Brevo Webho
       expect(sendRes.accepted).toContain(testParticipantEmail);
     });
 
-    it('El endpoint /test de conexión SMTP debe retornar modo simulación segura sin contactar servidores externos', async () => {
+    it('El endpoint /test de conexión SMTP debe bloquear la prueba si SMTP está desactivado', async () => {
       const res = await request(app)
         .post('/api/v1/communications/test')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -125,9 +127,8 @@ describe('QA Communications — Resend Confirmation, Mock Safeguard, Brevo Webho
           recipientEmail: testParticipantEmail,
         });
 
-      expect(res.status).toBe(200);
-      expect(res.body.data.simulated).toBe(true);
-      expect(res.body.data.message).toContain('simulación segura');
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('deshabilitado');
     });
   });
 

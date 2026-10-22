@@ -120,6 +120,7 @@ export const SettingsPage: React.FC = () => {
     label: string;
     details?: string;
   }>({ type: 'disabled', label: 'Servicio Deshabilitado' });
+  const [showSmtpActivationModal, setShowSmtpActivationModal] = useState(false);
 
   // Estados de Entorno de Demostración
   const [demoStatus, setDemoStatus] = useState<DemoStatus | null>(null);
@@ -1432,28 +1433,31 @@ export const SettingsPage: React.FC = () => {
               </div>
 
               {/* Toggle Habilitar Servicio */}
-              <label className="flex items-center gap-2 cursor-pointer select-none">
+              <div className="flex items-center gap-2 select-none">
                 <span className="text-xs font-bold text-foreground">
                   {smtpConfig.isEnabled ? 'Servicio Activado' : 'Servicio Desactivado'}
                 </span>
-                <input
-                  type="checkbox"
-                  checked={Boolean(smtpConfig.isEnabled)}
-                  onChange={(e) => setSmtpConfig({ ...smtpConfig, isEnabled: e.target.checked })}
-                  className="sr-only"
-                />
-                <div
-                  className={`w-10 h-6 rounded-full transition-colors relative ${
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!smtpConfig.isEnabled) {
+                      setShowSmtpActivationModal(true);
+                    } else {
+                      setSmtpConfig({ ...smtpConfig, isEnabled: false });
+                    }
+                  }}
+                  className={`w-10 h-6 rounded-full transition-colors relative cursor-pointer ${
                     smtpConfig.isEnabled ? 'bg-primary' : 'bg-muted border border-border'
                   }`}
+                  aria-label="Alternar estado de activación SMTP"
                 >
                   <div
                     className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
                       smtpConfig.isEnabled ? 'right-1' : 'left-1'
                     }`}
                   />
-                </div>
-              </label>
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1866,6 +1870,51 @@ export const SettingsPage: React.FC = () => {
                 className="px-4 py-2 rounded-xl bg-destructive hover:bg-destructive/90 text-white font-bold text-xs shadow-md shadow-destructive/25 transition-all cursor-pointer shrink-0"
               >
                 Restablecer Demo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación Obligatoria de Activación de SMTP */}
+      {showSmtpActivationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-md bg-card rounded-2xl border border-amber-500/40 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3 text-amber-500">
+              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-bold text-foreground text-sm">Confirmar Activación de SMTP</h4>
+                <p className="text-xs text-muted-foreground">Acción Administrativa Requerida</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              ¿Está seguro de activar el servicio SMTP? Al activarlo, EventGrid quedará habilitado para enviar correos electrónicos reales a los participantes a través del servidor configurado.
+            </p>
+
+            <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs text-amber-400">
+              Esta acción quedará registrada en el log de auditoría con su usuario y fecha.
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSmtpActivationModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSmtpConfig({ ...smtpConfig, isEnabled: true });
+                  setShowSmtpActivationModal(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white font-bold text-xs shadow-md shadow-primary/25 transition-all cursor-pointer"
+              >
+                Sí, Activar SMTP
               </button>
             </div>
           </div>

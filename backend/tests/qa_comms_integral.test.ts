@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app.js';
 import { prisma } from '../src/config/db.js';
@@ -41,8 +41,13 @@ describe('QA Integral — Comunicaciones, Historial Unificado, Destinatarios Int
     // 2. Evento activo 2026
     const event = await prisma.event.findFirst({ where: { year: 2026 } });
     activeEventId = event!.id;
-    await prisma.emailConfig.updateMany({ where: { eventId: activeEventId }, data: { isEnabled: true } });
     originalEmailConfig = await prisma.emailConfig.findFirst({ where: { eventId: activeEventId } });
+    vi.spyOn(CommunicationsService, 'getRawConfig').mockImplementation(async (eventId?: string | null) => {
+      const targetId = eventId || activeEventId;
+      const cfg = await prisma.emailConfig.findFirst({ where: { eventId: targetId } });
+      if (!cfg) return null;
+      return { ...cfg, isEnabled: true };
+    });
 
     // Segundo evento para prueba de aislamiento entre ediciones
     let secondEvent = await prisma.event.findFirst({ where: { year: 2025 } });
@@ -178,6 +183,7 @@ describe('QA Integral — Comunicaciones, Historial Unificado, Destinatarios Int
   });
 
   afterAll(async () => {
+    vi.restoreAllMocks();
     // Restaurar fábrica de transporte original
     CommunicationsService.setTransporterFactory(null);
 
@@ -204,7 +210,7 @@ describe('QA Integral — Comunicaciones, Historial Unificado, Destinatarios Int
           fromEmail: originalEmailConfig.fromEmail,
           fromName: originalEmailConfig.fromName,
           replyToEmail: originalEmailConfig.replyToEmail,
-          isEnabled: true,
+          isEnabled: false,
         },
       }).catch(() => {});
     }
@@ -691,7 +697,7 @@ describe('QA Integral — Comunicaciones, Historial Unificado, Destinatarios Int
     expect(emailConfig?.host).toBe('smtp-relay.brevo.com');
     expect(emailConfig?.port).toBe(587);
     expect(emailConfig?.user).toBe('bf682a001@smtp-brevo.com');
-    expect(emailConfig?.isEnabled).toBe(true);
+    expect(emailConfig?.isEnabled).toBe(false);
 
     const settings = await prisma.eventSettings.findFirst({
       where: { eventId: activeEventId },
