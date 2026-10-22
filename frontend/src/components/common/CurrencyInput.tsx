@@ -13,11 +13,15 @@ export const CurrencyInput: React.FC<Props> = ({ value, onValueChange, onFocus, 
   return <input {...props} type="text" inputMode="decimal"
     value={draft ?? (value === '' ? '' : formatted)}
     onFocus={(event) => {
-      setDraft(number === 0 ? '' : String(number));
+      // Do not replace the DOM value during focus: it invalidates the browser's
+      // selection and can append pasted/autofilled text to the previous amount.
+      event.currentTarget.select();
       onFocus?.(event);
     }}
     onChange={(event) => {
-      const text = event.target.value.replace(',', '.').replace(/^0+(?=\d)/, '');
+      const input = event.target.value.replace(/^RD\$\s*/i, '').replace(/\s/g, '');
+      const text = (input.includes('.') || /^\d{1,3}(,\d{3})+$/.test(input)
+        ? input.replace(/,/g, '') : input.replace(',', '.')).replace(/^0+(?=\d)/, '');
       if (!/^\d*(\.\d{0,2})?$/.test(text)) return;
       const amount = Number(text) || 0;
       event.target.setCustomValidity(
