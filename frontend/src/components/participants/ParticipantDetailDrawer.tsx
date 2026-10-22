@@ -6,7 +6,8 @@ import { inventoryService } from '../../services/inventory.service';
 import { useAuth } from '../../context/AuthContext';
 import { useEdition } from '../../context/EditionContext';
 import { api } from '../../services/api';
-import { PaymentMethod, RegistrationStatus, PaymentStatus } from '../../types';
+import { PaymentMethod, RegistrationStatus, PaymentStatus, UnifiedEmailRecord } from '../../types';
+import { communicationsService } from '../../services/communications.service';
 import { RecordPaymentModal } from './RecordPaymentModal';
 import { AssignCourtesyModal } from './AssignCourtesyModal';
 import { ReasonModal } from './ReasonModal';
@@ -105,6 +106,11 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   const [showPaymentsLedger, setShowPaymentsLedger] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  // Historial unificado de comunicaciones
+  const [showCommsHistory, setShowCommsHistory] = useState(true);
+  const [commsHistory, setCommsHistory] = useState<UnifiedEmailRecord[]>(registration?.emailHistory || []);
+  const [loadingCommsHistory, setLoadingCommsHistory] = useState(false);
+  const [selectedCommsDetail, setSelectedCommsDetail] = useState<UnifiedEmailRecord | null>(null);
 
   // Modo edición directa inline dentro de la ficha
   const [isInlineEditing, setIsInlineEditing] = useState(false);
@@ -141,6 +147,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       setEditNotes(registration.notes || '');
       setIsInlineEditing(false);
       setFeedbackMsg(null);
+      setCommsHistory(registration.emailHistory || []);
     }
   }, [registration?.id]);
 
@@ -242,6 +249,19 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   };
 
   // Guardar cambios de edición inline directamente en la ficha
+  const fetchCommsHistory = async () => {
+    if (!registration?.id) return;
+    try {
+      setLoadingCommsHistory(true);
+      const data = await communicationsService.getRegistrationHistory(registration.id);
+      setCommsHistory(data);
+    } catch (err) {
+      console.error('Error al cargar historial de comunicaciones:', err);
+    } finally {
+      setLoadingCommsHistory(false);
+    }
+  };
+
   const handleSaveInline = async () => {
     if (!editFirstName.trim() || !editLastName.trim() || !editEmail.trim()) {
       setFeedbackMsg({ type: 'error', text: 'Nombres, Apellidos y Correo electrónico son obligatorios.' });
@@ -1445,6 +1465,120 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                 </div>
               )}
 
+                            {/* HISTORIAL UNIFICADO DE COMUNICACIONES (Fase QA Integral) */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between pb-1 border-b border-border">
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-primary" />
+                    <span className="text-xs font-black uppercase tracking-wider text-foreground">
+                      Historial de Comunicaciones ({commsHistory.length})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={fetchCommsHistory}
+                      disabled={loadingCommsHistory}
+                      className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                      title="Actualizar historial de correos"
+                    >
+                      <RotateCcw className={`w-3.5 h-3.5 ${loadingCommsHistory ? 'animate-spin text-primary' : ''}`} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowCommsHistory(!showCommsHistory)}
+                      className="text-xs text-primary hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>{showCommsHistory ? 'Ocultar' : 'Ver envíos'}</span>
+                      {showCommsHistory ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {showCommsHistory && (
+                  <div className="space-y-2">
+                    {commsHistory.length === 0 ? (
+                      <div className="p-3.5 rounded-xl border border-dashed border-border text-center bg-muted/10 space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          No se registran comunicaciones enviadas para este participante.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowEmailModal(true)}
+                          className="px-3 py-1 rounded-lg text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>Enviar Primera Comunicación</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                        {commsHistory.map((item) => {
+                          const isSuccess = item.status === 'ACCEPTED_BY_SMTP' || item.status === 'SENT' || item.status === 'DELIVERED';
+                          const isSimulated = item.status === 'SIMULATED';
+                          const isProcessing = item.status === 'PROCESSING' || item.status === 'PENDING';
+                          const isFailed = item.status === 'FAILED' || item.status === 'REJECTED';
+
+                          const statusBadgeClass = isSuccess
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/25'
+                            : isSimulated
+                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25'
+                            : isProcessing
+                            ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/25'
+                            : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/25';
+
+                          return (
+                            <div
+                              key={item.id}
+                              className="p-3 rounded-xl border border-border bg-background hover:border-primary/40 transition-colors text-xs space-y-1.5 shadow-xs"
+                            >
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="font-bold text-foreground">
+                                  {item.communicationType}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadgeClass}`}>
+                                  {item.statusLabel}
+                                </span>
+                              </div>
+
+                              <div className="text-[11px] text-muted-foreground truncate" title={item.subject}>
+                                Asunto: <span className="text-foreground font-medium">{item.subject}</span>
+                              </div>
+
+                              <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/50">
+                                <span className="font-mono">
+                                  {item.date
+                                    ? new Date(item.date).toLocaleString('es-DO', {
+                                        day: '2-digit',
+                                        month: '2-digit',
+                                        year: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })
+                                    : '—'}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="px-1.5 py-0.2 rounded bg-muted text-muted-foreground font-semibold">
+                                    {item.deliveryType}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedCommsDetail(item)}
+                                    className="text-primary hover:underline font-bold cursor-pointer"
+                                  >
+                                    Ver detalle
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* HISTORIAL CENTRALIZADO DE AUDITORÍA DEL PARTICIPANTE */}
               {registration.auditLogs && registration.auditLogs.length > 0 && (
                 <div className="space-y-2.5">
@@ -1718,6 +1852,10 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
         eventId={registration.eventId}
         isOpen={showEmailModal}
         onClose={() => setShowEmailModal(false)}
+        onSent={() => {
+          fetchCommsHistory();
+          if (onUpdated) onUpdated(registration);
+        }}
       />
 
       <CheckInConfirmModal
@@ -1746,6 +1884,78 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
         onClose={() => setShowReturnTshirtModal(false)}
         onConfirm={handleReturnTshirt}
       />
+      {/* Modal Detalle de Comunicación */}
+      {selectedCommsDetail && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-border">
+              <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
+                <Mail className="w-4 h-4 text-primary" />
+                Detalle de Comunicación
+              </h4>
+              <button
+                type="button"
+                onClick={() => setSelectedCommsDetail(null)}
+                className="p-1 rounded-lg hover:bg-muted text-muted-foreground cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 text-xs">
+              <div>
+                <span className="text-muted-foreground text-[11px] uppercase tracking-wider block">Tipo:</span>
+                <span className="font-bold text-foreground">{selectedCommsDetail.communicationType} ({selectedCommsDetail.templateCode})</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-[11px] uppercase tracking-wider block">Asunto:</span>
+                <span className="font-semibold text-foreground">{selectedCommsDetail.subject}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-[11px] uppercase tracking-wider block">Destinatario:</span>
+                <span className="font-mono text-primary">{selectedCommsDetail.recipientEmail}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-border">
+                <div>
+                  <span className="text-muted-foreground text-[11px] block">Estado:</span>
+                  <span className="font-bold text-foreground">{selectedCommsDetail.statusLabel} ({selectedCommsDetail.status})</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-[11px] block">Tipo de envío:</span>
+                  <span className="font-semibold text-foreground">{selectedCommsDetail.deliveryType}</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-muted-foreground text-[11px] block">Intentos:</span>
+                  <span className="font-semibold text-foreground">{selectedCommsDetail.attempts}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-[11px] block">Autorizado por:</span>
+                  <span className="font-semibold text-foreground">{selectedCommsDetail.authorizedByUser?.fullName || 'Sistema'}</span>
+                </div>
+              </div>
+              {selectedCommsDetail.errorMessage && (
+                <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400">
+                  <span className="font-bold block mb-0.5">Mensaje de error:</span>
+                  <span className="font-mono text-[11px]">{selectedCommsDetail.errorMessage}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-border flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedCommsDetail(null)}
+                className="px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       </div>
     </>,
     document.body

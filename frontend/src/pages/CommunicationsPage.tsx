@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
+import { VisualEmailEditor } from '../components/communications/VisualEmailEditor';
 import { communicationsService, EmailPreviewResult, EmailBatchJobInfo } from '../services/communications.service';
 import { participantsService } from '../services/participants.service';
 import { EmailConfig, EmailTemplate, EmailLog, Registration } from '../types';
@@ -155,6 +156,23 @@ export const CommunicationsPage: React.FC = () => {
   const [logsSearch, setLogsSearch] = useState('');
   const [logsBatchFilter, setLogsBatchFilter] = useState('');
   const [loadingLogs, setLoadingLogs] = useState(false);
+  // Estados para control de duplicados y filtros inteligentes (Fase QA Integral)
+  const [singleDuplicateWarning, setSingleDuplicateWarning] = useState<{
+    message: string;
+    previousSentAt?: string;
+  } | null>(null);
+  const [singleResendReason, setSingleResendReason] = useState('Reenvío autorizado expresamente');
+  const [excludeAlreadyNotified, setExcludeAlreadyNotified] = useState(true);
+  const [forceResendBulk, setForceResendBulk] = useState(false);
+  const [showExcludedModal, setShowExcludedModal] = useState(false);
+  const [excludedList, setExcludedList] = useState<Array<{ registrationId: string; fullName: string; email: string; reason: string }>>([]);
+  const [todaySentByEventGrid, setTodaySentByEventGrid] = useState(0);
+  const [pendingQueueCount, setPendingQueueCount] = useState(0);
+  const [alreadyNotifiedCount, setAlreadyNotifiedCount] = useState(0);
+  const [logsTemplateFilter, setLogsTemplateFilter] = useState('ALL');
+  const [logsDateFrom, setLogsDateFrom] = useState('');
+  const [logsDateTo, setLogsDateTo] = useState('');
+
 
   // Cargar estado inicial
   useEffect(() => {
@@ -334,8 +352,8 @@ export const CommunicationsPage: React.FC = () => {
     }
   };
 
-  // Enviar correo individual
-  const handleSendSingleEmail = async () => {
+  // Enviar correo individual con protección contra duplicados (Fase QA Integral)
+  const handleSendSingleEmail = async (force = false) => {
     if (!selectedRegistration || !currentEvent) return;
     try {
       setSendingSingle(true);
@@ -347,6 +365,9 @@ export const CommunicationsPage: React.FC = () => {
         customSubject: composeSubject || undefined,
         customBodyHtml: composeBodyHtml || undefined,
         customMessage: composeCustomMessage || undefined,
+        forceResend: force,
+        confirmedResend: force,
+        resendReason: force ? singleResendReason : undefined,
       });
 
       setSingleFeedback({
@@ -354,11 +375,23 @@ export const CommunicationsPage: React.FC = () => {
         message: res.message,
         simulated: res.status === 'SIMULATED',
       });
+      setSingleDuplicateWarning(null);
     } catch (err: any) {
-      setSingleFeedback({
-        type: 'error',
-        message: err?.response?.data?.message || 'Error al enviar correo.',
-      });
+      const isDup =
+        err?.response?.data?.details?.code === 'DUPLICATE_COMMUNICATION_WARNING' ||
+        err?.response?.data?.message?.includes('¿Deseas reenviarlo?');
+
+      if (isDup && !force) {
+        setSingleDuplicateWarning({
+          message: err?.response?.data?.message || 'Este participante ya recibió un envío de este tipo.',
+          previousSentAt: err?.response?.data?.details?.previousSentAt,
+        });
+      } else {
+        setSingleFeedback({
+          type: 'error',
+          message: err?.response?.data?.message || 'Error al enviar correo.',
+        });
+      }
     } finally {
       setSendingSingle(false);
     }
@@ -483,6 +516,9 @@ export const CommunicationsPage: React.FC = () => {
         status: logsStatusFilter !== 'ALL' ? logsStatusFilter : undefined,
         search: logsSearch || undefined,
         batchId: logsBatchFilter || undefined,
+        templateCode: logsTemplateFilter !== 'ALL' ? logsTemplateFilter : undefined,
+        dateFrom: logsDateFrom || undefined,
+        dateTo: logsDateTo || undefined,
         page,
         limit: 15,
       });
@@ -822,7 +858,7 @@ export const CommunicationsPage: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={handleSendSingleEmail}
+                  onClick={() => handleSendSingleEmail(false)}
                   disabled={sendingSingle || !selectedRegistration}
                   className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold shadow-lg shadow-primary/25 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                 >
@@ -1056,10 +1092,15 @@ export const CommunicationsPage: React.FC = () => {
                 {[
                   { id: 'ALL', label: 'Todos los Elegibles', desc: 'Inscripciones no canceladas' },
                   { id: 'CONFIRMED', label: 'Confirmados', desc: 'Estado Confirmado' },
+                  { id: 'PAID_WITHOUT_CONFIRMATION', label: 'Pagados sin Confirmar', desc: 'Pagos completos sin confirmación enviada' },
+                  { id: 'COURTESY_WITHOUT_CONFIRMATION', label: 'Cortesías sin Notificar', desc: 'Cortesías sin confirmación enviada' },
+                  { id: 'WITHOUT_DIGITAL_TICKET', label: 'Sin Entrada Digital', desc: 'Confirmados sin ticket digital enviado' },
                   { id: 'PAID', label: 'Pagos Completos', desc: 'Pagados y Cortesías' },
                   { id: 'PENDING_PAYMENT', label: 'Pagos Pendientes', desc: 'Con saldo pendiente' },
                   { id: 'COURTESY', label: 'Cortesías / Becas', desc: 'Inscripciones de cortesía' },
                   { id: 'PARTIAL', label: 'Pagos Parciales', desc: 'Abonado con saldo restante' },
+                  { id: 'FAILED_COMMUNICATION', label: 'Con Envío Fallido', desc: 'Destinatarios con error de envío previo' },
+                  { id: 'WITHOUT_REMINDER', label: 'Sin Recordatorio', desc: 'Confirmados sin recordatorio de evento' },
                   { id: 'ATTENDED', label: 'Ya Asistieron', desc: 'Con Check-in realizado' },
                   { id: 'NOT_ATTENDED', label: 'No Han Asistido', desc: 'Pendientes de ingreso' },
                 ].map((g) => (
@@ -1122,6 +1163,29 @@ export const CommunicationsPage: React.FC = () => {
                 </div>
               </div>
 
+                            {/* Controles de Prevención de Duplicados en Masa (Fase QA Integral) */}
+              <div className="p-4 rounded-xl bg-muted/20 border border-border space-y-2">
+                <span className="text-xs font-bold text-foreground block">Opciones de Deduplicación y Reenvío Seguro:</span>
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={excludeAlreadyNotified}
+                    onChange={(e) => setExcludeAlreadyNotified(e.target.checked)}
+                    className="w-4 h-4 rounded text-primary focus:ring-primary bg-background border-border"
+                  />
+                  <span>Excluir por defecto participantes que ya recibieron esta comunicación previamente</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={forceResendBulk}
+                    onChange={(e) => setForceResendBulk(e.target.checked)}
+                    className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 bg-background border-border"
+                  />
+                  <span>Autorizar reenvío a los ya notificados (registra auditoría de reenvío masivo)</span>
+                </label>
+              </div>
+
               {/* Alerta de Cuota Diaria Brevo */}
               {bulkQuotaWarning && (
                 <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center gap-2 text-xs text-blue-400">
@@ -1131,22 +1195,34 @@ export const CommunicationsPage: React.FC = () => {
               )}
 
               {/* Resumen Exacto de Destinatarios y Exclusiones (Sección 8) */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-xl bg-background border border-border">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 p-4 rounded-xl bg-background border border-border">
                 <div>
                   <p className="text-[10px] uppercase font-bold text-muted-foreground">Total en Segmento</p>
                   <p className="text-xl font-black text-foreground mt-0.5">{bulkStats.total}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-emerald-400">Elegibles para Envío</p>
-                  <p className="text-xl font-black text-emerald-400 mt-0.5">{bulkStats.eligible}</p>
+                  <p className="text-[10px] uppercase font-bold text-emerald-500">Elegibles para Envío</p>
+                  <p className="text-xl font-black text-emerald-500 mt-0.5">{bulkStats.eligible}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-rose-400">Cancelados / Sin Email</p>
-                  <p className="text-xl font-black text-rose-400 mt-0.5">{bulkStats.cancelled + bulkStats.invalidEmails}</p>
+                  <p className="text-[10px] uppercase font-bold text-amber-500">Ya Notificados</p>
+                  <p className="text-xl font-black text-amber-500 mt-0.5">{alreadyNotifiedCount}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-amber-400">Demo / Duplicados</p>
-                  <p className="text-xl font-black text-amber-400 mt-0.5">{bulkStats.demo + bulkStats.duplicates}</p>
+                  <p className="text-[10px] uppercase font-bold text-rose-500">Excluidos / Inválidos</p>
+                  <p className="text-xl font-black text-rose-500 mt-0.5">{bulkStats.cancelled + bulkStats.invalidEmails + bulkStats.duplicates}</p>
+                </div>
+                <div className="flex items-center justify-center sm:justify-end col-span-2 sm:col-span-1">
+                  {excludedList.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowExcludedModal(true)}
+                      className="px-3 py-2 rounded-lg text-xs font-bold bg-muted hover:bg-muted/80 text-foreground border border-border flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-primary" />
+                      <span>Revisar Excluidos ({excludedList.length})</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1775,6 +1851,57 @@ export const CommunicationsPage: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      
+      {/* Modal: Lista de Destinatarios Excluidos */}
+      {showExcludedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
+              <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-500" />
+                Destinatarios Excluidos ({excludedList.length})
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowExcludedModal(false)}
+                className="p-1 rounded-lg hover:bg-muted text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 space-y-2">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-muted/40 text-muted-foreground uppercase text-[10px] font-bold">
+                  <tr>
+                    <th className="p-2 rounded-l-lg">Participante</th>
+                    <th className="p-2">Correo</th>
+                    <th className="p-2 rounded-r-lg">Motivo de Exclusión</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {excludedList.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-muted/20">
+                      <td className="p-2 font-bold text-foreground">{item.fullName}</td>
+                      <td className="p-2 font-mono text-muted-foreground">{item.email}</td>
+                      <td className="p-2 text-amber-600 dark:text-amber-400 font-medium">{item.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-3 border-t border-border flex justify-end bg-muted/20">
+              <button
+                type="button"
+                onClick={() => setShowExcludedModal(false)}
+                className="px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -348,7 +348,26 @@ export interface EmailTemplate {
   isSystem: boolean;
 }
 
-export type EmailLogStatus = 'PENDING' | 'SENT' | 'FAILED' | 'SIMULATED';
+export interface UnifiedEmailRecord {
+  id: string;
+  source: 'SINGLE' | 'BATCH';
+  communicationType: string;
+  templateCode: string;
+  subject: string;
+  date: string | null;
+  recipientEmail: string;
+  recipientName: string;
+  authorizedByUser?: { id: string; fullName: string; email: string } | null;
+  deliveryType: 'Individual' | 'Campaña masiva';
+  batchId?: string | null;
+  batchJobName?: string | null;
+  status: string;
+  statusLabel: string;
+  attempts: number;
+  errorMessage?: string | null;
+}
+
+export type EmailLogStatus = 'PENDING' | 'PROCESSING' | 'ACCEPTED_BY_SMTP' | 'SENT' | 'DELIVERED' | 'FAILED' | 'REJECTED' | 'SIMULATED' | 'CANCELLED' | 'UNKNOWN_DELIVERY_STATUS';
 
 export interface EmailLog {
   id: string;

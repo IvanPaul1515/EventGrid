@@ -79,3 +79,4 @@ backups/
 uploads/
 backend/uploads/
 *.dump
+scratch/

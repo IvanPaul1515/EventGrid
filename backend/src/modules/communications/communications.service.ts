@@ -754,8 +754,11 @@ export class CommunicationsService {
     const logoUrl = rawLogoUrl ? (rawLogoUrl.startsWith('http') ? rawLogoUrl : `${publicUrlBase}${rawLogoUrl.startsWith('/') ? '' : '/'}${rawLogoUrl}`) : '';
 
     const scheduleUrl = `${publicUrlBase}/schedule`;
+    const primaryColor = registration.event?.settings?.primaryColor || '#e11d48';
 
     const variables: Record<string, string> = {
+      primaryColor,
+      eventColor: primaryColor,
       logoUrl,
       eventLogo: logoUrl,
       scheduleUrl,
@@ -790,7 +793,7 @@ export class CommunicationsService {
       qrUrl,
       qrDataUrl,
       messageContent: overrides?.customMessage
-        ? `<div style="margin: 16px 0; padding: 12px; background: rgba(255,255,255,0.05); border-left: 3px solid #f43f5e; border-radius: 4px;">${overrides.customMessage}</div>`
+        ? `<div style="margin: 16px 0; padding: 12px; background: rgba(255,255,255,0.05); border-left: 3px solid ${primaryColor}; border-radius: 4px;">${overrides.customMessage}</div>`
         : '',
     };
 
@@ -835,10 +838,18 @@ export class CommunicationsService {
     qrDataUrl?: string | null;
     logoUrl?: string | null;
   }) {
-    let preparedHtml = html;
+    // Sanitización rigurosa de seguridad para HTML de correos:
+    // Eliminar etiquetas <script>, eventos on* (onclick, onerror, etc.) y protocolos javascript:
+    let preparedHtml = (html || '')
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/\s*on\w+\s*=\s*(['"]).*?\1/gi, '')
+      .replace(/\s*on\w+\s*=\s*[^>\s]+/gi, '')
+      .replace(/href\s*=\s*(['"])\s*javascript:[^'"]*\1/gi, 'href="#"');
+
     const attachments: Array<{
       content: Buffer;
       cid: string;
+      filename?: string;
       contentType: string;
       contentDisposition?: string;
     }> = [];
@@ -863,6 +874,7 @@ export class CommunicationsService {
       attachments.push({
         content: options.qrBuffer,
         cid: 'ticket-qr-code',
+        filename: 'ticket-qr.png',
         contentType: 'image/png',
         contentDisposition: 'inline',
       });
@@ -1032,6 +1044,54 @@ export class CommunicationsService {
     const isSimulationRequested =
       input.mode === 'SIMULATION' || input.simulateOnly === true;
 
+    // QA-INTEGRAL: Control riguroso de duplicados en envíos individuales
+    if (!isSimulationRequested) {
+      // 1. Prevención prioritaria de envíos simultáneos / doble clic en curso (concurrencia)
+      const recentProcessing = await prisma.emailLog.findFirst({
+        where: {
+          registrationId: registration.id,
+          templateCode: input.templateCode,
+          status: 'PROCESSING',
+          sentAt: { gte: new Date(Date.now() - 20000) },
+        },
+      });
+      if (recentProcessing) {
+        throw new BadRequestError('Ya hay un envío de este tipo en procesamiento en este momento. Por favor espere.');
+      }
+
+      // 2. Comprobar si existe un envío real previo aceptado por SMTP o entregado
+      const existingSentLog = await prisma.emailLog.findFirst({
+        where: {
+          eventId,
+          registrationId: registration.id,
+          templateCode: input.templateCode,
+          status: { in: ['ACCEPTED_BY_SMTP', 'SENT', 'DELIVERED'] },
+        },
+        orderBy: { sentAt: 'desc' },
+      });
+
+      if (existingSentLog && !input.forceResend && !input.confirmedResend) {
+        const formattedDate = new Date(existingSentLog.sentAt).toLocaleDateString('es-DO', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        const error: any = new BadRequestError(
+          `Este participante ya recibió un envío de este tipo el ${formattedDate}. ¿Deseas reenviarlo?`
+        );
+        error.details = {
+          code: 'DUPLICATE_COMMUNICATION_WARNING',
+          previousSentAt: existingSentLog.sentAt,
+          previousStatus: existingSentLog.status,
+          previousRecipient: existingSentLog.recipientEmail,
+          templateCode: input.templateCode,
+        };
+        throw error;
+      }
+    }
+
     // QA-24: Obtener configuración de correo con prioridad estricta de edición
     const config = await this.getRawConfig(eventId);
     const isSmtpConfiguredAndActive = Boolean(config && config.isEnabled && config.host);
@@ -1080,6 +1140,20 @@ export class CommunicationsService {
       );
     }
 
+    // QA-INTEGRAL: Registro persistente PREVIO al intento SMTP para evitar pérdida de estado
+    const preLog = await prisma.emailLog.create({
+      data: {
+        eventId,
+        registrationId: registration.id,
+        recipientEmail: registration.participant.email,
+        recipientName: registration.participant.fullName,
+        templateCode: input.templateCode,
+        subject: rendered.subject,
+        status: 'PROCESSING',
+        sentByUserId: userId || null,
+      },
+    });
+
     // Envío real mediante transporte configurado o fábrica de pruebas
     try {
       const transporter = this.createTransporter(config);
@@ -1090,7 +1164,7 @@ export class CommunicationsService {
         logoUrl: registration.event?.settings?.logoUrl || (registration.event as any)?.logoUrl,
       });
 
-      await transporter.sendMail({
+      const sendResult = await transporter.sendMail({
         from: `"${config.fromName}" <${config.fromEmail}>`,
         to: registration.participant.email,
         replyTo: config.replyToEmail || undefined,
@@ -1100,37 +1174,53 @@ export class CommunicationsService {
         attachments: prepared.attachments.length > 0 ? prepared.attachments : undefined,
       });
 
-      const log = await prisma.emailLog.create({
+      // Semántica de estados: validar aceptación explícita por SMTP (no afirmar 'Entregado' sin webhook)
+      const cleanRecipient = registration.participant.email.toLowerCase().trim();
+      const rejectedList = Array.isArray(sendResult?.rejected)
+        ? sendResult.rejected.map((e: any) => String(e).toLowerCase().trim())
+        : [];
+      const isExplicitRejected = rejectedList.includes(cleanRecipient);
+
+      const finalStatus = isExplicitRejected ? 'REJECTED' : 'ACCEPTED_BY_SMTP';
+
+      const log = await prisma.emailLog.update({
+        where: { id: preLog.id },
         data: {
-          eventId,
-          registrationId: registration.id,
-          recipientEmail: registration.participant.email,
-          recipientName: registration.participant.fullName,
-          templateCode: input.templateCode,
-          subject: rendered.subject,
-          status: 'SENT',
-          sentByUserId: userId || null,
+          status: finalStatus,
+          errorMessage: isExplicitRejected ? 'Rechazado por el servidor SMTP' : null,
         },
       });
+
+      // Registro de auditoría si fue un reenvío expresamente autorizado
+      if (userId && (input.forceResend || input.confirmedResend)) {
+        await prisma.auditLog.create({
+          data: {
+            userId,
+            action: 'EMAIL_RESEND_AUTHORIZED',
+            entity: 'Registration',
+            entityId: registration.id,
+            changes: JSON.stringify({
+              templateCode: input.templateCode,
+              recipientEmail: registration.participant.email,
+              reason: input.resendReason || 'Reenvío expresamente autorizado por el usuario',
+              authorizedAt: new Date(),
+            }),
+          },
+        }).catch(() => {});
+      }
 
       return {
         success: true,
         log,
         simulated: false,
-        message: `Correo enviado exitosamente a ${registration.participant.email}`,
+        message: `Correo aceptado por SMTP exitosamente para ${registration.participant.email}`,
       };
     } catch (err: any) {
-      const log = await prisma.emailLog.create({
+      const log = await prisma.emailLog.update({
+        where: { id: preLog.id },
         data: {
-          eventId,
-          registrationId: registration.id,
-          recipientEmail: registration.participant.email,
-          recipientName: registration.participant.fullName,
-          templateCode: input.templateCode,
-          subject: rendered.subject,
           status: 'FAILED',
           errorMessage: err.message || 'Error de envío',
-          sentByUserId: userId || null,
         },
       });
 
@@ -1176,6 +1266,12 @@ export class CommunicationsService {
       where.attended = false;
     } else if (input.targetGroup === 'SELECTED' && input.selectedRegistrationIds?.length) {
       where.id = { in: input.selectedRegistrationIds };
+    } else if (input.targetGroup === 'PAID_WITHOUT_CONFIRMATION') {
+      where.paymentStatus = { in: ['PAID', 'COURTESY'] };
+    } else if (input.targetGroup === 'COURTESY_WITHOUT_CONFIRMATION') {
+      where.isCourtesy = true;
+    } else if (input.targetGroup === 'WITHOUT_DIGITAL_TICKET' || input.targetGroup === 'WITHOUT_REMINDER') {
+      where.status = 'CONFIRMED';
     }
 
     if (input.ticketTypeId) {
@@ -1188,8 +1284,8 @@ export class CommunicationsService {
       if (input.dateTo) where.createdAt.lte = new Date(input.dateTo);
     }
 
-    // QA-09: Obtener TODOS los destinatarios elegibles (sin límite artificial de 200)
-    const registrations = await prisma.registration.findMany({
+    // QA-09 & QA-INTEGRAL: Obtener destinatarios base
+    const rawRegistrations = await prisma.registration.findMany({
       where,
       include: {
         participant: true,
@@ -1198,6 +1294,79 @@ export class CommunicationsService {
       },
       orderBy: { createdAt: 'asc' },
     });
+
+    // Control riguroso de duplicados e historial previo en lotes
+    const [priorSentLogs, failedLogs] = await Promise.all([
+      prisma.emailLog.findMany({
+        where: {
+          eventId: input.eventId,
+          status: { in: ['ACCEPTED_BY_SMTP', 'SENT', 'DELIVERED'] },
+        },
+        select: { registrationId: true, templateCode: true },
+      }),
+      prisma.emailLog.findMany({
+        where: {
+          eventId: input.eventId,
+          status: { in: ['FAILED', 'REJECTED'] },
+        },
+        select: { registrationId: true },
+      }),
+    ]);
+
+    const sentSet = new Set<string>();
+    for (const l of priorSentLogs) {
+      if (l.registrationId && l.templateCode) {
+        sentSet.add(`${l.registrationId}:${l.templateCode}`);
+      }
+    }
+    const failedSet = new Set<string>(failedLogs.map((f) => f.registrationId).filter(Boolean) as string[]);
+
+    const seenBatchEmails = new Set<string>();
+    const registrations: typeof rawRegistrations = [];
+
+    for (const r of rawRegistrations) {
+      const email = r.participant.email?.trim().toLowerCase();
+      if (!email || !email.includes('@')) continue;
+
+      // Smart target group filters
+      if (input.targetGroup === 'PAID_WITHOUT_CONFIRMATION' && sentSet.has(`${r.id}:INSCRIPTION_CONFIRMATION`)) continue;
+      if (input.targetGroup === 'COURTESY_WITHOUT_CONFIRMATION' && sentSet.has(`${r.id}:INSCRIPTION_CONFIRMATION`)) continue;
+      if (input.targetGroup === 'WITHOUT_DIGITAL_TICKET' && sentSet.has(`${r.id}:DIGITAL_TICKET`)) continue;
+      if (input.targetGroup === 'WITHOUT_REMINDER' && sentSet.has(`${r.id}:EVENT_REMINDER`)) continue;
+      if (input.targetGroup === 'FAILED_COMMUNICATION' && !failedSet.has(r.id)) continue;
+      if (input.targetGroup === 'ALREADY_RECEIVED' && !sentSet.has(`${r.id}:${input.templateCode}`)) continue;
+
+      // Deduplicación contra envíos previos exitosos
+      if (input.excludeAlreadyNotified !== false && !input.forceResend) {
+        if (sentSet.has(`${r.id}:${input.templateCode}`)) {
+          continue;
+        }
+      }
+
+      // Deduplicación de correos idénticos dentro de la misma campaña
+      if (seenBatchEmails.has(email)) {
+        continue;
+      }
+      seenBatchEmails.add(email);
+      registrations.push(r);
+    }
+
+    if (userId && input.forceResend) {
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'BULK_EMAIL_RESEND_AUTHORIZED',
+          entity: 'Event',
+          entityId: input.eventId,
+          changes: JSON.stringify({
+            templateCode: input.templateCode,
+            targetGroup: input.targetGroup,
+            count: registrations.length,
+            authorizedAt: new Date(),
+          }),
+        },
+      }).catch(() => {});
+    }
 
     if (registrations.length === 0) {
       return {
@@ -1367,6 +1536,28 @@ export class CommunicationsService {
       where.batchId = query.batchId;
     }
 
+    if (query.registrationId) {
+      where.registrationId = query.registrationId;
+    }
+
+    if (query.recipientEmail && query.recipientEmail.trim()) {
+      where.recipientEmail = { contains: query.recipientEmail.trim() };
+    }
+
+    if (query.templateCode && query.templateCode !== 'ALL') {
+      where.templateCode = query.templateCode;
+    }
+
+    if (query.sentByUserId) {
+      where.sentByUserId = query.sentByUserId;
+    }
+
+    if (query.dateFrom || query.dateTo) {
+      where.sentAt = {};
+      if (query.dateFrom) where.sentAt.gte = new Date(query.dateFrom);
+      if (query.dateTo) where.sentAt.lte = new Date(query.dateTo);
+    }
+
     if (query.search && query.search.trim()) {
       const term = query.search.trim();
       where.OR = [
@@ -1387,6 +1578,13 @@ export class CommunicationsService {
         include: {
           sentByUser: { select: { id: true, fullName: true, email: true } },
           event: { select: { id: true, name: true, year: true } },
+          registration: {
+            select: {
+              id: true,
+              registrationNumber: true,
+              participant: { select: { fullName: true } },
+            },
+          },
         },
       }),
     ]);
@@ -1418,6 +1616,7 @@ export class CommunicationsService {
     });
     if (!event) throw new NotFoundError('Edición no encontrada');
 
+    const isDemoMode = event.settings?.demoModeEnabled ?? false;
     const baseWhere: any = { eventId: input.eventId };
 
     if (input.targetGroup === 'CONFIRMED') {
@@ -1436,6 +1635,16 @@ export class CommunicationsService {
       baseWhere.attended = false;
     } else if (input.targetGroup === 'SELECTED' && input.selectedRegistrationIds?.length) {
       baseWhere.id = { in: input.selectedRegistrationIds };
+    } else if (input.targetGroup === 'PAID_WITHOUT_CONFIRMATION') {
+      baseWhere.status = { not: 'CANCELLED' };
+      baseWhere.paymentStatus = { in: ['PAID', 'COURTESY'] };
+    } else if (input.targetGroup === 'COURTESY_WITHOUT_CONFIRMATION') {
+      baseWhere.status = { not: 'CANCELLED' };
+      baseWhere.isCourtesy = true;
+    } else if (input.targetGroup === 'WITHOUT_DIGITAL_TICKET') {
+      baseWhere.status = 'CONFIRMED';
+    } else if (input.targetGroup === 'WITHOUT_REMINDER') {
+      baseWhere.status = 'CONFIRMED';
     }
 
     if (input.ticketTypeId) {
@@ -1457,41 +1666,149 @@ export class CommunicationsService {
       orderBy: { createdAt: 'asc' },
     });
 
+    // Cargar historial relevante de correos enviados en esta edición para filtros inteligentes
+    const realSentLogs = await prisma.emailLog.findMany({
+      where: {
+        eventId: input.eventId,
+        status: { in: ['ACCEPTED_BY_SMTP', 'SENT', 'DELIVERED'] },
+      },
+      select: {
+        registrationId: true,
+        templateCode: true,
+        recipientEmail: true,
+      },
+    });
+
+    const failedLogs = await prisma.emailLog.findMany({
+      where: {
+        eventId: input.eventId,
+        status: { in: ['FAILED', 'REJECTED'] },
+      },
+      select: { registrationId: true },
+    });
+
+    const sentMap = new Set<string>(); // "registrationId:templateCode"
+    for (const l of realSentLogs) {
+      if (l.registrationId && l.templateCode) {
+        sentMap.add(`${l.registrationId}:${l.templateCode}`);
+      }
+    }
+    const failedRegIds = new Set<string>(failedLogs.map((f) => f.registrationId).filter(Boolean) as string[]);
+
     const totalSelected = allRegistrations.length;
     let cancelledCount = 0;
     let demoCount = 0;
     let invalidEmailsCount = 0;
     let validEmailsCount = 0;
-    const seenEmails = new Set<string>();
     let duplicateCount = 0;
+    let alreadyNotifiedCount = 0;
+    const seenEmails = new Set<string>();
     const eligibleRegistrations: any[] = [];
+    const excludedRecipients: Array<{ registrationId: string; fullName: string; email: string; reason: string }> = [];
 
-    const isDemoMode = event.settings?.demoModeEnabled ?? false;
+    const effectiveTemplateCode = input.templateCode;
 
     for (const reg of allRegistrations) {
+      const email = reg.participant?.email?.trim().toLowerCase();
+      const pName = reg.participant?.fullName || 'Participante';
+
       if (reg.status === 'CANCELLED') {
         cancelledCount++;
+        excludedRecipients.push({ registrationId: reg.id, fullName: pName, email: email || 'Sin correo', reason: 'Inscripción cancelada' });
         continue;
       }
+
       if (!isDemoMode && reg.isDemo) {
         demoCount++;
+        excludedRecipients.push({ registrationId: reg.id, fullName: pName, email: email || 'Sin correo', reason: 'Registro demo con modo demo desactivado' });
         continue;
       }
-      const email = reg.participant?.email?.trim().toLowerCase();
+
+      // Filtro especial FAILED_COMMUNICATION
+      if (input.targetGroup === 'FAILED_COMMUNICATION' && !failedRegIds.has(reg.id)) {
+        continue;
+      }
+
+      // Filtros especiales de confirmación/ticket/recordatorio
+      if (input.targetGroup === 'PAID_WITHOUT_CONFIRMATION' && sentMap.has(`${reg.id}:INSCRIPTION_CONFIRMATION`)) {
+        alreadyNotifiedCount++;
+        excludedRecipients.push({ registrationId: reg.id, fullName: pName, email: email || 'Sin correo', reason: 'Ya recibió confirmación de inscripción' });
+        continue;
+      }
+
+      if (input.targetGroup === 'COURTESY_WITHOUT_CONFIRMATION' && sentMap.has(`${reg.id}:INSCRIPTION_CONFIRMATION`)) {
+        alreadyNotifiedCount++;
+        excludedRecipients.push({ registrationId: reg.id, fullName: pName, email: email || 'Sin correo', reason: 'Cortesía ya notificada' });
+        continue;
+      }
+
+      if (input.targetGroup === 'WITHOUT_DIGITAL_TICKET' && sentMap.has(`${reg.id}:DIGITAL_TICKET`)) {
+        alreadyNotifiedCount++;
+        excludedRecipients.push({ registrationId: reg.id, fullName: pName, email: email || 'Sin correo', reason: 'Ya recibió su entrada digital' });
+        continue;
+      }
+
+      if (input.targetGroup === 'WITHOUT_REMINDER' && sentMap.has(`${reg.id}:EVENT_REMINDER`)) {
+        alreadyNotifiedCount++;
+        excludedRecipients.push({ registrationId: reg.id, fullName: pName, email: email || 'Sin correo', reason: 'Ya recibió recordatorio de evento' });
+        continue;
+      }
+
+      if (input.targetGroup === 'ALREADY_RECEIVED') {
+        const hasReceived = effectiveTemplateCode ? sentMap.has(`${reg.id}:${effectiveTemplateCode}`) : false;
+        if (!hasReceived) continue;
+      }
+
+      // Exclusión automática de ya notificados si se indicó plantilla específica y excludeAlreadyNotified es true
+      if (effectiveTemplateCode && input.excludeAlreadyNotified !== false && sentMap.has(`${reg.id}:${effectiveTemplateCode}`)) {
+        alreadyNotifiedCount++;
+        excludedRecipients.push({ registrationId: reg.id, fullName: pName, email: email || 'Sin correo', reason: `Ya recibió la comunicación '${effectiveTemplateCode}' previamente` });
+        continue;
+      }
+
       if (!email || !email.includes('@') || email.length < 5) {
         invalidEmailsCount++;
+        excludedRecipients.push({ registrationId: reg.id, fullName: pName, email: email || 'Sin correo', reason: 'Dirección de correo no válida' });
         continue;
       }
+
       validEmailsCount++;
+
       if (seenEmails.has(email)) {
         duplicateCount++;
+        excludedRecipients.push({ registrationId: reg.id, fullName: pName, email, reason: 'Dirección de correo repetida dentro de la selección' });
         continue;
       }
+
       seenEmails.add(email);
       eligibleRegistrations.push(reg);
     }
 
     const eligibleCount = eligibleRegistrations.length;
+
+    // QA-INTEGRAL: Cálculo de consumo real de cuota diaria de Brevo en EventGrid
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const [todaySentByEventGrid, pendingQueueCount] = await Promise.all([
+      prisma.emailLog.count({
+        where: {
+          eventId: input.eventId,
+          sentAt: { gte: startOfDay },
+          status: { in: ['SENT', 'ACCEPTED_BY_SMTP'] },
+        },
+      }),
+      prisma.emailBatchItem.count({
+        where: {
+          job: { eventId: input.eventId },
+          status: { in: ['PENDING', 'PROCESSING'] },
+        },
+      }),
+    ]);
+
+    const dailyQuotaLimit = 300;
+    const estimatedRemaining = Math.max(0, dailyQuotaLimit - todaySentByEventGrid);
+
     const sampleRecipients = eligibleRegistrations.slice(0, 10).map((r) => ({
       id: r.id,
       fullName: r.participant.fullName,
@@ -1504,22 +1821,26 @@ export class CommunicationsService {
     return {
       totalSelected,
       eligibleCount,
+      alreadyNotifiedCount,
       validEmailsCount,
       invalidEmailsCount,
       cancelledCount,
       demoCount,
       duplicateCount,
-      dailyQuotaLimit: 300,
-      quotaWarning: eligibleCount > 300
-        ? `Atención: El lote contiene ${eligibleCount} destinatarios, lo que supera el límite de 300 correos/día del plan gratuito de Brevo. Brevo rechazará los envíos que excedan su cuota diaria.`
-        : `Brevo cuenta gratuita incluye 300 correos/día. Su lote actual contiene ${eligibleCount} destinatarios (${Math.max(0, 300 - eligibleCount)} cupos restantes hoy).`,
+      excludedRecipients: excludedRecipients.slice(0, 100),
+      totalExcluded: excludedRecipients.length,
+      todaySentByEventGrid,
+      pendingQueueCount,
+      dailyQuotaLimit,
+      estimatedRemaining,
+      quotaWarning: (eligibleCount + todaySentByEventGrid) > dailyQuotaLimit
+        ? `Atención: El lote contiene ${eligibleCount} destinatarios y ya se enviaron ${todaySentByEventGrid} correos hoy. Esto supera el límite de 300 correos/día del plan gratuito de Brevo. Brevo rechazará los envíos que excedan su cuota.`
+        : `Estimación de cuota Brevo: Plan gratuito de 300 correos/día. EventGrid ha registrado ${todaySentByEventGrid} envíos hoy (${pendingQueueCount} en cola). Cupos estimados restantes hoy: ${estimatedRemaining}. (Advertencia: Consumo externo directo en Brevo no se contabiliza sin API externa).`,
       sampleRecipients,
     };
   }
 
-  /**
-   * Consultar historial de lotes persistentes de envío masivo (Sección 7)
-   */
+
   static async getBatchJobs(eventId: string) {
     return await prisma.emailBatchJob.findMany({
       where: { eventId },
@@ -1621,4 +1942,134 @@ export class CommunicationsService {
     });
     return updatedJob;
   }
+
+  /**
+   * Historial unificado de comunicaciones por participante/inscripción (Fase QA Integral)
+   * Unifica EmailLog y EmailBatchItem sin duplicar operaciones.
+   */
+  static async getUnifiedHistoryForRegistration(registrationId: string) {
+    const TEMPLATE_NAMES: Record<string, string> = {
+      INSCRIPTION_CONFIRMATION: 'Confirmación de inscripción',
+      DIGITAL_TICKET: 'Entrada digital',
+      EVENT_REMINDER: 'Recordatorio de evento',
+      PAYMENT_CONFIRMATION: 'Confirmación de pago',
+      PENDING_BALANCE: 'Balance pendiente',
+      INSCRIPTION_CANCELLED: 'Inscripción cancelada',
+      GENERAL_ANNOUNCEMENT: 'Anuncio general',
+      CUSTOM: 'Mensaje personalizado',
+    };
+
+    const STATUS_LABELS: Record<string, string> = {
+      ACCEPTED_BY_SMTP: 'Aceptado por SMTP',
+      SENT: 'Aceptado por SMTP',
+      DELIVERED: 'Entregado',
+      SIMULATED: 'Simulado',
+      PENDING: 'Pendiente',
+      PROCESSING: 'Procesando',
+      FAILED: 'Fallido',
+      REJECTED: 'Rechazado',
+      CANCELLED: 'Cancelado',
+      UNKNOWN_DELIVERY_STATUS: 'Estado desconocido',
+    };
+
+    const [logs, batchItems] = await Promise.all([
+      prisma.emailLog.findMany({
+        where: { registrationId },
+        include: {
+          sentByUser: { select: { id: true, fullName: true, email: true } },
+        },
+        orderBy: { sentAt: 'desc' },
+      }),
+      prisma.emailBatchItem.findMany({
+        where: { registrationId },
+        include: {
+          job: {
+            include: {
+              createdByUser: { select: { id: true, fullName: true, email: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const batchItemIdsMerged = new Set<string>();
+    const unified: any[] = [];
+
+    // Procesar EmailLogs
+    for (const log of logs) {
+      let matchedBatchItem: any = null;
+      if (log.batchId) {
+        matchedBatchItem = batchItems.find(
+          (b) => b.jobId === log.batchId && !batchItemIdsMerged.has(b.id)
+        );
+        if (matchedBatchItem) {
+          batchItemIdsMerged.add(matchedBatchItem.id);
+        }
+      }
+
+      const rawStatus = log.status || 'UNKNOWN_DELIVERY_STATUS';
+      const statusLabel = STATUS_LABELS[rawStatus] || rawStatus;
+      const tCode = log.templateCode || matchedBatchItem?.job?.templateCode || 'CUSTOM';
+      const commType = TEMPLATE_NAMES[tCode] || tCode;
+
+      unified.push({
+        id: log.id,
+        registrationId: log.registrationId || registrationId,
+        source: 'SINGLE',
+        communicationType: commType,
+        templateCode: tCode,
+        subject: log.subject,
+        date: log.sentAt,
+        recipientEmail: log.recipientEmail,
+        recipientName: log.recipientName || log.recipientEmail,
+        authorizedByUser: log.sentByUser || matchedBatchItem?.job?.createdByUser || null,
+        deliveryType: log.batchId ? 'Campaña masiva' : 'Individual',
+        batchId: log.batchId || null,
+        status: rawStatus,
+        statusLabel,
+        attempts: matchedBatchItem?.attempts || 1,
+        errorMessage: log.errorMessage || matchedBatchItem?.errorMessage || null,
+      });
+    }
+
+    // Procesar EmailBatchItems no reflejados aún en EmailLog (ej. PENDING, PROCESSING, FAILED tempranos)
+    for (const item of batchItems) {
+      if (batchItemIdsMerged.has(item.id)) continue;
+
+      const rawStatus = item.status || 'PENDING';
+      const statusLabel = STATUS_LABELS[rawStatus] || rawStatus;
+      const tCode = item.job?.templateCode || 'CUSTOM';
+      const commType = TEMPLATE_NAMES[tCode] || tCode;
+
+      unified.push({
+        id: item.id,
+        registrationId: item.registrationId || registrationId,
+        source: 'BATCH',
+        communicationType: commType,
+        templateCode: tCode,
+        subject: item.renderedSubject || item.job?.subject || 'Sin asunto',
+        date: item.sentAt || item.lastAttemptAt || item.createdAt,
+        recipientEmail: item.recipientEmail,
+        recipientName: item.recipientName || item.recipientEmail,
+        authorizedByUser: item.job?.createdByUser || null,
+        deliveryType: 'Campaña masiva',
+        batchId: item.jobId,
+        status: rawStatus,
+        statusLabel,
+        attempts: item.attempts || 0,
+        errorMessage: item.errorMessage || null,
+      });
+    }
+
+    // Ordenar de más reciente a más antiguo
+    unified.sort((a, b) => {
+      const dateA = a.date ? new Date(a.date).getTime() : 0;
+      const dateB = b.date ? new Date(b.date).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    return unified;
+  }
+
 }
