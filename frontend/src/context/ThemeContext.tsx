@@ -59,6 +59,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const root = document.documentElement;
     if (isDark) {
       root.classList.add('dark');
+      root.setAttribute('data-theme', 'dark');
+      root.style.colorScheme = 'dark';
       localStorage.setItem('barcamp_theme_mode', 'dark');
       if (currentEvent?.settings?.backgroundColor && currentEvent.settings.backgroundColor.startsWith('#')) {
         try {
@@ -70,6 +72,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     } else {
       root.classList.remove('dark');
+      root.setAttribute('data-theme', 'light');
+      root.style.colorScheme = 'light';
       localStorage.setItem('barcamp_theme_mode', 'light');
       root.style.removeProperty('--background');
     }

@@ -30,13 +30,13 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'ACTIVE':
-        return <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Activo</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">Activo</span>;
       case 'PLANNING':
-        return <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">Planificación</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">Planificación</span>;
       case 'COMPLETED':
-        return <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">Finalizado</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">Finalizado</span>;
       case 'ARCHIVED':
-        return <span className="px-1.5 py-0.5 text-xs font-semibold rounded bg-zinc-500/20 text-zinc-400 border border-zinc-500/30">Archivado</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-muted text-muted-foreground border border-border">Archivado</span>;
       default:
         return null;
     }
@@ -45,11 +45,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'ADMIN':
-        return <span className="px-2 py-0.5 text-xs font-bold rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">ADMINISTRADOR</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-primary/15 text-primary border border-primary/30">ADMIN</span>;
       case 'OPERATOR':
-        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">OPERADOR</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">OPERADOR</span>;
       default:
-        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-zinc-500/20 text-zinc-400 border border-zinc-500/30">CONSULTA</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-muted text-muted-foreground border border-border">CONSULTA</span>;
     }
   };
 
@@ -62,47 +62,40 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
           <button
             type="button"
             onClick={onToggleMobileMenu}
-            className="md:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+            className="md:hidden p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
             title="Abrir menú de navegación"
           >
             <Menu className="w-5 h-5 text-foreground" />
           </button>
         )}
 
-        {/* Identificador de Software EventGrid */}
-        <div className="hidden sm:flex items-center gap-2 pr-4 border-r border-border">
-          <span className="font-mono text-xs font-black tracking-widest text-foreground uppercase bg-zinc-800/80 px-2 py-1 rounded-md border border-border">
-            EVENT<span className="text-primary">GRID</span>
-          </span>
-          <span className="text-[11px] text-muted-foreground font-medium">
-            v1.0
-          </span>
+        {/* Logo Barcamp en Barra Superior */}
+        <div className="hidden sm:flex items-center gap-2 pr-3 border-r border-border">
+          <img
+            src="/barcamp-logo-nav.svg"
+            alt="BarCamp 2026"
+            className="h-6 w-auto on-dark-only object-contain"
+          />
+          <img
+            src="/barcamp-logo-nav-on-light.svg"
+            alt="BarCamp 2026"
+            className="h-6 w-auto on-light-only object-contain"
+          />
         </div>
 
         {/* Selector de Edición Activa (BarCamp RD) */}
         <div className="relative">
           <button
             onClick={() => setEditionDropdownOpen(!editionDropdownOpen)}
-            className="flex items-center gap-2.5 px-3.5 py-2 rounded-lg bg-background hover:bg-muted border border-border text-foreground transition-all duration-150 group shadow-sm cursor-pointer"
+            className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-background hover:bg-muted/70 border border-border text-foreground transition-all duration-150 group shadow-sm cursor-pointer"
             title="Cambiar edición del evento"
           >
-            {currentEvent?.settings?.logoUrl ? (
-              <img
-                src={resolveImageUrl(currentEvent.settings.logoUrl)}
-                alt={currentEvent.name}
-                className="w-5 h-5 rounded object-contain shrink-0"
-              />
-            ) : (
-              <>
-                <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
-                <Layers className="w-4 h-4 text-primary" />
-              </>
-            )}
-            <span className="font-bold text-sm tracking-tight">
+            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+            <span className="font-display font-bold text-xs sm:text-sm tracking-tight">
               {currentEvent ? currentEvent.name : 'Seleccionar Edición'}
             </span>
             {currentEvent && getStatusBadge(currentEvent.status)}
-            <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-transform" />
+            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-transform" />
           </button>
 
           {/* Menú Desplegable de Ediciones */}
@@ -112,10 +105,10 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
                 className="fixed inset-0 z-40"
                 onClick={() => setEditionDropdownOpen(false)}
               />
-              <div className="absolute left-0 mt-2 w-72 rounded-xl bg-card border border-border shadow-2xl py-2 z-50 divide-y divide-border">
+              <div className="absolute left-0 mt-2 w-72 rounded-2xl bg-card border border-border shadow-2xl py-2 z-50 divide-y divide-border animate-in zoom-in-95 duration-150">
                 <div className="px-3.5 py-2">
                   <p className="text-[10px] font-bold text-muted-foreground uppercase font-mono tracking-wider">
-                    Eventos y Ediciones Registradas
+                    Ediciones del Evento
                   </p>
                 </div>
                 <div className="py-1 max-h-64 overflow-y-auto">
@@ -131,11 +124,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
                       }`}
                     >
                       <div className="flex flex-col">
-                        <span className="flex items-center gap-2 font-medium">
-                          <Calendar className="w-3.5 h-3.5 opacity-70" />
+                        <span className="flex items-center gap-2 font-display font-bold text-xs">
+                          <Calendar className="w-3.5 h-3.5 opacity-70 text-primary" />
                           {ev.name}
                         </span>
-                        <span className="text-xs text-muted-foreground mt-0.5 truncate max-w-[170px]">
+                        <span className="text-[11px] text-muted-foreground mt-0.5 truncate max-w-[170px]">
                           {ev.venue}
                         </span>
                       </div>
@@ -151,7 +144,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
         {/* Lugar e Indicador de Sede */}
         <div className="hidden lg:flex items-center text-xs text-muted-foreground gap-1.5 pl-2 border-l border-border">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" />
-          <span>{currentEvent?.venue || 'Sede del Evento'}</span>
+          <span>{currentEvent?.venue || 'PUCMM, Santiago'}</span>
         </div>
       </div>
 
@@ -171,7 +164,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
             title="Sincronizado en tiempo real (SSE)"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="hidden sm:inline">En vivo</span>
+            <span className="hidden sm:inline font-mono text-[11px]">En vivo</span>
           </div>
         ) : (
           <div
@@ -179,7 +172,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
             title="Reconectando sincronización en tiempo real..."
           >
             <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <span className="hidden sm:inline">Sincronizando</span>
+            <span className="hidden sm:inline font-mono text-[11px]">Sincronizando</span>
           </div>
         )}
       </div>
@@ -189,26 +182,26 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
         {/* Conmutador Modo Oscuro / Claro */}
         <button
           onClick={toggleTheme}
-          className="p-2 rounded-lg bg-background hover:bg-muted border border-border text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-          title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+          className="p-2 rounded-xl bg-background hover:bg-muted border border-border text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          title={isDark ? 'Cambiar a modo claro (Papel BarCamp)' : 'Cambiar a modo oscuro (Negro BarCamp)'}
         >
-          {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-zinc-600" />}
+          {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-primary" />}
         </button>
 
         {/* Rol y Menú de Usuario */}
         <div className="relative">
           <button
             onClick={() => setUserMenuOpen(!userMenuOpen)}
-            className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-background hover:bg-muted border border-border transition-colors group cursor-pointer"
+            className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-background hover:bg-muted border border-border transition-colors group cursor-pointer"
           >
-            <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary to-barcamp-burgundy flex items-center justify-center text-white font-bold text-xs shadow-sm">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-[#BA1513] flex items-center justify-center text-white font-bold text-xs shadow-sm">
               {user?.fullName.charAt(0).toUpperCase()}
             </div>
             <div className="hidden sm:flex flex-col text-left">
               <span className="text-xs font-semibold text-foreground leading-tight">
                 {user?.fullName}
               </span>
-              <span className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+              <span className="text-[10px] text-muted-foreground font-mono leading-tight mt-0.5">
                 {user?.email}
               </span>
             </div>
@@ -222,10 +215,10 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
                 className="fixed inset-0 z-40"
                 onClick={() => setUserMenuOpen(false)}
               />
-              <div className="absolute right-0 mt-2 w-56 rounded-xl bg-card border border-border shadow-2xl py-2 z-50 divide-y divide-border">
+              <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-card border border-border shadow-2xl py-2 z-50 divide-y divide-border animate-in zoom-in-95 duration-150">
                 <div className="px-4 py-2.5">
                   <p className="text-xs font-semibold text-foreground">{user?.fullName}</p>
-                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                  <p className="text-xs text-muted-foreground font-mono truncate">{user?.email}</p>
                   <div className="mt-2">{user && getRoleBadge(user.role)}</div>
                 </div>
 
@@ -235,7 +228,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
                       setUserMenuOpen(false);
                       logout();
                     }}
-                    className="w-full text-left px-4 py-2 text-sm text-rose-500 hover:bg-rose-500/10 flex items-center gap-2 transition-colors font-medium cursor-pointer"
+                    className="w-full text-left px-4 py-2 text-sm text-primary hover:bg-primary/10 flex items-center gap-2 transition-colors font-medium cursor-pointer"
                   >
                     <LogOut className="w-4 h-4" />
                     Cerrar Sesión

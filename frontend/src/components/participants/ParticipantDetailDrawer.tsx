@@ -673,7 +673,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-black text-foreground truncate tracking-tight">
+                    <h2 className="text-xl font-display font-black text-foreground truncate tracking-tight">
                       {p.fullName}
                     </h2>
                     <span className="font-mono text-xs font-black px-2 py-0.5 rounded bg-zinc-800 text-white border border-zinc-700">

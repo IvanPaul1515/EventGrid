@@ -28,6 +28,7 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingUp,
+  Sparkles,
 } from 'lucide-react';
 
 export const SponsorsPage: React.FC = () => {
@@ -91,11 +92,10 @@ export const SponsorsPage: React.FC = () => {
       setTotalPages(res.pagination.totalPages);
       setTotalItems(res.pagination.total);
 
-      // If drawer is open, keep selected sponsor in sync
+      // Sincronizar patrocinador activo en el drawer si está abierto
       if (selectedSponsor) {
         const updated = res.items.find((s) => s.id === selectedSponsor.id);
         if (updated) {
-          // fetch fresh with payments
           sponsorsService.getSponsorById(updated.id).then((fresh) => {
             setSelectedSponsor(fresh);
           }).catch(() => {});
@@ -162,7 +162,7 @@ export const SponsorsPage: React.FC = () => {
   const handleArchive = async (sponsorId: string, isArchived: boolean) => {
     try {
       await sponsorsService.archiveSponsor(sponsorId, isArchived);
-      showNotification('success', isArchived ? 'Patrocinador archivado' : 'Patrocinador desarchivado');
+      showNotification('success', isArchived ? 'Patrocinador archivado' : 'Patrocinador reactivado');
       if (selectedSponsor && selectedSponsor.id === sponsorId) {
         setSelectedSponsor({ ...selectedSponsor, isArchived });
       }
@@ -187,30 +187,61 @@ export const SponsorsPage: React.FC = () => {
     switch (status) {
       case 'PAID':
         return (
-          <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+          <span className="px-2.5 py-1 text-[11px] font-mono font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3" /> Pagado
           </span>
         );
       case 'PARTIALLY_PAID':
         return (
-          <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+          <span className="px-2.5 py-1 text-[11px] font-mono font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
             <DollarSign className="w-3 h-3" /> Abono Parcial
           </span>
         );
       case 'CANCELLED':
         return (
-          <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30">
+          <span className="px-2.5 py-1 text-[11px] font-mono font-bold rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30">
             Cancelado
           </span>
         );
       case 'PENDING':
       default:
         return (
-          <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1">
+          <span className="px-2.5 py-1 text-[11px] font-mono font-bold rounded-full bg-primary/15 text-primary border border-primary/30 flex items-center gap-1">
             <AlertCircle className="w-3 h-3" /> Pendiente
           </span>
         );
     }
+  };
+
+  const renderTierBadge = (category?: string | null) => {
+    if (!category) return null;
+    const catLower = category.toLowerCase();
+    if (catLower.includes('gold') || catLower.includes('oro')) {
+      return (
+        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#d8b25a]/15 text-[#8a6414] dark:text-[#d8b25a] border border-[#d8b25a]/30">
+          {category}
+        </span>
+      );
+    }
+    if (catLower.includes('silver') || catLower.includes('plata')) {
+      return (
+        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#c4c8ce]/15 text-[#5d6168] dark:text-[#c4c8ce] border border-[#c4c8ce]/30">
+          {category}
+        </span>
+      );
+    }
+    if (catLower.includes('geek') || catLower.includes('platino') || catLower.includes('diamante')) {
+      return (
+        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/30">
+          {category}
+        </span>
+      );
+    }
+    return (
+      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+        {category}
+      </span>
+    );
   };
 
   return (
@@ -218,10 +249,10 @@ export const SponsorsPage: React.FC = () => {
       {/* Notifications */}
       {notification && (
         <div
-          className={`p-4 rounded-xl text-xs font-bold flex items-center gap-2 border shadow-lg ${
+          className={`p-4 rounded-2xl text-xs font-bold flex items-center gap-2 border shadow-lg ${
             notification.type === 'success'
               ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-              : 'bg-rose-500/15 border-rose-500/30 text-rose-400'
+              : 'bg-primary/15 border-primary/30 text-primary'
           }`}
         >
           {notification.type === 'success' ? (
@@ -234,17 +265,17 @@ export const SponsorsPage: React.FC = () => {
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-border">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-3 border-b border-border">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <Handshake className="w-7 h-7 text-primary" />
-            <h1 className="text-2xl font-black text-foreground tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-display font-extrabold text-foreground tracking-tight">
               Patrocinadores y Colaboradores
             </h1>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Gestión integral de aportes, compromisos económicos y recaudación para{' '}
-            <strong className="text-foreground">{currentEvent?.name || 'la edición actual'}</strong>.
+          <p className="text-xs text-muted-foreground mt-1.5">
+            Gestión de aportes económicos y aliados estratégicos para{' '}
+            <strong className="text-foreground font-display font-bold">{currentEvent?.name || 'BarCamp RD 2026'}</strong>.
           </p>
         </div>
 
@@ -256,7 +287,7 @@ export const SponsorsPage: React.FC = () => {
                 setSponsorToEdit(null);
                 setIsFormModalOpen(true);
               }}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-4 py-2.5 rounded-full text-xs font-bold bg-gradient-to-r from-primary to-[#BA1513] text-white shadow-lg shadow-primary/25 hover:shadow-primary/40 flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Nuevo Patrocinador</span>
@@ -270,12 +301,12 @@ export const SponsorsPage: React.FC = () => {
         {/* Total Comprometido */}
         <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
               Comprometido
             </span>
             <DollarSign className="w-4 h-4 text-primary" />
           </div>
-          <div className="mt-2 text-lg sm:text-xl font-black text-foreground truncate">
+          <div className="mt-2 text-lg sm:text-xl font-mono font-black text-foreground truncate">
             {formatRD(summary?.totalCommitted || 0)}
           </div>
           <div className="text-[10px] text-muted-foreground mt-1">Aportes pactados</div>
@@ -284,12 +315,12 @@ export const SponsorsPage: React.FC = () => {
         {/* Total Recibido */}
         <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
+            <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider">
               Recibido
             </span>
             <TrendingUp className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="mt-2 text-lg sm:text-xl font-black text-emerald-400 truncate">
+          <div className="mt-2 text-lg sm:text-xl font-mono font-black text-emerald-400 truncate">
             {formatRD(summary?.totalReceived || 0)}
           </div>
           <div className="text-[10px] text-muted-foreground mt-1">Fondos en cuenta</div>
@@ -298,12 +329,12 @@ export const SponsorsPage: React.FC = () => {
         {/* Balance Pendiente */}
         <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-rose-400 uppercase tracking-wider">
+            <span className="text-[10px] font-mono font-bold text-primary uppercase tracking-wider">
               Pendiente
             </span>
-            <AlertCircle className="w-4 h-4 text-rose-400" />
+            <AlertCircle className="w-4 h-4 text-primary" />
           </div>
-          <div className="mt-2 text-lg sm:text-xl font-black text-rose-400 truncate">
+          <div className="mt-2 text-lg sm:text-xl font-mono font-black text-primary truncate">
             {formatRD(summary?.totalPending || 0)}
           </div>
           <div className="text-[10px] text-muted-foreground mt-1">Por recaudar</div>
@@ -312,12 +343,12 @@ export const SponsorsPage: React.FC = () => {
         {/* Patrocinadores */}
         <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
               Patrocinadores
             </span>
             <Building2 className="w-4 h-4 text-primary" />
           </div>
-          <div className="mt-2 text-lg sm:text-xl font-black text-foreground">
+          <div className="mt-2 text-lg sm:text-xl font-display font-black text-foreground">
             {summary?.totalSponsors || 0}
           </div>
           <div className="text-[10px] text-muted-foreground mt-1">Empresas oficiales</div>
@@ -326,12 +357,12 @@ export const SponsorsPage: React.FC = () => {
         {/* Colaboradores */}
         <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
               Colaboradores
             </span>
             <Handshake className="w-4 h-4 text-blue-400" />
           </div>
-          <div className="mt-2 text-lg sm:text-xl font-black text-foreground">
+          <div className="mt-2 text-lg sm:text-xl font-display font-black text-foreground">
             {summary?.totalCollaborators || 0}
           </div>
           <div className="text-[10px] text-muted-foreground mt-1">Aliados estratégicos</div>
@@ -340,12 +371,12 @@ export const SponsorsPage: React.FC = () => {
         {/* En Especie */}
         <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
+            <span className="text-[10px] font-mono font-bold text-[#d8b25a] uppercase tracking-wider">
               En Especie
             </span>
-            <Gift className="w-4 h-4 text-amber-400" />
+            <Gift className="w-4 h-4 text-[#d8b25a]" />
           </div>
-          <div className="mt-2 text-lg sm:text-xl font-black text-foreground">
+          <div className="mt-2 text-lg sm:text-xl font-display font-black text-foreground">
             {summary?.inKindCount || 0}
           </div>
           <div className="text-[10px] text-muted-foreground mt-1">Bienes y servicios</div>
@@ -357,7 +388,7 @@ export const SponsorsPage: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center gap-3">
           {/* Search Input */}
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
+            <Search className="w-4 h-4 absolute left-3.5 top-3 text-muted-foreground" />
             <input
               type="text"
               value={search}
@@ -365,8 +396,8 @@ export const SponsorsPage: React.FC = () => {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="Buscar por nombre, categoría, contacto, correo..."
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none text-foreground font-medium"
+              placeholder="Buscar por empresa, nivel, contacto o correo..."
+              className="w-full pl-10 pr-4 py-2 text-xs rounded-xl bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none text-foreground font-medium"
             />
           </div>
 
@@ -417,7 +448,7 @@ export const SponsorsPage: React.FC = () => {
             </select>
 
             {/* Archivados */}
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground px-2 py-1.5 rounded-xl border border-border cursor-pointer hover:bg-muted/30">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground px-2.5 py-1.5 rounded-xl border border-border cursor-pointer hover:bg-muted/40">
               <input
                 type="checkbox"
                 checked={includeArchived}
@@ -427,7 +458,7 @@ export const SponsorsPage: React.FC = () => {
                 }}
                 className="rounded border-border text-primary focus:ring-primary"
               />
-              <span>Archivados</span>
+              <span className="font-mono text-[11px]">Archivados</span>
             </label>
 
             <button
@@ -447,12 +478,12 @@ export const SponsorsPage: React.FC = () => {
         {loading ? (
           <div className="p-16 text-center text-muted-foreground">
             <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-primary" />
-            <p className="text-xs font-semibold">Cargando patrocinadores y aportes...</p>
+            <p className="text-xs font-semibold">Cargando aliados y aportes...</p>
           </div>
         ) : sponsors.length === 0 ? (
           <div className="p-16 text-center text-muted-foreground">
             <Handshake className="w-12 h-12 mx-auto mb-3 opacity-20" />
-            <p className="text-sm font-bold text-foreground">No se encontraron patrocinadores</p>
+            <p className="text-base font-bold font-display text-foreground">No se encontraron patrocinadores</p>
             <p className="text-xs text-muted-foreground mt-1">
               {search || typeFilter !== 'ALL' || statusFilter !== 'ALL'
                 ? 'Prueba modificando los filtros o el término de búsqueda.'
@@ -465,7 +496,7 @@ export const SponsorsPage: React.FC = () => {
                   setSponsorToEdit(null);
                   setIsFormModalOpen(true);
                 }}
-                className="mt-4 px-4 py-2 rounded-xl text-xs font-bold bg-primary text-primary-foreground inline-flex items-center gap-1.5 cursor-pointer shadow-lg shadow-primary/20"
+                className="mt-4 px-4 py-2 rounded-full text-xs font-bold bg-primary text-white inline-flex items-center gap-1.5 cursor-pointer shadow-lg shadow-primary/25"
               >
                 <Plus className="w-4 h-4" />
                 <span>Registrar Primer Patrocinador</span>
@@ -475,7 +506,7 @@ export const SponsorsPage: React.FC = () => {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-muted/40 border-b border-border text-muted-foreground uppercase tracking-wider font-bold">
+              <thead className="bg-muted/40 border-b border-border text-muted-foreground uppercase tracking-wider font-mono font-bold text-[10px]">
                 <tr>
                   <th className="px-4 py-3">Empresa / Aliado</th>
                   <th className="px-4 py-3">Tipo</th>
@@ -492,7 +523,7 @@ export const SponsorsPage: React.FC = () => {
                 {sponsors.map((s) => (
                   <tr
                     key={s.id}
-                    className={`hover:bg-muted/25 transition-colors cursor-pointer ${
+                    className={`hover:bg-muted/30 transition-colors cursor-pointer ${
                       s.isArchived ? 'opacity-60 bg-muted/10' : ''
                     }`}
                     onClick={() => openDrawer(s)}
@@ -500,7 +531,7 @@ export const SponsorsPage: React.FC = () => {
                     {/* Empresa / Aliado */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary to-barcamp-burgundy flex items-center justify-center text-white font-black text-xs shadow shrink-0 overflow-hidden">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-[#BA1513] flex items-center justify-center text-white font-display font-black text-xs shadow shrink-0 overflow-hidden">
                           {s.logoUrl ? (
                             <img
                               src={s.logoUrl}
@@ -515,7 +546,7 @@ export const SponsorsPage: React.FC = () => {
                           )}
                         </div>
                         <div>
-                          <div className="font-bold text-foreground text-sm flex items-center gap-1.5">
+                          <div className="font-display font-bold text-foreground text-sm flex items-center gap-1.5">
                             <span>{s.name}</span>
                             {s.isArchived && (
                               <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
@@ -524,9 +555,9 @@ export const SponsorsPage: React.FC = () => {
                             )}
                           </div>
                           {s.category && (
-                            <span className="text-[10px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded border border-border">
-                              {s.category}
-                            </span>
+                            <div className="mt-0.5">
+                              {renderTierBadge(s.category)}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -535,7 +566,7 @@ export const SponsorsPage: React.FC = () => {
                     {/* Tipo */}
                     <td className="px-4 py-3">
                       <span
-                        className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
                           s.type === 'SPONSOR'
                             ? 'bg-primary/15 text-primary border border-primary/25'
                             : 'bg-blue-500/15 text-blue-400 border border-blue-500/25'
@@ -553,7 +584,7 @@ export const SponsorsPage: React.FC = () => {
                         ) : (
                           <div className="text-muted-foreground italic">Sin contacto</div>
                         )}
-                        <div className="flex items-center gap-2 text-[11px]">
+                        <div className="flex items-center gap-2 text-[11px] font-mono">
                           {s.contactPhone && (
                             <a
                               href={`tel:${s.contactPhone}`}
@@ -583,7 +614,7 @@ export const SponsorsPage: React.FC = () => {
                           <span className="text-muted-foreground font-medium">Monetario</span>
                         )}
                         {s.contributionType === 'IN_KIND' && (
-                          <span className="text-amber-400 font-semibold flex items-center gap-1">
+                          <span className="text-[#d8b25a] font-semibold flex items-center gap-1">
                             <Gift className="w-3 h-3" /> En Especie
                           </span>
                         )}
@@ -596,17 +627,17 @@ export const SponsorsPage: React.FC = () => {
                     </td>
 
                     {/* Comprometido */}
-                    <td className="px-4 py-3 text-right font-bold text-foreground">
+                    <td className="px-4 py-3 text-right font-mono font-bold text-foreground">
                       {formatRD(s.committedAmount)}
                     </td>
 
                     {/* Recibido */}
-                    <td className="px-4 py-3 text-right font-black text-emerald-400">
+                    <td className="px-4 py-3 text-right font-mono font-black text-emerald-400">
                       {formatRD(s.receivedAmount)}
                     </td>
 
                     {/* Pendiente */}
-                    <td className="px-4 py-3 text-right font-black text-rose-400">
+                    <td className="px-4 py-3 text-right font-mono font-black text-primary">
                       {formatRD(s.pendingBalance)}
                     </td>
 
@@ -621,7 +652,7 @@ export const SponsorsPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => openDrawer(s)}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                          className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                           title="Ver Ficha Completa"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -636,7 +667,7 @@ export const SponsorsPage: React.FC = () => {
                                   setSponsorForPayment(s);
                                   setIsPaymentModalOpen(true);
                                 }}
-                                className="p-1.5 rounded-lg text-emerald-400 hover:text-white hover:bg-emerald-600 transition-colors cursor-pointer"
+                                className="p-1.5 rounded-xl text-emerald-400 hover:text-white hover:bg-emerald-600 transition-colors cursor-pointer"
                                 title="Registrar Pago"
                               >
                                 <DollarSign className="w-3.5 h-3.5" />
@@ -649,7 +680,7 @@ export const SponsorsPage: React.FC = () => {
                                 setSponsorToEdit(s);
                                 setIsFormModalOpen(true);
                               }}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-muted transition-colors cursor-pointer"
+                              className="p-1.5 rounded-xl text-muted-foreground hover:text-primary hover:bg-muted transition-colors cursor-pointer"
                               title="Editar"
                             >
                               <Edit className="w-3.5 h-3.5" />
@@ -658,7 +689,7 @@ export const SponsorsPage: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleArchive(s.id, !s.isArchived)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                              className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                               title={s.isArchived ? 'Desarchivar' : 'Archivar'}
                             >
                               {s.isArchived ? (
@@ -681,15 +712,15 @@ export const SponsorsPage: React.FC = () => {
         {/* Pagination Footer */}
         {totalPages > 1 && (
           <div className="p-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-            <div>
-              Mostrando página <strong>{page}</strong> de <strong>{totalPages}</strong> ({totalItems} registros)
+            <div className="font-mono text-[11px]">
+              Página <strong>{page}</strong> de <strong>{totalPages}</strong> ({totalItems} registros)
             </div>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="p-1.5 rounded-lg border border-border text-foreground hover:bg-muted disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                className="p-1.5 rounded-xl border border-border text-foreground hover:bg-muted disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
@@ -697,7 +728,7 @@ export const SponsorsPage: React.FC = () => {
                 type="button"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="p-1.5 rounded-lg border border-border text-foreground hover:bg-muted disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                className="p-1.5 rounded-xl border border-border text-foreground hover:bg-muted disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>

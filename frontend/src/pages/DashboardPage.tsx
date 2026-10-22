@@ -256,14 +256,14 @@ export const DashboardPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Banner de Bienvenida y Edición Activa */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-barcamp-dark via-zinc-900 to-barcamp-wine/40 border border-border p-6 md:p-8 shadow-xl">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-card via-card to-primary/10 border border-border p-6 md:p-8 shadow-xl">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 border border-primary/30 text-xs font-semibold text-primary mb-3">
               <Sparkles className="w-3.5 h-3.5" />
               <span>EventGrid • Edición Activa: {currentEvent?.name || 'Cargando...'}</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-foreground tracking-tight">
+            <h1 className="text-2xl md:text-3xl font-display font-black text-foreground tracking-tight">
               Hola, {user?.fullName.split(' ')[0]} 👋
             </h1>
             <p className="text-sm text-muted-foreground mt-1.5 max-w-2xl">
@@ -294,21 +294,21 @@ export const DashboardPage: React.FC = () => {
           <div className="flex flex-wrap items-center gap-3 shrink-0">
             <button
               onClick={() => navigate('/attendance', { viewTransition: true })}
-              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+              className="px-4 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
             >
               <UserCheck className="w-4 h-4" />
               <span>Control de Asistencia</span>
             </button>
             <button
               onClick={() => navigate('/participants', { viewTransition: true })}
-              className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-primary/20 transition-all cursor-pointer"
+              className="px-4 py-2.5 rounded-full bg-gradient-to-r from-primary to-[#BA1513] text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all cursor-pointer"
             >
               <Users className="w-4 h-4" />
               <span>Participantes ({totalCount})</span>
             </button>
             <button
               onClick={() => navigate('/import', { viewTransition: true })}
-              className="px-4 py-2.5 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+              className="px-4 py-2.5 rounded-full bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4" />
               <span>Importar Excel</span>
@@ -330,7 +330,7 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-foreground tracking-tight">
+            <span className="text-3xl font-mono font-black text-foreground tracking-tight">
               {loading ? '...' : totalCount}
             </span>
             <span className="text-xs text-muted-foreground">asistentes</span>
@@ -353,7 +353,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div className="mt-3 flex items-baseline gap-1.5">
             <span className="text-xs font-bold text-muted-foreground">{currency}</span>
-            <span className="text-3xl font-black text-foreground tracking-tight">
+            <span className="text-3xl font-mono font-black text-foreground tracking-tight">
               {loading ? '...' : totalRevenue.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
@@ -400,7 +400,7 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-foreground tracking-tight">
+            <span className="text-3xl font-mono font-black text-foreground tracking-tight">
               {loading ? '...' : totalTshirts}
             </span>
             <span className="text-xs text-muted-foreground">con talla registrada</span>

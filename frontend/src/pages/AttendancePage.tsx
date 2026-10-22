@@ -371,7 +371,7 @@ export const AttendancePage: React.FC = () => {
             <span className="text-xs text-muted-foreground">• Mesa de Recepción y Control de Asistencia</span>
           </div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground flex items-center gap-2">
+            <h1 className="text-2xl sm:text-3xl font-display font-black tracking-tight text-foreground flex items-center gap-2">
               <span>Control de Asistencia</span>
             </h1>
             {/* Indicador de conexión en tiempo real */}
@@ -453,7 +453,7 @@ export const AttendancePage: React.FC = () => {
                 Caja y Recaudación de Hoy ({dailySales.date})
               </span>
               <div className="flex items-baseline gap-2 mt-0.5">
-                <span className="text-xl font-black text-foreground">
+                <span className="text-xl font-mono font-bold text-foreground">
                   RD$ {dailySales.totalAmount.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
                 <span className="text-xs text-muted-foreground">
@@ -487,7 +487,7 @@ export const AttendancePage: React.FC = () => {
               Total Registrados
             </span>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-3xl font-black text-foreground">
+              <span className="text-3xl font-mono font-bold text-foreground">
                 {counters.totalRegistrations}
               </span>
               <span className="text-xs text-muted-foreground">personas</span>
@@ -511,7 +511,7 @@ export const AttendancePage: React.FC = () => {
               </span>
             </div>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-3xl font-black text-emerald-400">
+              <span className="text-3xl font-mono font-bold text-emerald-400">
                 {counters.attendedCount}
               </span>
               <span className="text-xs text-emerald-300/80">presentes</span>
@@ -530,7 +530,7 @@ export const AttendancePage: React.FC = () => {
               Pendientes de Llegada
             </span>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-3xl font-black text-amber-400">
+              <span className="text-3xl font-mono font-bold text-amber-400">
                 {counters.pendingCount}
               </span>
               <span className="text-xs text-amber-300/80">no han llegado</span>
