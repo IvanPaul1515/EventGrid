@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Registration, PaymentMethod, SalesResponsible, TicketType } from '../../types';
 import { useEdition } from '../../context/EditionContext';
 import { api } from '../../services/api';
@@ -177,6 +178,45 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
     }
   };
 
+  // Comprobar si el formulario tiene cambios sin guardar para evitar pérdidas accidentales (Sección 6)
+  const isFormDirty = Boolean(
+    firstName.trim() ||
+    lastName.trim() ||
+    email.trim() ||
+    documentId.trim() ||
+    phone.trim() ||
+    institution.trim() ||
+    notes.trim() ||
+    courtesyReason.trim()
+  );
+
+  const handleRequestClose = () => {
+    if (loading) return;
+    if (!registrationToEdit && isFormDirty) {
+      const confirmDiscard = window.confirm(
+        'Tiene cambios sin guardar en el formulario de participante. ¿Está seguro de que desea salir sin guardar?'
+      );
+      if (!confirmDiscard) return;
+    }
+    onClose();
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loading) {
+        handleRequestClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [isOpen, loading, isFormDirty, registrationToEdit]);
+
   const balanceDue = isCourtesy ? 0 : Math.max(0, ticketPrice - amountPaid);
   const overpaidAmount = isCourtesy ? 0 : Math.max(0, amountPaid - ticketPrice);
 
@@ -227,10 +267,10 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-2xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl animate-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between pb-4 border-b border-border">
+  return createPortal(
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4 md:p-6 animate-in fade-in duration-200" onClick={handleRequestClose}>
+      <div className="bg-card border border-border w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-3xl lg:max-w-4xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0 bg-muted/30">
           <div>
             <h3 className="text-lg font-black text-foreground">
               {registrationToEdit ? 'Editar Información del Participante' : 'Nuevo Registro de Participante'}
@@ -240,8 +280,9 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
             </p>
           </div>
           <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            onClick={handleRequestClose}
+            disabled={loading}
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
           >
             <X className="w-5 h-5" />
           </button>
@@ -254,7 +295,8 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col justify-between">
+          <div className="overflow-y-auto px-6 py-5 space-y-4 flex-1 min-h-0">
           {/* Fila 1: Nombres y Apellidos */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -664,10 +706,11 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
           </div>
 
           {/* Botones de Acción */}
-          <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-border">
+          </div>
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-muted/20 shrink-0">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleRequestClose}
               className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
             >
               Cancelar
@@ -675,7 +718,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer"
+              className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -689,6 +732,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

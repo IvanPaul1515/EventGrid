@@ -30,6 +30,8 @@ export const QueryScheduleSchema = z.object({
   status: z.enum(['CONFIRMED', 'RESCHEDULED', 'CANCELLED', 'ALL']).optional().default('ALL'),
   search: z.string().optional(),
   includeDrafts: z.preprocess((val) => val === 'true' || val === true, z.boolean().optional()),
+  visibility: z.string().optional(),
+  isDemo: z.preprocess((val) => (val === 'true' ? true : val === 'false' ? false : undefined), z.boolean().optional()),
 });
 
 export const UpdateSchedulePdfSchema = z.object({

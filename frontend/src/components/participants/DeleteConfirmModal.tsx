@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Registration } from '../../types';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
 
@@ -19,9 +20,9 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
 }) => {
   if (!isOpen || !registration) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-card border border-destructive/30 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+  return createPortal(
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-destructive/30 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-in zoom-in-95 duration-150" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="w-12 h-12 rounded-2xl bg-destructive/10 text-destructive mx-auto flex items-center justify-center mb-4">
           <AlertTriangle className="w-6 h-6" />
         </div>
@@ -65,6 +66,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

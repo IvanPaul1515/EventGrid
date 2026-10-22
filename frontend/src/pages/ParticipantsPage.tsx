@@ -1408,6 +1408,10 @@ export const ParticipantsPage: React.FC = () => {
         isOpen={isDetailOpen}
         paymentMethods={paymentMethods}
         onClose={() => setIsDetailOpen(false)}
+        onCheckInSuccess={(msg) => {
+          setIsDetailOpen(false);
+          showNotification('success', msg || 'Asistencia registrada correctamente');
+        }}
         onEdit={(reg) => {
           setSelectedForEdit(reg);
           setIsFormOpen(true);
@@ -1435,6 +1439,10 @@ export const ParticipantsPage: React.FC = () => {
         paymentMethods={paymentMethods}
         onSaleSuccess={async (saleData, openDrawer) => {
           await fetchParticipants();
+          showNotification(
+            'success',
+            `Venta registrada exitosamente para ${saleData.registration.participant.fullName} (Ticket #${saleData.registration.registrationNumber})`
+          );
           if (openDrawer) {
             handleOpenDetail(saleData.registration);
           }

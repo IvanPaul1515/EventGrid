@@ -107,6 +107,11 @@ app.use(`${ENV.API_PREFIX}/realtime`, realtimeRoutes);
 app.use(`${ENV.API_PREFIX}/events`, realtimeRoutes);
 app.use('/api/realtime', realtimeRoutes);
 app.use('/api/events', realtimeRoutes);
+app.use(`${ENV.API_PREFIX}/events/:eventId/participants`, participantsRoutes);
+app.use(`${ENV.API_PREFIX}/events/:eventId/import`, importRoutes);
+app.use(`${ENV.API_PREFIX}/events/:eventId/attendance`, attendanceRoutes);
+app.use(`${ENV.API_PREFIX}/events/:eventId/inventory`, inventoryRoutes);
+app.use(`${ENV.API_PREFIX}/events/:eventId/schedule`, scheduleRoutes);
 app.use(`${ENV.API_PREFIX}/events`, eventsRoutes);
 app.use(`${ENV.API_PREFIX}/participants`, participantsRoutes);
 app.use(`${ENV.API_PREFIX}/import`, importRoutes);
@@ -117,7 +122,6 @@ app.use(`${ENV.API_PREFIX}/qr`, qrRoutes);
 app.use(`${ENV.API_PREFIX}/communications`, communicationsRoutes);
 app.use(`${ENV.API_PREFIX}/inventory`, inventoryRoutes);
 app.use(`${ENV.API_PREFIX}/users`, usersRoutes);
-app.use(`${ENV.API_PREFIX}/events/:eventId/schedule`, scheduleRoutes);
 app.use(`${ENV.API_PREFIX}/schedule`, scheduleRoutes);
 
 // Manejador centralizado de errores

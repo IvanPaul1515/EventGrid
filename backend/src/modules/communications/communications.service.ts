@@ -714,7 +714,7 @@ export class CommunicationsService {
     if (eventId) {
       try {
         const scheduleItems = await prisma.scheduleItem.findMany({
-          where: { eventId, status: { not: 'CANCELLED' } },
+          where: { eventId, status: { not: 'CANCELLED' }, OR: [{ visibility: 'PUBLISHED' }, { visibility: 'SCHEDULED', publishAt: { lte: new Date() } }] },
           orderBy: [{ day: 'asc' }, { startTime: 'asc' }, { order: 'asc' }],
         });
         if (scheduleItems.length > 0) {
