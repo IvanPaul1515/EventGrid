@@ -53,7 +53,21 @@ export class EventsService {
       },
     });
 
-    return events.map((e) => EventsService.formatEvent(e));
+    return await Promise.all(
+      events.map(async (e) => {
+        const formatted = EventsService.formatEvent(e);
+        if (!e.settings?.demoModeEnabled) {
+          const realCount = await prisma.registration.count({
+            where: { eventId: e.id, isDemo: false },
+          });
+          formatted._count = {
+            ...formatted._count,
+            registrations: realCount,
+          };
+        }
+        return formatted;
+      })
+    );
   }
 
   static async getById(id: string) {
@@ -137,9 +151,6 @@ export class EventsService {
         },
       });
     }
-
-    // Inicializar inventario default de 282 camisetas
-    await InventoryService.initDefaultInventory(event.id);
 
     return EventsService.formatEvent(event);
   }
@@ -306,8 +317,21 @@ export class EventsService {
       }
     }
 
-    // Inicializar inventario default de 282 camisetas
-    await InventoryService.initDefaultInventory(newEvent.id);
+    // Copiar inventario de camisetas de la edición origen si existe
+    const sourceInventory = await prisma.tshirtInventory.findMany({ where: { eventId: sourceEventId } });
+    if (sourceInventory.length > 0) {
+      for (const inv of sourceInventory) {
+        await prisma.tshirtInventory.create({
+          data: {
+            eventId: newEvent.id,
+            size: inv.size,
+            initialQuantity: inv.initialQuantity,
+            deliveredQuantity: 0,
+            isActive: inv.isActive,
+          },
+        });
+      }
+    }
 
     return newEvent;
   }

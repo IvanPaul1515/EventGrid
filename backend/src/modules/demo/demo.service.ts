@@ -149,9 +149,9 @@ export class DemoService {
       const firstName = DOMINICAN_FIRST_NAMES[Math.floor(Math.random() * DOMINICAN_FIRST_NAMES.length)];
       const lastName = DOMINICAN_LAST_NAMES[Math.floor(Math.random() * DOMINICAN_LAST_NAMES.length)];
       const fullName = `${firstName} ${lastName}`;
-      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const randomSuffix = Date.now() + '_' + i + '_' + Math.floor(Math.random() * 100000);
       const email = `demo.${firstName.toLowerCase()}.${lastName.toLowerCase()}.${randomSuffix}@eventgrid.demo`;
-      const docNum = Math.floor(100000000 + Math.random() * 900000000);
+      const docNum = Math.floor(100000000 + Math.random() * 800000000);
       const documentId = `402-${docNum.toString().slice(0, 7)}-${docNum.toString().slice(7, 8)}`;
       const phone = `809-${Math.floor(200 + Math.random() * 700)}-${Math.floor(1000 + Math.random() * 9000)}`;
       const institution = DOMINICAN_INSTITUTIONS[Math.floor(Math.random() * DOMINICAN_INSTITUTIONS.length)];

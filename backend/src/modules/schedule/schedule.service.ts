@@ -16,7 +16,21 @@ export class ScheduleService {
    * Obtener lista de ítems de cronograma para un evento con filtros
    */
   static async getItems(eventId: string, query?: QueryScheduleInput) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { settings: true },
+    });
+    const isDemoMode = Boolean(event?.settings?.demoModeEnabled);
+
     const where: any = { eventId };
+
+    if (!isDemoMode) {
+      where.isDemo = false;
+      where.NOT = [
+        { category: 'Demostración' },
+        { category: 'Demostracion' },
+      ];
+    }
 
     if (query?.day && query.day !== 'ALL') {
       where.day = query.day;
@@ -394,18 +408,34 @@ export class ScheduleService {
    * Incluye detección dinámica de charlas "NOW" (en curso) y "NEXT" (próxima)
    */
   static async getPublicSchedule(eventId: string) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { settings: true },
+    });
+    const isDemoMode = Boolean(event?.settings?.demoModeEnabled);
+
+    const where: any = {
+      eventId,
+      status: { not: 'CANCELLED' },
+      OR: [
+        { visibility: 'PUBLISHED' },
+        {
+          visibility: 'SCHEDULED',
+          publishAt: { lte: new Date() },
+        },
+      ],
+    };
+
+    if (!isDemoMode) {
+      where.isDemo = false;
+      where.NOT = [
+        { category: 'Demostración' },
+        { category: 'Demostracion' },
+      ];
+    }
+
     const items = await prisma.scheduleItem.findMany({
-      where: {
-        eventId,
-        status: { not: 'CANCELLED' },
-        OR: [
-          { visibility: 'PUBLISHED' },
-          {
-            visibility: 'SCHEDULED',
-            publishAt: { lte: new Date() },
-          },
-        ],
-      },
+      where,
       orderBy: [
         { day: 'asc' },
         { startTime: 'asc' },
@@ -527,6 +557,7 @@ export class ScheduleService {
           data: {
             eventId,
             ...act,
+            isDemo: true,
           },
         });
         createdItems.push(item);
@@ -549,8 +580,10 @@ export class ScheduleService {
       where: {
         eventId,
         OR: [
+          { isDemo: true },
           { title: { in: demoTitles } },
           { category: 'Demostración' },
+          { category: 'Demostracion' },
         ],
       },
     });
