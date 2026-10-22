@@ -1,5 +1,6 @@
 import { prisma } from '../../config/db.js';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors.js';
+import { InventoryService } from '../inventory/inventory.service.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -136,6 +137,9 @@ export class EventsService {
         },
       });
     }
+
+    // Inicializar inventario default de 282 camisetas
+    await InventoryService.initDefaultInventory(event.id);
 
     return EventsService.formatEvent(event);
   }
@@ -301,6 +305,9 @@ export class EventsService {
         });
       }
     }
+
+    // Inicializar inventario default de 282 camisetas
+    await InventoryService.initDefaultInventory(newEvent.id);
 
     return newEvent;
   }
