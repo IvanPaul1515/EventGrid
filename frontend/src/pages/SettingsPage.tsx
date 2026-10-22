@@ -1,11 +1,12 @@
 import { resolveImageUrl } from '../utils/imageUrl';
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useEdition } from '../context/EditionContext';
 import { useTheme } from '../context/ThemeContext';
 import { eventsService } from '../services/events.service';
 import { demoService } from '../services/demo.service';
 import { TicketType, DemoStatus, EmailConfig } from '../types';
-import { communicationsService } from '../services/communications.service';
+import { communicationsService, SmtpSummaryResult } from '../services/communications.service';
 import { StaffTshirtsTab } from '../components/inventory/StaffTshirtsTab';
 import {
   Palette,
@@ -113,6 +114,7 @@ export const SettingsPage: React.FC = () => {
   const [savingSmtp, setSavingSmtp] = useState(false);
   const [testingSmtp, setTestingSmtp] = useState(false);
   const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [smtpSummary, setSmtpSummary] = useState<SmtpSummaryResult | null>(null);
   const [smtpStatusBadge, setSmtpStatusBadge] = useState<{
     type: 'success' | 'simulated' | 'error' | 'disabled';
     label: string;

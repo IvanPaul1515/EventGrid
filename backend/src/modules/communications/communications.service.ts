@@ -30,6 +30,30 @@ export class CommunicationsService {
     if (this.customTransporterFactory) {
       return this.customTransporterFactory(config);
     }
+
+    const isTest = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
+    const isBlocked = process.env.BLOCK_REAL_EMAIL === 'true';
+    const isDev = process.env.NODE_ENV === 'development';
+    const allowRealInDev = process.env.ALLOW_REAL_EMAIL_IN_DEV === 'true';
+
+    // Salvaguarda absoluta contra envíos de correo accidentales en pruebas o desarrollo
+    if (isTest || isBlocked || (isDev && !allowRealInDev)) {
+      console.warn('[CommunicationsService] 🛡️ SAFEGUARD ACTIVE: Real external SMTP is blocked in this environment (test/dev/safeguard). Using safe mock transport.');
+      return {
+        sendMail: async (mailOptions: any) => {
+          return {
+            messageId: `<mock-safeguard-${Date.now()}-${Math.random().toString(36).substring(2, 9)}@eventgrid.test>`,
+            response: '250 2.0.0 OK (SAFEGUARD_MOCK_TRANSPORT)',
+            accepted: [mailOptions.to],
+            rejected: [],
+            pending: [],
+          };
+        },
+        verify: async () => true,
+        close: () => {},
+      };
+    }
+
     const rawPassword = config.password ? decryptSecret(config.password) : '';
     const isExternalSmtp = Boolean(
       config.host &&
@@ -238,9 +262,15 @@ export class CommunicationsService {
 
     const rawPassword = decryptSecret(config.password);
 
+    const isTest = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
+    const isBlocked = process.env.BLOCK_REAL_EMAIL === 'true';
+    const isDev = process.env.NODE_ENV === 'development';
+    const allowRealInDev = process.env.ALLOW_REAL_EMAIL_IN_DEV === 'true';
+
     const isTestOrDemo =
-      process.env.NODE_ENV === 'test' ||
-      process.env.VITEST === 'true' ||
+      isTest ||
+      isBlocked ||
+      (isDev && !allowRealInDev) ||
       !rawPassword ||
       config.host.includes('mailtrap') ||
       config.host.includes('example') ||
@@ -263,20 +293,17 @@ export class CommunicationsService {
       return {
         success: true,
         simulated: true,
-        message: 'Conexión verificada en modo simulación segura (entorno de pruebas/demo activo).',
+        message: 'Conexión verificada en modo simulación segura (entorno de pruebas/desarrollo activo sin llamadas externas).',
         log,
       };
     }
 
     try {
-      const transporter = nodemailer.createTransport({
-        host: config.host,
-        port: config.port,
-        secure: config.secure,
-        auth: config.user && rawPassword ? { user: config.user, pass: rawPassword } : undefined,
-      });
+      const transporter = this.createTransporter(config);
 
-      await transporter.verify();
+      if (typeof (transporter as any).verify === 'function') {
+        await (transporter as any).verify();
+      }
 
       await transporter.sendMail({
         from: `"${config.fromName}" <${config.fromEmail}>`,
@@ -1197,13 +1224,13 @@ export class CommunicationsService {
         throw new BadRequestError('Ya hay un envío de este tipo en procesamiento en este momento. Por favor espere.');
       }
 
-      // 2. Comprobar si existe un envío real previo aceptado por SMTP o entregado
+      // 2. Comprobar si existe un envío real previo (aceptado, entregado, fallido o desconocido)
       const existingSentLog = await prisma.emailLog.findFirst({
         where: {
           eventId,
           registrationId: registration.id,
           templateCode: input.templateCode,
-          status: { in: ['ACCEPTED_BY_SMTP', 'SENT', 'DELIVERED'] },
+          status: { in: ['ACCEPTED_BY_SMTP', 'SENT', 'DELIVERED', 'UNKNOWN_DELIVERY_STATUS', 'FAILED', 'REJECTED'] },
         },
         orderBy: { sentAt: 'desc' },
       });
@@ -1216,15 +1243,26 @@ export class CommunicationsService {
           hour: '2-digit',
           minute: '2-digit',
         });
-        const error: any = new BadRequestError(
-          `Este participante ya recibió un envío de este tipo el ${formattedDate}. ¿Deseas reenviarlo?`
-        );
+        const isFailure = existingSentLog.status === 'FAILED' || existingSentLog.status === 'REJECTED';
+        const isUnknown = existingSentLog.status === 'UNKNOWN_DELIVERY_STATUS';
+
+        const message = isFailure
+          ? `El último envío a este participante falló el ${formattedDate}. ¿Deseas reintentar el envío?`
+          : isUnknown
+          ? `Existe un envío previo con estado desconocido del ${formattedDate}. El mensaje podría haberse entregado. ¿Deseas volver a enviarlo?`
+          : `Este participante ya recibió un envío de este tipo el ${formattedDate}. Este correo ya fue enviado anteriormente. ¿Deseas reenviarlo?`;
+
+        const error: any = new BadRequestError(message);
         error.details = {
           code: 'DUPLICATE_COMMUNICATION_WARNING',
+          participantName: registration.participant.fullName,
+          participantEmail: registration.participant.email,
+          templateCode: input.templateCode,
+          templateName: template.name,
           previousSentAt: existingSentLog.sentAt,
           previousStatus: existingSentLog.status,
           previousRecipient: existingSentLog.recipientEmail,
-          templateCode: input.templateCode,
+          registrationId: registration.id,
         };
         throw error;
       }
@@ -2208,6 +2246,162 @@ export class CommunicationsService {
     });
 
     return unified;
+  }
+
+  /**
+   * Procesar eventos webhook transaccionales emitidos por Brevo
+   */
+  static async handleBrevoWebhook(body: any, authSecret?: string) {
+    const configuredSecret = process.env.BREVO_WEBHOOK_SECRET;
+    if (configuredSecret && authSecret && configuredSecret !== authSecret) {
+      throw new BadRequestError('Firma o secreto de webhook inválido');
+    }
+
+    const events = Array.isArray(body) ? body : [body];
+    let processedCount = 0;
+
+    for (const evt of events) {
+      if (!evt || typeof evt !== 'object') continue;
+
+      const eventType = String(evt.event || '').toLowerCase().trim();
+      const email = String(evt.email || '').toLowerCase().trim();
+      const messageId = evt['message-id'] || evt.messageId || null;
+      const reason = evt.reason || evt.description || null;
+
+      if (!email && !messageId) continue;
+
+      let targetStatus: string | null = null;
+      let errorDesc: string | null = null;
+
+      if (eventType === 'delivered') {
+        targetStatus = 'DELIVERED';
+      } else if (['soft_bounce', 'hard_bounce', 'blocked', 'invalid_email', 'error', 'spam'].includes(eventType)) {
+        targetStatus = eventType === 'soft_bounce' ? 'FAILED' : 'REJECTED';
+        errorDesc = `Brevo (${eventType}): ${reason || 'Fallo de entrega reportado por el servidor de correo'}`;
+      } else if (['deferred'].includes(eventType)) {
+        targetStatus = 'PROCESSING';
+      }
+
+      if (!targetStatus) continue;
+
+      // 1. Actualizar EmailBatchItem si existe coincidencia por messageId o recipientEmail
+      if (messageId) {
+        await prisma.emailBatchItem.updateMany({
+          where: { messageId },
+          data: {
+            status: targetStatus,
+            lastAttemptAt: new Date(),
+            ...(errorDesc ? { errorMessage: errorDesc } : {}),
+          },
+        }).catch(() => {});
+      }
+
+      // 2. Actualizar EmailLog idempotentemente
+      const matchingLog = await prisma.emailLog.findFirst({
+        where: {
+          recipientEmail: email,
+          status: { in: ['ACCEPTED_BY_SMTP', 'SENT', 'PROCESSING', 'PENDING', 'UNKNOWN_DELIVERY_STATUS'] },
+        },
+        orderBy: { sentAt: 'desc' },
+      });
+
+      if (matchingLog) {
+        await prisma.emailLog.update({
+          where: { id: matchingLog.id },
+          data: {
+            status: targetStatus,
+            ...(errorDesc ? { errorMessage: errorDesc } : {}),
+          },
+        }).catch(() => {});
+        processedCount++;
+      }
+    }
+
+    return { success: true, processedCount };
+  }
+
+  /**
+   * Resumen operativo de envíos SMTP recientes para el panel de Administración
+   */
+  static async getSmtpSummary(eventId?: string | null) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const whereBase: any = eventId ? { eventId } : {};
+
+    const [
+      acceptedToday,
+      deliveredToday,
+      failedToday,
+      simulatedToday,
+      pendingCount,
+      lastAttempt,
+      totalSentAllTime,
+    ] = await Promise.all([
+      prisma.emailLog.count({
+        where: {
+          ...whereBase,
+          sentAt: { gte: todayStart },
+          status: { in: ['ACCEPTED_BY_SMTP', 'SENT'] },
+        },
+      }),
+      prisma.emailLog.count({
+        where: {
+          ...whereBase,
+          sentAt: { gte: todayStart },
+          status: 'DELIVERED',
+        },
+      }),
+      prisma.emailLog.count({
+        where: {
+          ...whereBase,
+          sentAt: { gte: todayStart },
+          status: { in: ['FAILED', 'REJECTED'] },
+        },
+      }),
+      prisma.emailLog.count({
+        where: {
+          ...whereBase,
+          sentAt: { gte: todayStart },
+          status: 'SIMULATED',
+        },
+      }),
+      prisma.emailBatchItem.count({
+        where: {
+          status: { in: ['PENDING', 'PROCESSING'] },
+          ...(eventId ? { job: { eventId } } : {}),
+        },
+      }),
+      prisma.emailLog.findFirst({
+        where: whereBase,
+        orderBy: { sentAt: 'desc' },
+        select: {
+          id: true,
+          recipientEmail: true,
+          recipientName: true,
+          templateCode: true,
+          subject: true,
+          status: true,
+          sentAt: true,
+        },
+      }),
+      prisma.emailLog.count({
+        where: {
+          ...whereBase,
+          status: { in: ['ACCEPTED_BY_SMTP', 'SENT', 'DELIVERED'] },
+        },
+      }),
+    ]);
+
+    return {
+      acceptedToday,
+      deliveredToday,
+      failedToday,
+      simulatedToday,
+      pendingCount,
+      lastAttempt,
+      totalSentAllTime,
+    };
   }
 
 }

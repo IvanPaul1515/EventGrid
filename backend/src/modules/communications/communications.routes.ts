@@ -5,12 +5,16 @@ import { requireRole } from '../../middleware/rbac.js';
 
 const router = Router();
 
+// Webhook transaccional de Brevo (Ruta pública entrante protegida con validación de secreto)
+router.post('/webhooks/brevo', CommunicationsController.handleBrevoWebhook);
+
 router.use(authenticateToken);
 
 // Configuración SMTP y prueba (solo ADMIN)
 router.get('/config', requireRole(['ADMIN']), CommunicationsController.getConfig);
 router.put('/config', requireRole(['ADMIN']), CommunicationsController.saveConfig);
 router.post('/test', requireRole(['ADMIN']), CommunicationsController.testConnection);
+router.get('/smtp-summary', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.getSmtpSummary);
 
 // Plantillas de correo (ADMIN y OPERATOR)
 router.get('/templates', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.getTemplates);
@@ -22,7 +26,6 @@ router.post('/preview', requireRole(['ADMIN', 'OPERATOR']), CommunicationsContro
 // Envíos de correo (ADMIN y OPERATOR para individual; solo ADMIN para masivo)
 router.post('/send', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.sendSingleEmail);
 router.post('/send-bulk', requireRole(['ADMIN']), CommunicationsController.sendBulkEmail);
-
 
 // Prevalidación exacta de destinatarios (ADMIN y OPERATOR)
 router.post('/recipients/validate', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.validateRecipients);

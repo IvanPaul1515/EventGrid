@@ -287,4 +287,23 @@ export class CommunicationsController {
     }
   }
 
+  static async handleBrevoWebhook(req: Request, res: Response, next: NextFunction) {
+    try {
+      const secretHeader = (req.headers['x-brevo-webhook-secret'] || req.query.secret || req.query.token) as string | undefined;
+      const result = await CommunicationsService.handleBrevoWebhook(req.body, secretHeader);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getSmtpSummary(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = (req.query.eventId as string) || null;
+      const summary = await CommunicationsService.getSmtpSummary(eventId);
+      return res.status(200).json({ status: 'success', data: summary });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

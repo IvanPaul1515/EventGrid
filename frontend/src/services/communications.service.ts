@@ -63,6 +63,24 @@ export interface EmailBatchJobInfo {
   createdAt: string;
 }
 
+export interface SmtpSummaryResult {
+  acceptedToday: number;
+  deliveredToday: number;
+  failedToday: number;
+  simulatedToday: number;
+  pendingCount: number;
+  lastAttempt: {
+    id: string;
+    recipientEmail: string;
+    recipientName?: string;
+    templateCode?: string;
+    subject: string;
+    status: string;
+    sentAt: string;
+  } | null;
+  totalSentAllTime: number;
+}
+
 export const communicationsService = {
   async getConfig(eventId?: string | null): Promise<EmailConfig | null> {
     const res = await api.get<ApiResponse<EmailConfig | null>>('/communications/config', {
@@ -84,6 +102,13 @@ export const communicationsService = {
       eventId,
       recipientEmail,
       testRecipient: recipientEmail,
+    });
+    return res.data.data;
+  },
+
+  async getSmtpSummary(eventId?: string | null): Promise<SmtpSummaryResult> {
+    const res = await api.get<ApiResponse<SmtpSummaryResult>>('/communications/smtp-summary', {
+      params: { eventId },
     });
     return res.data.data;
   },

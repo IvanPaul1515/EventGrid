@@ -3,6 +3,9 @@ import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 import { VisualEmailEditor } from '../components/communications/VisualEmailEditor';
+import { DuplicateResendModal } from '../components/communications/DuplicateResendModal';
+import { EmailDetailModal } from '../components/communications/EmailDetailModal';
+import { formatEmailStatus, formatTemplateName } from '../utils/emailFormatters';
 import { communicationsService, EmailPreviewResult, EmailBatchJobInfo } from '../services/communications.service';
 import { participantsService } from '../services/participants.service';
 import { EmailConfig, EmailTemplate, EmailLog, Registration } from '../types';
@@ -157,6 +160,16 @@ export const CommunicationsPage: React.FC = () => {
   const [logsBatchFilter, setLogsBatchFilter] = useState('');
   const [loadingLogs, setLoadingLogs] = useState(false);
   // Estados para control de duplicados y filtros inteligentes (Fase QA Integral)
+  const [duplicateResendModalData, setDuplicateResendModalData] = useState<{
+    isOpen: boolean;
+    participantName: string;
+    recipientEmail: string;
+    templateCode?: string;
+    templateName?: string;
+    previousSentAt?: string;
+    previousStatus?: string;
+  } | null>(null);
+  const [selectedLogForDetail, setSelectedLogForDetail] = useState<EmailLog | null>(null);
   const [singleDuplicateWarning, setSingleDuplicateWarning] = useState<{
     message: string;
     previousSentAt?: string;
@@ -388,9 +401,14 @@ export const CommunicationsPage: React.FC = () => {
         err?.response?.data?.message?.includes('¿Deseas reenviarlo?');
 
       if (isDup && !force) {
-        setSingleDuplicateWarning({
-          message: err?.response?.data?.message || 'Este participante ya recibió un envío de este tipo.',
+        setDuplicateResendModalData({
+          isOpen: true,
+          participantName: err?.response?.data?.details?.participantName || selectedRegistration.participant.fullName,
+          recipientEmail: err?.response?.data?.details?.previousRecipient || selectedRegistration.participant.email,
+          templateCode: err?.response?.data?.details?.templateCode || composeTemplateCode,
+          templateName: err?.response?.data?.details?.templateName,
           previousSentAt: err?.response?.data?.details?.previousSentAt,
+          previousStatus: err?.response?.data?.details?.previousStatus,
         });
       } else {
         setSingleFeedback({
@@ -782,33 +800,7 @@ export const CommunicationsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Alerta de Duplicado si existe */}
-            {singleDuplicateWarning && (
-              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>{singleDuplicateWarning?.message}</span>
-                </div>
-                <div className="flex items-center gap-2 self-end sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => setSingleDuplicateWarning(null)}
-                    className="px-3 py-1.5 rounded-lg text-xs bg-muted/60 hover:bg-muted text-foreground cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSendSingleEmail(true)}
-                    disabled={sendingSingle}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-black cursor-pointer flex items-center gap-1"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Sí, reenviar correo</span>
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Modal de confirmación de reenvío renderizado globalmente */}
 
             {/* Feedback de Éxito o Error */}
             {singleFeedback && (
@@ -1686,10 +1678,32 @@ export const CommunicationsPage: React.FC = () => {
                 className="px-3 py-2 rounded-xl bg-background border border-border text-foreground text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="ALL">Todos los estados</option>
-                <option value="SENT">Enviados (SENT)</option>
-                <option value="SIMULATED">Simulados (SIMULATED)</option>
-                <option value="FAILED">Fallidos (FAILED)</option>
-                <option value="PENDING">Pendientes (PENDING)</option>
+                <option value="ACCEPTED_BY_SMTP">Aceptado por Brevo</option>
+                <option value="DELIVERED">Entregado (Confirmado)</option>
+                <option value="SIMULATED">Simulado</option>
+                <option value="PENDING">Pendiente</option>
+                <option value="PROCESSING">Enviando</option>
+                <option value="REJECTED">Rechazado</option>
+                <option value="FAILED">Fallido</option>
+                <option value="UNKNOWN_DELIVERY_STATUS">Estado desconocido</option>
+              </select>
+
+              <select
+                value={logsTemplateFilter}
+                onChange={(e) => {
+                  setLogsTemplateFilter(e.target.value);
+                  setTimeout(() => loadLogs(1), 0);
+                }}
+                className="px-3 py-2 rounded-xl bg-background border border-border text-foreground text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="ALL">Todas las plantillas</option>
+                <option value="DIGITAL_TICKET">Entrada Digital</option>
+                <option value="INSCRIPTION_CONFIRMATION">Confirmación de Registro</option>
+                <option value="EVENT_REMINDER">Recordatorio de Evento</option>
+                <option value="PAYMENT_CONFIRMATION">Confirmación de Pago</option>
+                <option value="KEYNOTE_ANNOUNCEMENT">Anuncio de Keynote</option>
+                <option value="SCHEDULE_UPDATE">Actualización de Cronograma</option>
+                <option value="GENERAL_ANNOUNCEMENT">Anuncio General</option>
               </select>
 
               {logsBatchFilter && (
@@ -1727,65 +1741,77 @@ export const CommunicationsPage: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {logs.length > 0 ? (
-                    logs.map((log) => (
-                      <tr key={log.id} className="hover:bg-muted/40 transition-colors">
-                        <td className="py-3 pl-2">
-                          <p className="font-bold text-foreground">{log.recipientName || 'Sin nombre'}</p>
-                          <p className="text-[11px] font-mono text-muted-foreground">{log.recipientEmail}</p>
-                        </td>
-                        <td className="py-3">
-                          <p className="font-semibold text-foreground truncate max-w-xs">{log.subject}</p>
-                          <span className="text-[10px] font-mono text-primary bg-primary/10 px-1.5 py-0.2 rounded">
-                            {log.templateCode || 'PERSONALIZADO'}
-                          </span>
-                        </td>
-                        <td className="py-3 text-muted-foreground font-mono text-[11px]">
-                          {new Date(log.sentAt).toLocaleString('es-DO', {
-                            dateStyle: 'short',
-                            timeStyle: 'medium',
-                          })}
-                        </td>
-                        <td className="py-3 text-muted-foreground">
-                          {log.sentByUser?.fullName || 'Sistema'}
-                        </td>
-                        <td className="py-3">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold inline-flex items-center gap-1 ${
-                              log.status === 'SENT'
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                : log.status === 'SIMULATED'
-                                ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                                : log.status === 'FAILED'
-                                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                                : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                            }`}
-                          >
-                            <span>{log.status}</span>
-                          </span>
-                          {log.errorMessage && (
-                            <p className="text-[10px] text-rose-400 truncate max-w-xs mt-0.5" title={log.errorMessage}>
-                              {log.errorMessage}
+                    logs.map((log) => {
+                      const statusInfo = formatEmailStatus(log.status);
+                      const tName = formatTemplateName(log.templateCode);
+                      return (
+                        <tr
+                          key={log.id}
+                          onClick={() => setSelectedLogForDetail(log)}
+                          className="hover:bg-muted/40 transition-colors cursor-pointer group"
+                        >
+                          <td className="py-3 pl-2">
+                            <p className="font-bold text-foreground group-hover:text-primary transition-colors">
+                              {log.recipientName || 'Sin nombre'}
                             </p>
-                          )}
-                        </td>
-                        <td className="py-3 font-mono text-[10px] text-muted-foreground">
-                          {log.batchId ? (
-                            <button
-                              onClick={() => {
-                                setLogsBatchFilter(log.batchId!);
-                                loadLogs(1);
-                              }}
-                              className="text-primary hover:underline cursor-pointer"
-                              title="Filtrar por este lote"
-                            >
-                              {log.batchId.slice(0, 10)}...
-                            </button>
-                          ) : (
-                            'Individual'
-                          )}
-                        </td>
-                      </tr>
-                    ))
+                            <p className="text-[11px] font-mono text-muted-foreground">{log.recipientEmail}</p>
+                          </td>
+                          <td className="py-3">
+                            <p className="font-semibold text-foreground truncate max-w-xs">{log.subject}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[10px] font-semibold text-primary bg-primary/10 px-1.5 py-0.2 rounded">
+                                {tName}
+                              </span>
+                              <span className="text-[9px] font-mono text-muted-foreground">
+                                {log.templateCode}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 text-muted-foreground font-mono text-[11px]">
+                            {new Date(log.sentAt).toLocaleString('es-DO', {
+                              dateStyle: 'short',
+                              timeStyle: 'medium',
+                            })}
+                          </td>
+                          <td className="py-3 text-muted-foreground">
+                            {log.sentByUser?.fullName || 'Sistema'}
+                          </td>
+                          <td className="py-3">
+                            <div className="space-y-0.5">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold inline-flex items-center gap-1 ${statusInfo.badgeClass}`}
+                              >
+                                <span>{statusInfo.label}</span>
+                              </span>
+                              <p className="text-[10px] text-muted-foreground truncate max-w-xs leading-tight" title={statusInfo.description}>
+                                {statusInfo.description}
+                              </p>
+                            </div>
+                            {log.errorMessage && (
+                              <p className="text-[10px] text-rose-400 truncate max-w-xs mt-0.5" title={log.errorMessage}>
+                                {log.errorMessage}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-3 font-mono text-[10px] text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                            {log.batchId ? (
+                              <button
+                                onClick={() => {
+                                  setLogsBatchFilter(log.batchId!);
+                                  loadLogs(1);
+                                }}
+                                className="text-primary hover:underline cursor-pointer font-bold"
+                                title="Filtrar por este lote masivo"
+                              >
+                                Campaña ({log.batchId.slice(0, 8)}...)
+                              </button>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded bg-muted/60 text-foreground font-medium">Individual</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr>
                       <td colSpan={6} className="text-center py-8 text-muted-foreground">

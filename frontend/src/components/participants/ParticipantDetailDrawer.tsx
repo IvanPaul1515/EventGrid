@@ -15,6 +15,7 @@ import { RevertModal } from '../attendance/RevertModal';
 import { CheckInConfirmModal } from '../attendance/CheckInConfirmModal';
 import { DigitalTicketModal } from '../qr/DigitalTicketModal';
 import { SendSingleEmailModal } from '../communications/SendSingleEmailModal';
+import { formatEmailStatus } from '../../utils/emailFormatters';
 import { TshirtSizeSelector } from '../attendance/TshirtSizeSelector';
 import {
   X,

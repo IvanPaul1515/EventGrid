@@ -16,6 +16,8 @@ describe('QA Integral — Comunicaciones, Historial Unificado, Destinatarios Int
   let testParticipantId: string;
   let testRegId2: string;
   let testParticipantId2: string;
+  let testRegId3: string;
+  let testParticipantId3: string;
   let originalEmailConfig: any = null;
 
   beforeAll(async () => {
@@ -39,6 +41,7 @@ describe('QA Integral — Comunicaciones, Historial Unificado, Destinatarios Int
     // 2. Evento activo 2026
     const event = await prisma.event.findFirst({ where: { year: 2026 } });
     activeEventId = event!.id;
+    await prisma.emailConfig.updateMany({ where: { eventId: activeEventId }, data: { isEnabled: true } });
     originalEmailConfig = await prisma.emailConfig.findFirst({ where: { eventId: activeEventId } });
 
     // Segundo evento para prueba de aislamiento entre ediciones
@@ -132,6 +135,35 @@ describe('QA Integral — Comunicaciones, Historial Unificado, Destinatarios Int
       },
     });
     testRegId2 = r2.id;
+    const u3 = `QAINT_${Date.now()}_3`;
+    const p3 = await prisma.participant.create({
+      data: {
+        documentId: `DOC-${u3.slice(-6)}`,
+        firstName: 'Participante',
+        lastName: 'QA Tres',
+        fullName: 'Participante QA Tres',
+        email: `${u3.toLowerCase()}@eventgrid.test`,
+        phone: '809-555-0103',
+        institution: 'Tecnológico QA',
+      },
+    });
+    testParticipantId3 = p3.id;
+
+    const r3 = await prisma.registration.create({
+      data: {
+        eventId: activeEventId,
+        participantId: p3.id,
+        registrationNumber: `REG-${u3.slice(-6)}`,
+        ticketTypeId: generalTicketTypeId,
+        status: 'CONFIRMED',
+        paymentStatus: 'PAID',
+        attended: false,
+        amountPaid: 1750,
+        ticketPrice: 1750,
+        totalAmount: 1750,
+      },
+    });
+    testRegId3 = r3.id;
 
     // 5. Instalar transportador mock seguro para NUNCA enviar correos reales
     CommunicationsService.setTransporterFactory(() => ({
@@ -150,8 +182,8 @@ describe('QA Integral — Comunicaciones, Historial Unificado, Destinatarios Int
     CommunicationsService.setTransporterFactory(null);
 
     // Limpieza de datos de prueba creados
-    const regIds = [testRegId, testRegId2].filter(Boolean);
-    const partIds = [testParticipantId, testParticipantId2].filter(Boolean);
+    const regIds = [testRegId, testRegId2, testRegId3].filter(Boolean);
+    const partIds = [testParticipantId, testParticipantId2, testParticipantId3].filter(Boolean);
 
     await prisma.emailLog.deleteMany({ where: { registrationId: { in: regIds } } }).catch(() => {});
     await prisma.emailBatchItem.deleteMany({ where: { registrationId: { in: regIds } } }).catch(() => {});
@@ -172,7 +204,7 @@ describe('QA Integral — Comunicaciones, Historial Unificado, Destinatarios Int
           fromEmail: originalEmailConfig.fromEmail,
           fromName: originalEmailConfig.fromName,
           replyToEmail: originalEmailConfig.replyToEmail,
-          isEnabled: originalEmailConfig.isEnabled,
+          isEnabled: true,
         },
       }).catch(() => {});
     }
