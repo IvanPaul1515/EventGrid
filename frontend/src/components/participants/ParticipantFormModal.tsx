@@ -156,28 +156,6 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
     setError(null);
   }, [registrationToEdit, isOpen]);
 
-  if (!isOpen) return null;
-
-  // Manejo de cambio en el selector de tipo de entrada
-  const handleTicketTypeChange = (newTicketId: string) => {
-    setTicketTypeId(newTicketId);
-    const selected = ticketTypes.find((t) => t.id === newTicketId);
-    if (selected) {
-      const price = Number(selected.price);
-      setTicketPrice(price);
-      if (price === 0 || selected.name.toLowerCase().includes('cortes')) {
-        setIsCourtesy(true);
-        setAmountPaid(0);
-      } else {
-        setIsCourtesy(false);
-        // Si el monto pagado coincidía con la tarifa previa o estaba en 0, sincronizar con la nueva tarifa
-        if (amountPaid === 0 || amountPaid === ticketPrice) {
-          setAmountPaid(price);
-        }
-      }
-    }
-  };
-
   // Comprobar si el formulario tiene cambios sin guardar para evitar pérdidas accidentales (Sección 6)
   const isFormDirty = Boolean(
     firstName.trim() ||
@@ -216,6 +194,28 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       document.body.style.overflow = '';
     };
   }, [isOpen, loading, isFormDirty, registrationToEdit]);
+
+  if (!isOpen) return null;
+
+  // Manejo de cambio en el selector de tipo de entrada
+  const handleTicketTypeChange = (newTicketId: string) => {
+    setTicketTypeId(newTicketId);
+    const selected = ticketTypes.find((t) => t.id === newTicketId);
+    if (selected) {
+      const price = Number(selected.price);
+      setTicketPrice(price);
+      if (price === 0 || selected.name.toLowerCase().includes('cortes')) {
+        setIsCourtesy(true);
+        setAmountPaid(0);
+      } else {
+        setIsCourtesy(false);
+        // Si el monto pagado coincidía con la tarifa previa o estaba en 0, sincronizar con la nueva tarifa
+        if (amountPaid === 0 || amountPaid === ticketPrice) {
+          setAmountPaid(price);
+        }
+      }
+    }
+  };
 
   const balanceDue = isCourtesy ? 0 : Math.max(0, ticketPrice - amountPaid);
   const overpaidAmount = isCourtesy ? 0 : Math.max(0, amountPaid - ticketPrice);
