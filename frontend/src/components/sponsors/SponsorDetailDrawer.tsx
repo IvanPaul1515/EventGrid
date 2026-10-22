@@ -152,7 +152,7 @@ export const SponsorDetailDrawer: React.FC<SponsorDetailDrawerProps> = ({
 
         <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-8 pointer-events-none">
           <div
-            className="w-screen max-w-full sm:w-[520px] md:w-[580px] lg:w-[40vw] lg:min-w-[520px] lg:max-w-[700px] h-full max-h-screen bg-card border-l border-border shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200"
+            className="mobile-drawer w-screen max-w-full sm:w-[520px] md:w-[580px] lg:w-[40vw] lg:min-w-[520px] lg:max-w-[700px] h-full max-h-screen bg-card border-l border-border shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"

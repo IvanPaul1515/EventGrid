@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { participantsService } from '../services/participants.service';
 import { eventsService } from '../services/events.service';
 import { Registration, FinancialSummary } from '../types';
+import { CardSkeleton, ChartSkeleton } from '../components/common/Skeleton';
 import {
   Users,
   DollarSign,
@@ -255,27 +256,27 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Banner de Bienvenida y Edición Activa */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-card via-card to-primary/10 border border-border p-6 md:p-8 shadow-xl">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 border border-primary/30 text-xs font-semibold text-primary mb-3">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>EventGrid • Edición Activa: {currentEvent?.name || 'Cargando...'}</span>
+      {/* Banner de Bienvenida y Edición Activa Adaptativo */}
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-r from-card via-card to-primary/10 border border-border p-4 sm:p-6 md:p-8 shadow-md sm:shadow-xl">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/20 border border-primary/30 text-[11px] sm:text-xs font-semibold text-primary mb-2 sm:mb-3 max-w-full truncate">
+              <Sparkles className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">EventGrid • Edición: {currentEvent?.name || 'Cargando...'}</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-display font-black text-foreground tracking-tight">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-display font-black text-foreground tracking-tight">
               Hola, {user?.fullName.split(' ')[0]} 👋
             </h1>
-            <p className="text-sm text-muted-foreground mt-1.5 max-w-2xl">
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1 sm:mt-1.5 max-w-2xl leading-relaxed">
               Panel de control y analítica en tiempo real para <strong>{currentEvent?.name || 'su evento'}</strong>. Administre inscripciones, controle el aforo físico y supervise las métricas del evento.
             </p>
-            <div className="flex flex-wrap items-center gap-4 mt-4 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 mt-3 sm:mt-4 text-[11px] sm:text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-primary" />
-                {currentEvent?.venue || 'Sede del Evento'}
+                <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span className="truncate max-w-[150px] sm:max-w-none">{currentEvent?.venue || 'Sede del Evento'}</span>
               </span>
               <span className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-primary" />
+                <Calendar className="w-3.5 h-3.5 text-primary shrink-0" />
                 Año {currentEvent?.year || 2026}
               </span>
               <button
@@ -290,27 +291,27 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Botones de Acción Rápida */}
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
+          {/* Botones de Acción Rápida Responsivos */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 md:flex md:flex-wrap items-center gap-2 sm:gap-3 shrink-0 w-full md:w-auto mt-2 md:mt-0">
             <button
               onClick={() => navigate('/attendance', { viewTransition: true })}
-              className="px-4 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+              className="w-full md:w-auto justify-center px-4 py-2.5 rounded-xl sm:rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-md sm:shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
             >
-              <UserCheck className="w-4 h-4" />
+              <UserCheck className="w-4 h-4 shrink-0" />
               <span>Control de Asistencia</span>
             </button>
             <button
               onClick={() => navigate('/participants', { viewTransition: true })}
-              className="px-4 py-2.5 rounded-full bg-gradient-to-r from-primary to-[#BA1513] text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all cursor-pointer"
+              className="w-full md:w-auto justify-center px-4 py-2.5 rounded-xl sm:rounded-full bg-gradient-to-r from-primary to-[#BA1513] text-white text-xs font-bold flex items-center gap-2 shadow-md sm:shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all cursor-pointer"
             >
-              <Users className="w-4 h-4" />
+              <Users className="w-4 h-4 shrink-0" />
               <span>Participantes ({totalCount})</span>
             </button>
             <button
               onClick={() => navigate('/import', { viewTransition: true })}
-              className="px-4 py-2.5 rounded-full bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+              className="w-full md:w-auto justify-center px-4 py-2.5 rounded-xl sm:rounded-full bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
             >
-              <FileSpreadsheet className="w-4 h-4" />
+              <FileSpreadsheet className="w-4 h-4 shrink-0" />
               <span>Importar Excel</span>
             </button>
           </div>
@@ -318,8 +319,11 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       {/* Tarjetas KPI Principales con datos reales */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1: Total Registrados */}
+      {loading ? (
+        <CardSkeleton count={4} />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* KPI 1: Total Registrados */}
         <div className="p-5 rounded-2xl bg-card border border-border shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -411,6 +415,7 @@ export const DashboardPage: React.FC = () => {
           </p>
         </div>
       </div>
+      )}
 
       {/* Fila 2 de KPIs Operativos: Inventario Físico, Staff y Comunicaciones */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -482,78 +487,84 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Pestañas de Navegación Analítica */}
-      <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-card border border-border w-full">
+      {/* Pestañas de Navegación Analítica Adaptativas */}
+      <div className="flex items-center gap-1.5 p-1 rounded-xl bg-card border border-border w-full overflow-x-auto no-scrollbar sm:flex-wrap">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+          className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
             activeTab === 'overview'
               ? 'bg-primary text-white shadow-sm'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         >
-          <Activity className="w-3.5 h-3.5" />
+          <Activity className="w-3.5 h-3.5 shrink-0" />
           <span>Resumen Ejecutivo</span>
         </button>
         <button
           onClick={() => setActiveTab('participants')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+          className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
             activeTab === 'participants'
               ? 'bg-primary text-white shadow-sm'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         >
-          <UserCheck className="w-3.5 h-3.5" />
+          <UserCheck className="w-3.5 h-3.5 shrink-0" />
           <span>Asistencia & Aforo</span>
         </button>
         <button
           onClick={() => setActiveTab('tshirts')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+          className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
             activeTab === 'tshirts'
               ? 'bg-primary text-white shadow-sm'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         >
-          <Shirt className="w-3.5 h-3.5" />
+          <Shirt className="w-3.5 h-3.5 shrink-0" />
           <span>Tallas de Camiseta</span>
         </button>
         <button
           onClick={() => setActiveTab('finance')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+          className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
             activeTab === 'finance'
               ? 'bg-primary text-white shadow-sm'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         >
-          <DollarSign className="w-3.5 h-3.5" />
+          <DollarSign className="w-3.5 h-3.5 shrink-0" />
           <span>Finanzas & Ventas</span>
         </button>
         <button
           onClick={() => setActiveTab('institutions')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+          className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
             activeTab === 'institutions'
               ? 'bg-primary text-white shadow-sm'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         >
-          <Building className="w-3.5 h-3.5" />
+          <Building className="w-3.5 h-3.5 shrink-0" />
           <span>Instituciones ({stats?.institutions.total || 0})</span>
         </button>
         <button
           onClick={() => setActiveTab('timeline')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+          className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
             activeTab === 'timeline'
               ? 'bg-primary text-white shadow-sm'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         >
-          <Clock className="w-3.5 h-3.5" />
+          <Clock className="w-3.5 h-3.5 shrink-0" />
           <span>Evolución Temporal</span>
         </button>
       </div>
 
       {/* CONTENIDO TAB 1: RESUMEN EJECUTIVO */}
       {activeTab === 'overview' && (
+        loading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ChartSkeleton height="h-80" />
+            <ChartSkeleton height="h-80" />
+          </div>
+        ) : (
         <div className="space-y-6">
           {/* Gráfico Rápido de Asistencia y Aforo */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -749,6 +760,7 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
         </div>
+        )
       )}
 
       {/* CONTENIDO TAB 2: ASISTENCIA & AFORO */}

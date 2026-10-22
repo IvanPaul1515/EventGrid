@@ -50,8 +50,8 @@ export const AnnullPaymentModal: React.FC<AnnullPaymentModalProps> = ({
   }).format(payment.amount);
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-2xl max-w-md w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+    <div className="mobile-safe-overlay fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-card border border-border rounded-2xl max-w-md w-full p-6 mobile-scroll-dialog shadow-2xl animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between pb-3 border-b border-border">
           <div className="flex items-center gap-2 text-rose-500 font-bold text-sm">
             <AlertTriangle className="w-5 h-5 shrink-0" />

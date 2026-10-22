@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { CurrencyInput } from '../common/CurrencyInput';
+import React, { useState, useEffect } from 'react';
 import { X, DollarSign, Loader2, CreditCard } from 'lucide-react';
 import { Sponsor, SponsorPaymentMethod } from '../../types';
 import { CreatePaymentData } from '../../services/sponsors.service';
@@ -16,10 +18,9 @@ export const RecordSponsorPaymentModal: React.FC<RecordSponsorPaymentModalProps>
   sponsor,
   onConfirm,
 }) => {
-  if (!isOpen || !sponsor) return null;
 
   const [amount, setAmount] = useState<number | string>(
-    sponsor.pendingBalance > 0 ? sponsor.pendingBalance : ''
+    (sponsor?.pendingBalance ?? 0) > 0 ? sponsor!.pendingBalance : ''
   );
   const [paymentDate, setPaymentDate] = useState<string>(
     new Date().toISOString().slice(0, 10)
@@ -30,6 +31,18 @@ export const RecordSponsorPaymentModal: React.FC<RecordSponsorPaymentModalProps>
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setAmount(sponsor?.pendingBalance && sponsor.pendingBalance > 0 ? sponsor.pendingBalance : '');
+    setPaymentDate(new Date().toISOString().slice(0, 10));
+    setReference('');
+    setReceiptNumber('');
+    setNotes('');
+    setError(null);
+  }, [isOpen, sponsor?.id]);
+
+  if (!isOpen || !sponsor) return null;
 
   const formatRD = (val: number) =>
     new Intl.NumberFormat('es-DO', {
@@ -65,9 +78,9 @@ export const RecordSponsorPaymentModal: React.FC<RecordSponsorPaymentModalProps>
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+  return createPortal(
+    <div className="mobile-safe-overlay fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-card border border-border rounded-2xl max-w-lg w-full p-6 max-sm:max-h-full max-sm:overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-border">
           <div className="flex items-center gap-2 text-primary font-bold text-sm">
@@ -117,13 +130,12 @@ export const RecordSponsorPaymentModal: React.FC<RecordSponsorPaymentModalProps>
             </div>
             <div className="relative">
               <span className="absolute left-3 top-2.5 text-xs font-bold text-muted-foreground">RD$</span>
-              <input
-                type="number"
+              <CurrencyInput
                 step="0.01"
                 min="0.01"
                 required
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onValueChange={setAmount}
                 placeholder="0.00"
                 className="w-full pl-12 pr-3 py-2 text-sm rounded-xl bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none font-bold text-foreground"
                 disabled={loading}
@@ -240,6 +252,6 @@ export const RecordSponsorPaymentModal: React.FC<RecordSponsorPaymentModalProps>
           </div>
         </form>
       </div>
-    </div>
+    </div>, document.body
   );
 };

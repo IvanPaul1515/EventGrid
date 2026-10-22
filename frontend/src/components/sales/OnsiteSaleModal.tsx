@@ -1,3 +1,4 @@
+import { CurrencyInput } from '../common/CurrencyInput';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { TicketType, PaymentMethod } from '../../types';
@@ -194,13 +195,13 @@ export const OnsiteSaleModal: React.FC<OnsiteSaleModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4 md:p-6 animate-in fade-in duration-200"
+      className="mobile-safe-overlay fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4 md:p-6 animate-in fade-in duration-200"
       onClick={() => {
         if (!loading) onClose();
       }}
     >
       <div
-        className="bg-card border border-border w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-4xl lg:max-w-5xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+        className="bg-card border border-border w-full h-full max-sm:max-h-full sm:h-auto sm:max-h-[92vh] sm:max-w-4xl lg:max-w-5xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -248,7 +249,7 @@ export const OnsiteSaleModal: React.FC<OnsiteSaleModalProps> = ({
 
         {/* Formulario en 2 Columnas para PC */}
         <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col justify-between">
-          <div className="overflow-y-auto p-5 sm:p-6 space-y-5">
+          <div className="overflow-y-auto flex-1 min-h-0 p-5 sm:p-6 space-y-5">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* COLUMNA IZQUIERDA: Entrada y Participante */}
               <div className="lg:col-span-7 space-y-5">
@@ -284,7 +285,7 @@ export const OnsiteSaleModal: React.FC<OnsiteSaleModalProps> = ({
                             )}
                           </div>
                           <span className="text-sm font-black font-mono text-primary block">
-                            RD$ {Number(tt.price).toFixed(2)}
+                            RD$ {Number(tt.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                           {tt.description && (
                             <p className="text-[10px] text-muted-foreground truncate mt-0.5">
@@ -435,13 +436,12 @@ export const OnsiteSaleModal: React.FC<OnsiteSaleModalProps> = ({
                             <span className="absolute left-2.5 top-2 text-[11px] font-mono text-muted-foreground">
                               RD$
                             </span>
-                            <input
-                              type="number"
+                            <CurrencyInput
                               min="0"
                               step="any"
                               required
                               value={amountReceived}
-                              onChange={(e) => setAmountReceived(Number(e.target.value) || 0)}
+                              onValueChange={setAmountReceived}
                               className="w-full pl-10 pr-2.5 py-1.5 bg-background border border-border rounded-xl text-xs font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
                           </div>
@@ -455,14 +455,13 @@ export const OnsiteSaleModal: React.FC<OnsiteSaleModalProps> = ({
                             <span className="absolute left-2.5 top-2 text-[11px] font-mono text-muted-foreground">
                               RD$
                             </span>
-                            <input
-                              type="number"
+                            <CurrencyInput
                               min="0"
                               max={ticketPrice}
                               step="any"
                               required
                               value={amountPaid}
-                              onChange={(e) => setAmountPaid(Number(e.target.value) || 0)}
+                              onValueChange={setAmountPaid}
                               className="w-full pl-10 pr-2.5 py-1.5 bg-background border border-border rounded-xl text-xs font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
                           </div>
