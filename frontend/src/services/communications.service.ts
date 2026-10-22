@@ -110,7 +110,9 @@ export const communicationsService = {
     customSubject?: string;
     customBodyHtml?: string;
     customMessage?: string;
+    mode?: 'REAL' | 'SIMULATION';
     simulateOnly?: boolean;
+    confirmedDemoSending?: boolean;
   }): Promise<{ logId: string; status: string; message: string; simulated?: boolean }> {
     const res = await api.post<ApiResponse<{ logId: string; status: string; message: string; simulated?: boolean }>>('/communications/send', payload);
     return res.data.data;
@@ -133,7 +135,9 @@ export const communicationsService = {
     customSubject?: string;
     customBodyHtml?: string;
     customMessage?: string;
+    mode?: 'REAL' | 'SIMULATION';
     simulateOnly?: boolean;
+    confirmedDemoSending?: boolean;
   }): Promise<{ total: number; sent: number; simulated: number; failed: number; excluded?: number; batchId?: string; message: string }> {
     const res = await api.post<ApiResponse<{ total: number; sent: number; simulated: number; failed: number; excluded?: number; batchId?: string; message: string }>>('/communications/send-bulk', payload);
     return res.data.data;

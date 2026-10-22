@@ -349,11 +349,11 @@ export class ParticipantsService {
       if (pm && pm.name.toLowerCase().includes('cortes')) {
         isCourtesy = true;
       }
-    } else if (isCourtesy) {
-      const courtesyMethod = event.paymentMethods.find((m) => m.name.toLowerCase().includes('cortes'));
-      if (courtesyMethod) {
-        paymentMethodId = courtesyMethod.id;
-      }
+    }
+
+    // Regla de cortesía: forma de pago y responsable no aplican (null)
+    if (isCourtesy) {
+      paymentMethodId = null;
     }
 
     // Regla Financiera
@@ -482,9 +482,9 @@ export class ParticipantsService {
         courtesyReason: isCourtesy ? (input.courtesyReason || null) : null,
         courtesyDate: isCourtesy ? new Date() : null,
         isDemo: input.isDemo || false,
-        paymentMethodId,
+        paymentMethodId: isCourtesy ? null : paymentMethodId,
         paymentStatus: initialPaymentStatus,
-        salesResponsibleId: input.salesResponsibleId || null,
+        salesResponsibleId: isCourtesy ? null : (input.salesResponsibleId || null),
         saleTimestamp: input.saleTimestamp ? new Date(input.saleTimestamp) : new Date(),
         status: input.status ? (input.status === 'ATTENDED' ? 'CONFIRMED' : (input.status as any)) : (balanceDue === 0 || isCourtesy ? 'CONFIRMED' : 'PENDING'),
         qrCode: `eg_qr_${crypto.randomBytes(16).toString('hex')}`,
@@ -602,8 +602,11 @@ export class ParticipantsService {
       }
     }
 
+    // Si pasamos de cortesía a entrada normal pagada, restaurar el precio oficial de la tarifa
     let ticketPrice = existing.ticketPrice ? Number(existing.ticketPrice) : Number(existing.totalAmount);
-    if (input.ticketPrice !== undefined && input.ticketPrice !== null) {
+    if (existing.isCourtesy && !isCourtesy) {
+      ticketPrice = ticketType ? Number(ticketType.price) : (input.ticketPrice ? Number(input.ticketPrice) : 0);
+    } else if (input.ticketPrice !== undefined && input.ticketPrice !== null) {
       ticketPrice = Number(input.ticketPrice);
     } else if (input.ticketTypeId !== undefined && input.ticketTypeId !== existing.ticketTypeId && ticketType) {
       ticketPrice = Number(ticketType.price);
@@ -614,7 +617,9 @@ export class ParticipantsService {
     let amountPaid = existing.amountPaid !== undefined && existing.amountPaid !== null
       ? Number(existing.amountPaid)
       : Number(existing.totalAmount);
-    if (input.amountPaid !== undefined && input.amountPaid !== null) {
+    if (existing.isCourtesy && !isCourtesy) {
+      amountPaid = input.amountPaid !== undefined ? Number(input.amountPaid) : 0;
+    } else if (input.amountPaid !== undefined && input.amountPaid !== null) {
       amountPaid = Number(input.amountPaid);
     } else if (input.totalAmount !== undefined && input.totalAmount !== null) {
       amountPaid = Number(input.totalAmount);
@@ -625,6 +630,7 @@ export class ParticipantsService {
       ticketPrice = 0;
       amountPaid = 0;
       balanceDue = 0;
+      paymentMethodId = null;
     }
 
     // Calcular estado de pago
@@ -663,9 +669,9 @@ export class ParticipantsService {
         courtesyReason: isCourtesy
           ? (input.courtesyReason !== undefined ? input.courtesyReason : existing.courtesyReason)
           : null,
-        paymentMethodId,
+        paymentMethodId: isCourtesy ? null : paymentMethodId,
         paymentStatus,
-        salesResponsibleId: input.salesResponsibleId !== undefined ? input.salesResponsibleId : undefined,
+        salesResponsibleId: isCourtesy ? null : (input.salesResponsibleId !== undefined ? input.salesResponsibleId : existing.salesResponsibleId),
         saleTimestamp: input.saleTimestamp ? new Date(input.saleTimestamp) : undefined,
         attended: input.status === 'ATTENDED' ? true : undefined,
         attendedAt: input.status === 'ATTENDED' ? new Date() : undefined,

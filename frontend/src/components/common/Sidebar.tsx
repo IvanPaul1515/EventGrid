@@ -116,15 +116,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       )}
 
       <aside
-        className={`fixed md:relative inset-y-0 left-0 bg-barcamp-dark border-r border-border flex flex-col justify-between transition-all duration-300 z-50 select-none ${
+        className={`fixed md:relative inset-y-0 left-0 bg-card dark:bg-barcamp-dark border-r border-border flex flex-col justify-between transition-all duration-300 z-50 select-none ${
           mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
         } ${collapsed ? 'w-18' : 'w-64'}`}
       >
         {/* Cabecera Sidebar: Logo EventGrid + Evento BarCamp */}
         <div>
-          <div className="h-16 flex items-center px-4 border-b border-border/80 justify-between">
+          <div className="h-16 flex items-center px-4 border-b border-border justify-between">
             <div className="flex items-center gap-3 overflow-hidden">
-              <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-primary/40 flex items-center justify-center shrink-0 shadow-lg shadow-primary/25 overflow-hidden">
+              <div className="w-9 h-9 rounded-xl bg-background border border-border flex items-center justify-center shrink-0 shadow-lg shadow-primary/25 overflow-hidden">
                 {currentEvent?.settings?.logoUrl ? (
                   <img
                     src={currentEvent.settings.logoUrl}
@@ -139,10 +139,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
               </div>
               {!collapsed && (
                 <div className="flex flex-col">
-                  <span className="font-black text-sm tracking-tight text-white flex items-center gap-1">
+                  <span className="font-black text-sm tracking-tight text-foreground flex items-center gap-1">
                     EVENT<span className="text-primary font-black">GRID</span>
                   </span>
-                  <span className="text-[10px] text-zinc-400 font-mono tracking-wider">
+                  <span className="text-[10px] text-muted-foreground font-mono tracking-wider">
                     PLATAFORMA DE EVENTOS
                   </span>
                 </div>
@@ -152,7 +152,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setCollapsed(!collapsed)}
-                className="hidden md:flex p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                className="hidden md:flex p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                 title={collapsed ? 'Expandir menú lateral' : 'Colapsar menú lateral'}
               >
                 {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
@@ -160,7 +160,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
               {setMobileOpen && (
                 <button
                   onClick={() => setMobileOpen(false)}
-                  className="md:hidden p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                  className="md:hidden p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                   title="Cerrar menú"
                 >
                   <X className="w-5 h-5" />
@@ -187,7 +187,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                     `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group ${
                       isActive
                         ? 'bg-primary text-white shadow-md shadow-primary/25 font-semibold'
-                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
                     }`
                   }
                   title={collapsed ? item.label : undefined}
@@ -211,20 +211,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
 
       {/* Pie del Sidebar: Tarjeta de Edición Activa */}
       {!collapsed && currentEvent && (
-        <div className="p-3 m-3 rounded-xl bg-zinc-900/90 border border-zinc-800/80">
+        <div className="p-3 m-3 rounded-xl bg-muted/60 border border-border">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-mono uppercase tracking-wider text-primary font-bold">
               Evento en Gestión
             </span>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           </div>
-          <p className="text-xs font-bold text-white truncate">{currentEvent.name}</p>
-          <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+          <p className="text-xs font-bold text-foreground truncate">{currentEvent.name}</p>
+          <p className="text-[11px] text-muted-foreground truncate mt-0.5">
             {currentEvent.venue}
           </p>
-          <div className="mt-2.5 pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[11px] text-zinc-400">
-            <span>Prefijo: <strong className="text-zinc-200 font-mono">{currentEvent.settings?.registrationPrefix || 'BC-'}</strong></span>
-            <span>Moneda: <strong className="text-zinc-200 font-mono">{currentEvent.settings?.currencyCode || 'DOP'}</strong></span>
+          <div className="mt-2.5 pt-2 border-t border-border/70 flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>Prefijo: <strong className="text-foreground font-mono font-medium">{currentEvent.settings?.registrationPrefix || 'BC-'}</strong></span>
+            <span>Moneda: <strong className="text-foreground font-mono font-medium">{currentEvent.settings?.currencyCode || 'DOP'}</strong></span>
           </div>
         </div>
       )}

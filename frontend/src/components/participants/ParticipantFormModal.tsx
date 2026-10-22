@@ -204,8 +204,8 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       isCourtesy,
       courtesyAuthorizedBy: isCourtesy ? courtesyAuthorizedBy.trim() || null : null,
       courtesyReason: isCourtesy ? courtesyReason.trim() || null : null,
-      paymentMethodId: paymentMethodId || null,
-      salesResponsibleId: salesResponsibleId || null,
+      paymentMethodId: isCourtesy ? null : (paymentMethodId || null),
+      salesResponsibleId: isCourtesy ? null : (salesResponsibleId || null),
       status,
       notes: notes.trim() || null,
     };
@@ -532,8 +532,14 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                     setIsCourtesy(checked);
                     if (checked) {
                       setAmountPaid(0);
-                    } else if (amountPaid === 0) {
-                      setAmountPaid(ticketPrice);
+                      setPaymentMethodId('');
+                      setSalesResponsibleId('');
+                      setIsVerified(true);
+                    } else {
+                      const baseTicket = ticketTypes.find((t) => t.id === ticketTypeId);
+                      const restoredPrice = baseTicket ? Number(baseTicket.price) : 1750;
+                      setTicketPrice(restoredPrice);
+                      setAmountPaid(restoredPrice);
                     }
                   }}
                   className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 bg-background border-border"
@@ -581,55 +587,67 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
           {/* Fila 5: Forma de pago y Responsable */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">
-                Forma de Pago
+              <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                <span>Forma de Pago</span>
+                {isCourtesy && <span className="text-[10px] text-amber-500 font-bold">No aplica</span>}
               </label>
               <select
-                value={paymentMethodId}
+                value={isCourtesy ? '' : paymentMethodId}
                 onChange={(e) => setPaymentMethodId(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                disabled={isCourtesy}
+                className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
+                  isCourtesy ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground' : ''
+                }`}
               >
-                <option value="">-- No especificada --</option>
-                {paymentMethods.map((pm) => (
-                  <option key={pm.id} value={pm.id}>
-                    {pm.name}
-                  </option>
-                ))}
+                <option value="">{isCourtesy ? 'No aplica (Cortesía institucional)' : '-- No especificada --'}</option>
+                {!isCourtesy &&
+                  paymentMethods.map((pm) => (
+                    <option key={pm.id} value={pm.id}>
+                      {pm.name}
+                    </option>
+                  ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">
-                Responsable de Venta
+              <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                <span>Responsable de Venta</span>
+                {isCourtesy && <span className="text-[10px] text-amber-500 font-bold">No aplica</span>}
               </label>
               <select
-                value={salesResponsibleId}
+                value={isCourtesy ? '' : salesResponsibleId}
                 onChange={(e) => setSalesResponsibleId(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                disabled={isCourtesy}
+                className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
+                  isCourtesy ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground' : ''
+                }`}
               >
-                <option value="">-- Comité Organizador --</option>
-                {salesResponsibles.map((sr) => (
-                  <option key={sr.id} value={sr.id}>
-                    {sr.name} {sr.role ? `(${sr.role})` : ''}
-                  </option>
-                ))}
+                <option value="">{isCourtesy ? 'No aplica (Cortesía)' : '-- Comité Organizador --'}</option>
+                {!isCourtesy &&
+                  salesResponsibles.map((sr) => (
+                    <option key={sr.id} value={sr.id}>
+                      {sr.name} {sr.role ? `(${sr.role})` : ''}
+                    </option>
+                  ))}
               </select>
             </div>
           </div>
 
-          {/* Verificación de Pago Toggle */}
-          <div className="flex items-center gap-2 pt-1">
-            <input
-              type="checkbox"
-              id="isVerifiedCheck"
-              checked={isVerified}
-              onChange={(e) => setIsVerified(e.target.checked)}
-              className="w-4 h-4 rounded text-primary focus:ring-primary bg-background border-border"
-            />
-            <label htmlFor="isVerifiedCheck" className="text-xs font-medium text-foreground cursor-pointer">
-              Marcar pago como <strong>verificado / recibido</strong> en cuentas o caja
-            </label>
-          </div>
+          {/* Verificación de Pago Toggle (Solo si no es cortesía) */}
+          {!isCourtesy && (
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                id="isVerifiedCheck"
+                checked={isVerified}
+                onChange={(e) => setIsVerified(e.target.checked)}
+                className="w-4 h-4 rounded text-primary focus:ring-primary bg-background border-border"
+              />
+              <label htmlFor="isVerifiedCheck" className="text-xs font-medium text-foreground cursor-pointer">
+                Marcar pago como <strong>verificado / recibido</strong> en cuentas o caja
+              </label>
+            </div>
+          )}
 
           {/* Notas */}
           <div>

@@ -17,6 +17,25 @@ import QRCode from 'qrcode';
 import crypto from 'crypto';
 
 export class CommunicationsService {
+  private static customTransporterFactory: ((config: any) => any) | null = null;
+
+  static setTransporterFactory(factory: ((config: any) => any) | null) {
+    this.customTransporterFactory = factory;
+    EmailQueueWorker.setTransporterFactory(factory);
+  }
+
+  static createTransporter(config: any) {
+    if (this.customTransporterFactory) {
+      return this.customTransporterFactory(config);
+    }
+    const rawPassword = config.password ? decryptSecret(config.password) : '';
+    return nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      auth: config.user ? { user: config.user, pass: rawPassword } : undefined,
+    });
+  }
   /**
    * Obtener configuración SMTP (ocultando credenciales sensibles) (QA-12)
    */
@@ -30,7 +49,16 @@ export class CommunicationsService {
       const editionConfig = await prisma.emailConfig.findFirst({
         where: { eventId },
       });
-      if (editionConfig) return editionConfig;
+      if (editionConfig && editionConfig.isEnabled) {
+        return editionConfig;
+      }
+      const globalConfig = await prisma.emailConfig.findFirst({
+        where: { eventId: null },
+      });
+      if (globalConfig && globalConfig.isEnabled) {
+        return globalConfig;
+      }
+      return editionConfig || globalConfig || null;
     }
 
     return await prisma.emailConfig.findFirst({
@@ -79,6 +107,14 @@ export class CommunicationsService {
       config = await prisma.emailConfig.findFirst({
         where: { eventId },
       });
+      if (!config || !config.isEnabled) {
+        const globalConfig = await prisma.emailConfig.findFirst({
+          where: { eventId: null },
+        });
+        if (globalConfig && globalConfig.isEnabled) {
+          config = globalConfig;
+        }
+      }
     }
 
     // Si no hay configuración específica para la edición, buscar la configuración global
@@ -765,21 +801,15 @@ export class CommunicationsService {
       customMessage: input.customMessage || undefined,
     });
 
+    // Determinar modo de envío solicitado: REAL vs SIMULATION
+    const isSimulationRequested =
+      input.mode === 'SIMULATION' || input.simulateOnly === true;
+
     // QA-24: Obtener configuración de correo con prioridad estricta de edición
     const config = await this.getRawConfig(eventId);
+    const isSmtpConfiguredAndActive = Boolean(config && config.isEnabled && config.host);
 
-    const isDemo =
-      registration.isDemo ||
-      registration.event.settings?.demoModeEnabled ||
-      process.env.NODE_ENV === 'test' ||
-      process.env.VITEST === 'true' ||
-      Boolean(config?.host.includes('mailtrap')) ||
-      Boolean(config?.host.includes('example')) ||
-      registration.participant.email.includes('@eventgrid.test') ||
-      registration.participant.email.includes('@ejemplo.com');
-
-    // Si está en modo demo o el servicio SMTP no está activado, registrar como SIMULATED
-    if (isDemo || !config || !config.isEnabled) {
+    if (isSimulationRequested) {
       const log = await prisma.emailLog.create({
         data: {
           eventId,
@@ -797,20 +827,35 @@ export class CommunicationsService {
         success: true,
         log,
         simulated: true,
-        message: 'Envío simulado correctamente (modo demostración o SMTP no habilitado).',
+        message: 'Envío simulado correctamente (modo simulación solicitado).',
       };
     }
 
-    // Envío real con nodemailer y contraseña descifrada (QA-12)
-    const rawPassword = decryptSecret(config.password);
+    // Modo REAL: Validar estrictamente configuración SMTP activa y no nula
+    if (!config || !isSmtpConfiguredAndActive) {
+      throw new BadRequestError(
+        'El servidor SMTP no está configurado o está deshabilitado. No se puede realizar un envío real.'
+      );
+    }
 
+    const rawPassword = config?.password ? decryptSecret(config.password) : '';
+    if (config?.user && (!rawPassword || rawPassword.trim() === '')) {
+      throw new BadRequestError(
+        'Configuración SMTP incompleta: se especificó usuario pero la contraseña está ausente.'
+      );
+    }
+
+    // Validar modo demostración
+    const isDemoContext = Boolean(registration.isDemo || registration.event.settings?.demoModeEnabled);
+    if (isDemoContext && !input.confirmedDemoSending) {
+      throw new BadRequestError(
+        'El evento o la inscripción se encuentra en modo demostración. Debe confirmar explícitamente el envío real hacia destinatarios externos.'
+      );
+    }
+
+    // Envío real mediante transporte configurado o fábrica de pruebas
     try {
-      const transporter = nodemailer.createTransport({
-        host: config.host,
-        port: config.port,
-        secure: config.secure,
-        auth: config.user && rawPassword ? { user: config.user, pass: rawPassword } : undefined,
-      });
+      const transporter = this.createTransporter(config);
 
       await transporter.sendMail({
         from: `"${config.fromName}" <${config.fromEmail}>`,
@@ -927,20 +972,20 @@ export class CommunicationsService {
     // QA-24: Configuración SMTP con prioridad estricta de edición
     const config = await this.getRawConfig(input.eventId);
 
-    const isConfigActive = Boolean(config && config.isEnabled);
-    // Explicit simulation vs real send: if SMTP disabled and real send requested, throw BadRequestError
-    if (!input.simulateOnly && !isConfigActive) {
+    const isSimulationRequested =
+      input.mode === 'SIMULATION' || input.simulateOnly === true;
+
+    const isConfigActive = Boolean(config && config.isEnabled && config.host);
+
+    if (!isSimulationRequested && !isConfigActive) {
       throw new BadRequestError('El servidor SMTP no está configurado o está deshabilitado. No se puede realizar un envío real.');
     }
 
-    const isGlobalSimulation =
-      Boolean(input.simulateOnly) ||
-      !isConfigActive ||
-      Boolean(event.settings?.demoModeEnabled) ||
-      process.env.NODE_ENV === 'test' ||
-      process.env.VITEST === 'true' ||
-      Boolean(config?.host?.includes('mailtrap')) ||
-      Boolean(config?.host?.includes('example'));
+    if (!isSimulationRequested && event.settings?.demoModeEnabled && !input.confirmedDemoSending) {
+      throw new BadRequestError('El evento está en modo demostración. Debe confirmar explícitamente el envío masivo real en modo demo.');
+    }
+
+    const isGlobalSimulation = isSimulationRequested;
 
     const rawPassword = config ? decryptSecret(config.password) : '';
     let transporter: any = null;
@@ -957,7 +1002,7 @@ export class CommunicationsService {
     // Registrar EmailBatchJob persistente en estado PENDING
     const batchId = `BATCH-${crypto.randomUUID()}`;
     // QA-20 & QA-23: Persistir versión inmutable del contenido de la campaña
-    const mode = input.simulateOnly ? 'SIMULATION' : 'REAL';
+    const mode = (input.mode === 'SIMULATION' || input.simulateOnly) ? 'SIMULATION' : 'REAL';
     const approvedSubject = input.customSubject?.trim() || template.subject;
     const approvedBodyHtml = input.customBodyHtml?.trim() || template.bodyHtml;
     const approvedBodyText = template.bodyText || null;

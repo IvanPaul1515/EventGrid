@@ -125,6 +125,8 @@ export const CommunicationsPage: React.FC = () => {
   });
   const [bulkSampleRecipients, setBulkSampleRecipients] = useState<any[]>([]);
   const [bulkSimulateOnly, setBulkSimulateOnly] = useState(false);
+  const [bulkDeliveryMode, setBulkDeliveryMode] = useState<'REAL' | 'SIMULATION'>('REAL');
+  const [confirmedBulkDemoSending, setConfirmedBulkDemoSending] = useState(false);
   const [singleSimulateOnly, setSingleSimulateOnly] = useState(false);
   const [previewSampleType, setPreviewSampleType] = useState<'MOCK' | 'PARTICIPANT'>('MOCK');
   const [loadingBulkStats, setLoadingBulkStats] = useState(false);
@@ -446,6 +448,9 @@ export const CommunicationsPage: React.FC = () => {
         targetGroup: bulkTargetGroup,
         customSubject: bulkSubject || undefined,
         customMessage: bulkCustomMessage || undefined,
+        mode: bulkDeliveryMode,
+        simulateOnly: bulkDeliveryMode === 'SIMULATION',
+        confirmedDemoSending: confirmedBulkDemoSending,
       });
 
       setBulkResult(res);
@@ -1212,15 +1217,98 @@ export const CommunicationsPage: React.FC = () => {
                 </p>
               </div>
 
+              {/* Selector de Modo de Envío Masivo */}
+              <div className="p-4 rounded-xl bg-muted/40 border border-border space-y-3">
+                <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
+                  Modo de Procesamiento del Lote
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label
+                    className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
+                      bulkDeliveryMode === 'REAL'
+                        ? 'bg-primary/10 border-primary text-foreground ring-1 ring-primary'
+                        : 'bg-card border-border text-muted-foreground hover:bg-muted/50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="bulkDeliveryMode"
+                      value="REAL"
+                      checked={bulkDeliveryMode === 'REAL'}
+                      onChange={() => setBulkDeliveryMode('REAL')}
+                      className="mt-0.5 text-primary focus:ring-primary"
+                    />
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <span className="font-bold text-xs text-foreground">Envío Masivo Real (SMTP)</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                        Entrega real a través del servidor SMTP configurado hacia los buzones de los participantes.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
+                      bulkDeliveryMode === 'SIMULATION'
+                        ? 'bg-amber-500/10 border-amber-500 text-foreground ring-1 ring-amber-500'
+                        : 'bg-card border-border text-muted-foreground hover:bg-muted/50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="bulkDeliveryMode"
+                      value="SIMULATION"
+                      checked={bulkDeliveryMode === 'SIMULATION'}
+                      onChange={() => setBulkDeliveryMode('SIMULATION')}
+                      className="mt-0.5 text-amber-500 focus:ring-amber-500"
+                    />
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                        <span className="font-bold text-xs text-foreground">Simular Campaña Masiva</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                        Registra el lote y las métricas como SIMULATED sin contactar al servidor SMTP externo.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Advertencia y confirmación obligatoria si está en modo demo y se elige envío real */}
+                {bulkDeliveryMode === 'REAL' && currentEvent?.settings?.demoModeEnabled && (
+                  <div className="p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-500 dark:text-amber-400 space-y-2 mt-2">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <p className="text-xs font-medium leading-relaxed">
+                        <strong>Atención:</strong> La edición está en <strong>Modo Demostración</strong>. Al confirmar el envío masivo real, los correos saldrán efectivamente por el servidor SMTP a las direcciones reales registradas en la edición.
+                      </p>
+                    </div>
+                    <label className="flex items-center gap-2 pt-1 border-t border-amber-500/20 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={confirmedBulkDemoSending}
+                        onChange={(e) => setConfirmedBulkDemoSending(e.target.checked)}
+                        className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 bg-background border-border"
+                      />
+                      <span className="text-xs font-bold text-foreground">
+                        Confirmo que deseo realizar el envío masivo real hacia correos externos aun en modo demo
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
               {/* Alerta de Seguridad Destacada */}
-              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 space-y-1">
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 space-y-1">
                 <div className="flex items-center gap-2 font-bold text-sm">
                   <AlertTriangle className="w-5 h-5 shrink-0" />
                   <span>Confirmación de Envío Masivo</span>
                 </div>
-                <p className="text-xs text-amber-400/90 leading-relaxed">
-                  Está a punto de iniciar el envío a <strong>{bulkStats.total} participantes</strong> con la plantilla{' '}
-                  <strong>{bulkTemplateCode}</strong>. El lote se procesará en fragmentos con control de velocidad y trazabilidad auditada.
+                <p className="text-xs text-amber-700 dark:text-amber-400/90 leading-relaxed">
+                  Está a punto de iniciar el procesamiento para <strong>{bulkStats.total} participantes</strong> con la plantilla{' '}
+                  <strong>{bulkTemplateCode}</strong> en modo <strong>{bulkDeliveryMode === 'REAL' ? 'ENVÍO REAL (SMTP)' : 'SIMULACIÓN'}</strong>.
                 </p>
               </div>
 
@@ -1239,7 +1327,10 @@ export const CommunicationsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setBulkStep(2)}
-                  disabled={sendingBulk}
+                  disabled={
+                    sendingBulk ||
+                    (bulkDeliveryMode === 'REAL' && currentEvent?.settings?.demoModeEnabled && !confirmedBulkDemoSending)
+                  }
                   className="px-4 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted"
                 >
                   Atrás

@@ -31,7 +31,9 @@ export const SendEmailSchema = z.object({
   customSubject: z.string().optional().nullable(),
   customBodyHtml: z.string().optional().nullable(),
   customMessage: z.string().optional().nullable(),
+  mode: z.enum(['REAL', 'SIMULATION']).optional(),
   simulateOnly: z.boolean().optional(),
+  confirmedDemoSending: z.boolean().optional(),
 });
 
 export const SendBulkEmailSchema = z.object({
@@ -51,7 +53,9 @@ export const SendBulkEmailSchema = z.object({
   customSubject: z.string().optional().nullable(),
   customBodyHtml: z.string().optional().nullable(),
   customMessage: z.string().optional().nullable(),
+  mode: z.enum(['REAL', 'SIMULATION']).optional(),
   simulateOnly: z.boolean().optional(),
+  confirmedDemoSending: z.boolean().optional(),
 });
 
 export const ValidateRecipientsSchema = z.object({
