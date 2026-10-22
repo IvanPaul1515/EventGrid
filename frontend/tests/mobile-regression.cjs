@@ -44,6 +44,8 @@ const base=process.env.EVENTGRID_TEST_URL || 'http://127.0.0.1:5178';
   await page.getByRole('button',{name:'Nuevo Participante',exact:true}).click();
   const modal=page.getByRole('dialog'); await modal.waitFor();
   const amount=modal.locator('input[inputmode="decimal"]').first();
+  await amount.fill('01750'); assert.equal(await amount.inputValue(),'1750');
+  await amount.blur(); assert.equal(await amount.inputValue(),'1,750.00');
   await amount.focus(); await amount.fill(''); assert.equal(await amount.inputValue(),'');
   await amount.fill('01750'); assert.equal(await amount.inputValue(),'1750');
   await amount.blur(); assert.equal(await amount.inputValue(),'1,750.00');
