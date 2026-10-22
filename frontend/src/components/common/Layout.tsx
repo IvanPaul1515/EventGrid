@@ -15,7 +15,9 @@ export const Layout: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 md:p-8 bg-background">
           <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
             <ErrorBoundary>
-              <Outlet />
+              <div className="spa-content-area">
+                <Outlet />
+              </div>
             </ErrorBoundary>
           </div>
         </main>

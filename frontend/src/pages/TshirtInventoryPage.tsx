@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
+import { useRealtimeEvent } from '../context/RealtimeContext';
 import { inventoryService, TshirtInventoryItem, InventoryStats } from '../services/inventory.service';
 import {
   Shirt,
@@ -67,6 +68,13 @@ export const TshirtInventoryPage: React.FC = () => {
   }, [loadData]);
 
   // Escuchar refrescos globales de datos
+  // Sincronización en tiempo real al entregar o modificar camisetas
+  useRealtimeEvent(['CHECK_IN_CONFIRMED', 'TSHIRT_DELIVERED', 'TSHIRT_UPDATED'], (event) => {
+    if (event.data?.tshirtDelivered || event.type === 'TSHIRT_DELIVERED' || event.type === 'TSHIRT_UPDATED') {
+      loadData();
+    }
+  });
+
   useEffect(() => {
     const handleRefresh = () => loadData();
     window.addEventListener('eventgrid:data-refresh', handleRefresh);

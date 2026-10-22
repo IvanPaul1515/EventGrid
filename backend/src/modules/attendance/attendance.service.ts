@@ -1,3 +1,4 @@
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { prisma } from '../../config/db.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { BadRequestError, NotFoundError } from '../../utils/errors.js';
@@ -344,6 +345,22 @@ export class AttendanceService {
 
     const counters = await this.getCounters(eventId);
 
+    RealtimeService.emit(eventId, {
+      type: 'CHECK_IN_CONFIRMED',
+      data: {
+        registrationId,
+        attended: true,
+        attendedAt: updatedRegistration.attendedAt,
+        attendedByUserId: operatorUserId,
+        attendedByName: updatedRegistration.attendedByUser?.fullName || 'Operador',
+        attendedByEmail: updatedRegistration.attendedByUser?.email || '',
+        tshirtSize: updatedRegistration.tshirtSize,
+        tshirtDelivered: updatedRegistration.tshirtDelivered,
+        counters,
+        registration: updatedRegistration,
+      },
+    });
+
     return {
       registration: updatedRegistration,
       counters,
@@ -424,6 +441,19 @@ export class AttendanceService {
     ]);
 
     const counters = await this.getCounters(eventId);
+
+    RealtimeService.emit(eventId, {
+      type: 'ATTENDANCE_REVERTED',
+      data: {
+        registrationId,
+        attended: false,
+        attendedAt: null,
+        attendedByUserId: null,
+        attendedByName: null,
+        counters,
+        registration: updatedRegistration,
+      },
+    });
 
     return {
       registration: updatedRegistration,

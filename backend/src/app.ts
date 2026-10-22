@@ -31,6 +31,7 @@ import communicationsRoutes from './modules/communications/communications.routes
 import inventoryRoutes from './modules/inventory/inventory.routes.js';
 import usersRoutes from './modules/users/users.routes.js';
 import scheduleRoutes from './modules/schedule/schedule.routes.js';
+import realtimeRoutes from './modules/realtime/realtime.routes.js';
 
 export const app = express();
 
@@ -102,6 +103,10 @@ app.get(`${ENV.API_PREFIX}/health`, async (req, res) => {
 
 // Rutas de módulos
 app.use(`${ENV.API_PREFIX}/auth`, authRoutes);
+app.use(`${ENV.API_PREFIX}/realtime`, realtimeRoutes);
+app.use(`${ENV.API_PREFIX}/events`, realtimeRoutes);
+app.use('/api/realtime', realtimeRoutes);
+app.use('/api/events', realtimeRoutes);
 app.use(`${ENV.API_PREFIX}/events`, eventsRoutes);
 app.use(`${ENV.API_PREFIX}/participants`, participantsRoutes);
 app.use(`${ENV.API_PREFIX}/import`, importRoutes);
