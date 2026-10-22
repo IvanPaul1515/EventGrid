@@ -608,7 +608,7 @@ export const DashboardPage: React.FC = () => {
                 {registrations.slice(0, 5).map((reg) => (
                   <div key={reg.id} className="py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-zinc-800 text-white">
+                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-muted text-foreground border border-border">
                         {reg.registrationNumber}
                       </span>
                       <div>

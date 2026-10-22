@@ -60,11 +60,20 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (isDark) {
       root.classList.add('dark');
       localStorage.setItem('barcamp_theme_mode', 'dark');
+      if (currentEvent?.settings?.backgroundColor && currentEvent.settings.backgroundColor.startsWith('#')) {
+        try {
+          const bgHsl = hexToHSL(currentEvent.settings.backgroundColor);
+          root.style.setProperty('--background', bgHsl);
+        } catch (e) {
+          console.warn('Error al aplicar fondo:', e);
+        }
+      }
     } else {
       root.classList.remove('dark');
       localStorage.setItem('barcamp_theme_mode', 'light');
+      root.style.removeProperty('--background');
     }
-  }, [isDark]);
+  }, [isDark, currentEvent]);
 
   // Aplicar colores y favicon de la edición activa
   useEffect(() => {
