@@ -76,4 +76,14 @@ export const scheduleService = {
     const res = await api.get(`/events/${eventId}/schedule/public`);
     return res.data.data;
   },
+
+  async seedDemoSchedule(eventId: string): Promise<any> {
+    const res = await api.post(`/events/${eventId}/schedule/demo`);
+    return res.data;
+  },
+
+  async clearDemoSchedule(eventId: string): Promise<any> {
+    const res = await api.delete(`/events/${eventId}/schedule/demo`);
+    return res.data;
+  },
 };

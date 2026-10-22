@@ -168,4 +168,33 @@ export class ScheduleController {
       next(error);
     }
   }
+
+  static async seedDemoSchedule(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = ScheduleController.getEventId(req);
+      const result = await ScheduleService.seedDemoSchedule(eventId);
+      return res.status(200).json({
+        status: 'success',
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async clearDemoSchedule(req: Request, res: Response, next: NextFunction) {
+    try {
+      const eventId = ScheduleController.getEventId(req);
+      const result = await ScheduleService.clearDemoSchedule(eventId);
+      return res.status(200).json({
+        status: 'success',
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
 }
