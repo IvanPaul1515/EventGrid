@@ -227,16 +227,11 @@ export class EmailQueueWorker {
             return;
           }
 
-          // Crear transporte SMTP (usando fábrica inyectable si existe, o nodemailer)
+          // Crear transporte SMTP unificado y robusto con pooling y timeouts
           if (this.customTransporterFactory) {
             transporter = this.customTransporterFactory(config);
           } else if (config.host) {
-            transporter = nodemailer.createTransport({
-              host: config.host,
-              port: config.port,
-              secure: config.secure,
-              auth: config.user ? { user: config.user, pass: rawPassword } : undefined,
-            });
+            transporter = CommunicationsService.createTransporter(config);
           }
 
           if (!transporter) {
@@ -458,6 +453,7 @@ export class EmailQueueWorker {
                         const qrBuffer = await QRCode.toBuffer(qrUrl, { width: 280, margin: 2, errorCorrectionLevel: 'H' });
                         const payload = CommunicationsService.prepareEmailPayload(preparedHtml, {
                           qrBuffer,
+                          qrDataUrl: ticketInfo.qrDataUrl,
                           logoUrl: job.event?.settings?.logoUrl || (job.event as any)?.logoUrl,
                         });
                         preparedHtml = payload.html;

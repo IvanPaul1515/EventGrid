@@ -292,7 +292,7 @@ export const CommunicationsPage: React.FC = () => {
         setTemplateBody(data[0].bodyHtml);
       }
       if (data.length > 0 && !composeSubject) {
-        const defaultTmpl = data.find((t) => t.code === 'INSCRIPTION_CONFIRMATION') || data[0];
+        const defaultTmpl = data.find((t) => t.code === 'DIGITAL_TICKET') || data.find((t) => t.code === 'INSCRIPTION_CONFIRMATION') || data[0];
         setComposeTemplateCode(defaultTmpl.code);
         setComposeSubject(defaultTmpl.subject);
         setComposeBodyHtml(defaultTmpl.bodyHtml);

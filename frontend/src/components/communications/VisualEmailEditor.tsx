@@ -121,6 +121,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
   // Asunto y contenido HTML interno
   const [subject, setSubject] = useState(initialSubject);
   const [rawHtml, setRawHtml] = useState(initialHtml);
+  const hasUserEditedBlocks = React.useRef(false);
 
   // Sincronizar cuando cambian las props iniciales (ej. al cambiar de plantilla en el padre)
   useEffect(() => {
@@ -363,9 +364,9 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
     `.trim();
   };
 
-  // Re-generar HTML al cambiar bloques si está en modo bloques
+  // Re-generar HTML al cambiar bloques SOLO si el usuario ha modificado activamente los bloques
   useEffect(() => {
-    if (editorMode === 'blocks') {
+    if (editorMode === 'blocks' && hasUserEditedBlocks.current) {
       const generated = renderBlocksToHtml(blocks);
       setRawHtml(generated);
       if (onChangeHtml) onChangeHtml(generated);
@@ -380,6 +381,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
 
   // Operaciones con bloques
   const handleAddBlock = (type: EmailBlockType) => {
+    hasUserEditedBlocks.current = true;
     const newId = `b-${Date.now()}`;
     let newConfig: any = {};
     if (type === 'HEADING') newConfig = { text: 'Nuevo Encabezado', level: 'h2', align: 'left' };
@@ -391,12 +393,14 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
   };
 
   const handleRemoveBlock = (id: string) => {
+    hasUserEditedBlocks.current = true;
     setBlocks(blocks.filter((b) => b.id !== id));
   };
 
   const handleMoveBlock = (index: number, direction: 'up' | 'down') => {
     if (direction === 'up' && index === 0) return;
     if (direction === 'down' && index === blocks.length - 1) return;
+    hasUserEditedBlocks.current = true;
 
     const newBlocks = [...blocks];
     const targetIdx = direction === 'up' ? index - 1 : index + 1;
@@ -407,6 +411,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
   };
 
   const handleUpdateBlockConfig = (id: string, updates: Partial<EmailBlock['config']>) => {
+    hasUserEditedBlocks.current = true;
     setBlocks(
       blocks.map((b) => (b.id === id ? { ...b, config: { ...b.config, ...updates } } : b))
     );
@@ -414,7 +419,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
 
   // Generar HTML final para el iframe de vista previa con datos de muestra o del participante real
   const previewHtmlDoc = useMemo(() => {
-    let html = editorMode === 'blocks' ? renderBlocksToHtml(blocks) : (rawHtml || renderBlocksToHtml(blocks));
+    let html = rawHtml || renderBlocksToHtml(blocks);
 
     // Datos para sustitución segura
     const pName = selectedParticipant?.fullName || 'María Pérez Fernández';
@@ -464,9 +469,6 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
             <rect x="62" y="80" width="12" height="8" fill="#0f172a" />
             <rect x="80" y="80" width="8" height="8" fill="${primaryColor}" />
           </svg>
-          <div style="margin-top: 6px; font-family: monospace; font-size: 11px; font-weight: bold; color: #334155;">
-            ${pTicket}
-          </div>
         </div>
       </div>
     `;
@@ -516,7 +518,16 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
     html = html.split('{{amountPaid}}').join('RD$ 1,750.00');
     html = html.split('{{balanceDue}}').join('RD$ 0.00');
     html = html.split('{{currencySymbol}}').join('RD$');
+    const instHtml = pInst ? `<p style="margin: 3px 0 0 0; font-size: 12px; color: #64748b;">${pInst}</p>` : '';
+    const logoHtml = eventLogo ? `<td valign="top" align="right" style="width: 60px; padding-left: 12px;"><img src="${eventLogo}" alt="${eventName}" width="52" height="52" style="display: block; width: 52px; height: 52px; object-fit: contain; border-radius: 10px; border: 1px solid #e2e8f0; padding: 2px; background-color: #ffffff;" /></td>` : '';
+    const customMessageHtml = customMessage && customMessage.trim() !== ''
+      ? `<tr><td style="padding: 0 28px 12px 28px;"><div style="padding: 12px 16px; background-color: #f8fafc; border-left: 3px solid ${primaryColor}; border-radius: 4px; font-size: 13px; color: #334155;">${customMessage}</div></td></tr>`
+      : '';
+    const qrDataUrlSafe = 'data:image/svg+xml;utf8,' + encodeURIComponent(qrSvg);
+
     html = html.split('{{institucion}}').join(pInst);
+    html = html.split('{{institution}}').join(pInst);
+    html = html.split('{{institutionHtml}}').join(instHtml);
     html = html.split('{{evento}}').join(eventName);
     html = html.split('{{eventName}}').join(eventName);
     html = html.split('{{eventYear}}').join(String(currentEvent?.year || 2026));
@@ -526,16 +537,16 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
     html = html.split('{{eventVenue}}').join(eVenue);
     html = html.split('{{primaryColor}}').join(primaryColor);
     html = html.split('{{eventColor}}').join(primaryColor);
-    html = html.split('{{qr}}').join(qrSvg);
-    html = html.split('{{qrDataUrl}}').join('data:image/svg+xml;utf8,' + encodeURIComponent(qrSvg));
-    html = html.split('cid:ticket-qr-code').join('data:image/svg+xml;utf8,' + encodeURIComponent(qrSvg));
-    html = html.split('{{qrUrl}}').join('https://barcamp.org.do/t/' + pTicket);
+    html = html.split('{{eventLogoHtml}}').join(logoHtml);
+    html = html.split('{{eventLogo}}').join(eventLogo || '');
+    html = html.split('{{logoUrl}}').join(eventLogo || '');
+    html = html.split('cid:event-logo').join(eventLogo || '');
+    html = html.split('cid:ticket-qr-code').join(qrDataUrlSafe);
+    html = html.split('{{qrDataUrl}}').join(qrDataUrlSafe);
+    html = html.split('{{qr}}').join(`<img src="${qrDataUrlSafe}" alt="Código QR de Acceso" width="200" height="200" style="display: block; margin: 0 auto; width: 200px; height: 200px; border: 0;" />`);
+    html = html.split('{{qrUrl}}').join('https://eventgrid.app/t/' + pTicket);
     html = html.split('{{scheduleHtml}}').join(scheduleHtml);
-    html = html.split('{{messageContent}}').join(
-      customMessage
-        ? `<div style="margin: 16px 0; padding: 12px; background: rgba(0,0,0,0.04); border-left: 3px solid ${primaryColor}; border-radius: 4px;">${customMessage}</div>`
-        : ''
-    );
+    html = html.split('{{messageContent}}').join(customMessageHtml);
 
     return html;
   }, [

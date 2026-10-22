@@ -31,11 +31,23 @@ export class CommunicationsService {
       return this.customTransporterFactory(config);
     }
     const rawPassword = config.password ? decryptSecret(config.password) : '';
+    const isExternalSmtp = Boolean(
+      config.host &&
+      !config.host.includes('localhost') &&
+      !config.host.includes('127.0.0.1') &&
+      !config.host.includes('test')
+    );
     return nodemailer.createTransport({
       host: config.host,
       port: config.port,
-      secure: config.secure,
+      secure: Boolean(config.secure),
       auth: config.user ? { user: config.user, pass: rawPassword } : undefined,
+      pool: isExternalSmtp,
+      maxConnections: 3,
+      maxMessages: 100,
+      connectionTimeout: 20000,
+      greetingTimeout: 20000,
+      socketTimeout: 30000,
     });
   }
   /**
@@ -355,35 +367,132 @@ export class CommunicationsService {
     {
       code: 'DIGITAL_TICKET',
       name: 'Entrada Digital con QR',
-      subject: 'Tu entrada digital para {{eventName}} ({{registrationNumber}})',
-      bodyHtml: `
-        <div style="font-family: Arial, sans-serif; background: #09090b; color: #fafafa; padding: 32px; border-radius: 16px; border: 1px solid #27272a; max-width: 560px; margin: 0 auto;">
-          <h2 style="color: #f43f5e; margin-top: 0;">Entrada Oficial — {{eventName}}</h2>
-          <p>Presenta este código QR en la mesa de recepción al momento de ingresar:</p>
-          <div style="text-align: center; margin: 24px 0; background: #ffffff; padding: 20px; border-radius: 12px; display: inline-block;">
-            <img src="{{qrDataUrl}}" alt="Código QR de Acceso" style="width: 240px; height: 240px; display: block;" />
-            <p style="color: #000000; font-family: monospace; font-weight: bold; margin-top: 8px;">{{registrationNumber}}</p>
-          </div>
-          <div style="background: #18181b; padding: 16px; border-radius: 8px; font-size: 13px;">
-            <p style="margin: 4px 0;"><strong>Participante:</strong> {{participantName}}</p>
-            <p style="margin: 4px 0;"><strong>Entrada:</strong> {{ticketType}}</p>
-            <p style="margin: 4px 0;"><strong>Lugar:</strong> {{eventVenue}}</p>
-            <p style="margin: 4px 0;"><strong>Fecha:</strong> {{eventDate}}</p>
-          </div>
-          {{messageContent}}
-          <p style="color: #71717a; font-size: 11px; margin-top: 24px; text-align: center;">Este código QR es personal e intransferible. Válido para un único acceso.</p>
-        </div>
-      `,
-      bodyText: 'Hola {{participantName}}, aquí tienes tu entrada para {{eventName}}. Código: {{registrationNumber}}. Enlace de acceso: {{qrUrl}}',
+      subject: 'Tu Entrada Digital para {{eventName}} — Ticket {{registrationNumber}}',
+      bodyHtml: `<div style="background-color: #f1f5f9; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 520px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.06);">
+    <!-- Franja Superior de Color de la Edicion -->
+    <tr>
+      <td style="height: 6px; background-color: {{primaryColor}}; line-height: 6px; font-size: 1px;">&nbsp;</td>
+    </tr>
+
+    <!-- Encabezado del Evento -->
+    <tr>
+      <td style="padding: 24px 28px 16px 28px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="top" style="text-align: left;">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: {{primaryColor}}; background-color: rgba(225, 29, 72, 0.08); padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(225, 29, 72, 0.2);">
+                ENTRADA OFICIAL EVENTGRID
+              </span>
+              <h1 style="margin: 10px 0 6px 0; font-size: 20px; font-weight: 800; color: #0f172a; line-height: 1.25; letter-spacing: -0.3px;">
+                {{eventName}}
+              </h1>
+              <div style="font-size: 12px; color: #64748b; margin-top: 4px; line-height: 1.5;">
+                <span style="display: inline-block; margin-right: 14px;">📍 {{eventVenue}}</span>
+                <span style="display: inline-block;">📅 {{eventDate}}</span>
+              </div>
+            </td>
+            {{eventLogoHtml}}
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- Separador -->
+    <tr>
+      <td style="padding: 0 28px;">
+        <div style="border-top: 1px solid #e2e8f0; font-size: 1px; line-height: 1px;">&nbsp;</div>
+      </td>
+    </tr>
+
+    <!-- Datos del Participante y Registro -->
+    <tr>
+      <td style="padding: 18px 28px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <!-- Columna Participante -->
+            <td width="55%" valign="top" style="text-align: left; padding-right: 12px;">
+              <p style="margin: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8;">
+                PARTICIPANTE
+              </p>
+              <p style="margin: 4px 0 0 0; font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.2;">
+                {{participantName}}
+              </p>
+              {{institutionHtml}}
+            </td>
+
+            <!-- Columna Registro y Entrada -->
+            <td width="45%" valign="top" style="text-align: left;">
+              <p style="margin: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8;">
+                NO. REGISTRO & TIPO
+              </p>
+              <p style="margin: 4px 0 0 0; font-size: 16px; font-weight: 900; font-family: 'SF Mono', Consolas, Monaco, monospace; color: {{primaryColor}}; line-height: 1.2;">
+                {{registrationNumber}}
+              </p>
+              <div style="margin-top: 5px;">
+                <span style="display: inline-block; font-size: 11px; font-weight: 700; color: #1e293b; background-color: #f1f5f9; padding: 2px 8px; border-radius: 4px; border: 1px solid #cbd5e1;">
+                  {{ticketType}}
+                </span>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- Mensaje Personalizado Adicional (opcional) -->
+    {{messageContent}}
+
+    <!-- Codigo QR Individual Central -->
+    <tr>
+      <td style="padding: 8px 28px 20px 28px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 14px;">
+          <tr>
+            <td align="center" style="padding: 24px 16px;">
+              <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                <img src="{{qrDataUrl}}" alt="Código QR de Acceso" width="200" height="200" style="display: block; width: 200px; height: 200px; border: 0;" />
+              </div>
+              <p style="margin: 14px auto 0 auto; max-width: 380px; font-size: 12px; font-weight: 600; color: #475569; text-align: center; line-height: 1.4;">
+                Presente este código QR en el módulo de recepción para registrar su entrada.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- Pie del Ticket -->
+    <tr>
+      <td style="padding: 0 28px 24px 28px; text-align: center;">
+        <p style="margin: 0; font-size: 11px; color: #94a3b8; line-height: 1.4;">
+          Este ticket es oficial, personal e intransferible. Válido para el acceso a <strong>{{eventName}}</strong>.<br/>
+          Emitido por el sistema <strong>EventGrid</strong>.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>`,
+      bodyText: 'Hola {{participantName}}, tu Entrada Digital para {{eventName}} ha sido emitida. Ticket: {{registrationNumber}}. Tipo: {{ticketType}}. Fecha: {{eventDate}}. Lugar: {{eventVenue}}. Presenta tu código QR en la mesa de recepción.',
       variables: [
         'participantName',
+        'nombre',
         'eventName',
+        'evento',
         'registrationNumber',
+        'numero_registro',
         'ticketType',
+        'tipo_entrada',
         'eventVenue',
+        'lugar',
         'eventDate',
+        'fecha',
+        'institucion',
+        'institutionHtml',
+        'eventLogoHtml',
+        'primaryColor',
         'qrUrl',
         'qrDataUrl',
+        'qr',
         'messageContent',
       ],
     },
@@ -750,8 +859,15 @@ export class CommunicationsService {
     }
 
     const currencySymbol = registration.event?.settings?.currencySymbol || 'RD$';
+    const institution = registration.participant?.institution?.trim();
+    const institutionHtml = institution
+      ? `<p style="margin: 3px 0 0 0; font-size: 12px; color: #64748b;">${institution}</p>`
+      : '';
     const rawLogoUrl = registration.event?.settings?.logoUrl || (registration.event as any)?.logoUrl || '';
     const logoUrl = rawLogoUrl ? (rawLogoUrl.startsWith('http') ? rawLogoUrl : `${publicUrlBase}${rawLogoUrl.startsWith('/') ? '' : '/'}${rawLogoUrl}`) : '';
+    const eventLogoHtml = logoUrl
+      ? `<td valign="top" align="right" style="width: 60px; padding-left: 12px;"><img src="${logoUrl}" alt="${registration.event?.name || 'Evento'}" width="52" height="52" style="display: block; width: 52px; height: 52px; object-fit: contain; border-radius: 10px; border: 1px solid #e2e8f0; padding: 2px; background-color: #ffffff;" /></td>`
+      : '';
 
     const scheduleUrl = `${publicUrlBase}/schedule`;
     const primaryColor = registration.event?.settings?.primaryColor || '#e11d48';
@@ -792,6 +908,27 @@ export class CommunicationsService {
       scheduleHtml,
       qrUrl,
       qrDataUrl,
+      // Variables y alias en español y semánticos
+      nombre: registration.participant?.fullName || 'Participante',
+      primer_nombre: registration.participant?.firstName || 'Participante',
+      email: registration.participant?.email || '',
+      correo: registration.participant?.email || '',
+      institucion: institution || '',
+      institution: institution || '',
+      institutionHtml,
+      evento: registration.event?.name || 'Evento Oficial',
+      fecha: registration.event?.startDate
+        ? new Date(registration.event.startDate).toLocaleDateString('es-DO', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          })
+        : 'Por anunciar',
+      lugar: registration.event?.venue || 'Sede Principal',
+      numero_registro: registration.registrationNumber || 'REG-0001',
+      tipo_entrada: registration.ticketType?.name || (registration.isCourtesy ? 'Cortesía' : 'General'),
+      qr: `<img src="${qrDataUrl}" alt="Código QR de Acceso" width="200" height="200" style="display: block; margin: 0 auto; width: 200px; height: 200px; border: 0;" />`,
+      eventLogoHtml,
       messageContent: overrides?.customMessage
         ? `<div style="margin: 16px 0; padding: 12px; background: rgba(255,255,255,0.05); border-left: 3px solid ${primaryColor}; border-radius: 4px;">${overrides.customMessage}</div>`
         : '',
@@ -868,13 +1005,14 @@ export class CommunicationsService {
         preparedHtml = preparedHtml.replace(/src="data:image\/png;base64,[^"]+"/g, 'src="cid:ticket-qr-code"');
       } else if (preparedHtml.includes('{{qrDataUrl}}')) {
         preparedHtml = preparedHtml.split('{{qrDataUrl}}').join('cid:ticket-qr-code');
+      } else if (preparedHtml.includes('{{qr}}')) {
+        preparedHtml = preparedHtml.split('{{qr}}').join('<img src="cid:ticket-qr-code" alt="Código QR de Acceso" width="200" height="200" style="display: block; margin: 0 auto; width: 200px; height: 200px; border: 0;" />');
       }
 
-      // Omitir filename para evitar que Gmail lo trate como archivo adjunto descargable al pie del correo
+      // Omitir filename para evitar que Gmail y Apple Mail muestren un adjunto descargable al pie del correo
       attachments.push({
         content: options.qrBuffer,
         cid: 'ticket-qr-code',
-        filename: 'ticket-qr.png',
         contentType: 'image/png',
         contentDisposition: 'inline',
       });
