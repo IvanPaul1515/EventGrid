@@ -190,7 +190,8 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
         case 'LOGO':
           return `
             <tr>
-              <td align="center" style="padding: 24px 20px 16px 20px; background-color: ${primaryColor};">
+              <td align="center" style="padding: 24px 20px 16px 20px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
+                <span style="display: inline-block; font-family: monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: ${primaryColor}; background-color: rgba(237, 41, 23, 0.12); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(237, 41, 23, 0.3); margin-bottom: 8px;">BARCAMP RD 2026</span><br/>
                 ${
                   eventLogo
                     ? `<img src="${eventLogo}" alt="${eventName}" style="max-height: 54px; max-width: 220px; display: block; border: 0;" />`
@@ -204,7 +205,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
           return `
             <tr>
               <td align="${b.config.align || 'left'}" style="padding: 20px 24px 8px 24px;">
-                <h${b.config.level === 'h1' ? '1' : b.config.level === 'h2' ? '2' : '3'} style="margin: 0; font-size: ${fontSize}; font-weight: 700; color: #111827; line-height: 1.3;">
+                <h${b.config.level === 'h1' ? '1' : b.config.level === 'h2' ? '2' : '3'} style="margin: 0; font-size: ${fontSize}; font-weight: 700; color: #f5f1ec; line-height: 1.3; letter-spacing: -0.3px;">
                   ${b.config.text || ''}
                 </h${b.config.level === 'h1' ? '1' : b.config.level === 'h2' ? '2' : '3'}>
               </td>
@@ -214,7 +215,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
           return `
             <tr>
               <td style="padding: 12px 24px 6px 24px;">
-                <div style="font-size: 16px; font-weight: 600; color: #374151;">
+                <div style="font-size: 16px; font-weight: 600; color: #f5f1ec;">
                   ${b.config.text || 'Estimado(a) {{nombre}}:'}
                 </div>
               </td>
@@ -223,7 +224,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
         case 'TEXT':
           return `
             <tr>
-              <td align="${b.config.align || 'left'}" style="padding: 8px 24px; font-size: 14px; line-height: 1.6; color: #4b5563;">
+              <td align="${b.config.align || 'left'}" style="padding: 8px 24px; font-size: 14px; line-height: 1.6; color: #e5dfd8;">
                 ${b.config.text || ''}
               </td>
             </tr>
@@ -232,7 +233,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
           return `
             <tr>
               <td style="padding: 16px 24px;">
-                <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 0;" />
+                <hr style="border: 0; border-top: 1px solid #261a1a; margin: 0;" />
               </td>
             </tr>
           `;
@@ -240,18 +241,18 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
           return `
             <tr>
               <td style="padding: 14px 24px;">
-                <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;">
+                <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #181111; border: 1px solid #2d1c1c; border-radius: 12px; padding: 16px;">
                   <tr>
-                    <td style="padding: 6px 0; font-size: 13px; color: #6b7280;">Participante:</td>
-                    <td align="right" style="padding: 6px 0; font-size: 13px; font-weight: 600; color: #111827;">{{nombre}}</td>
+                    <td style="padding: 6px 0; font-size: 13px; color: #a8a09a;">Participante:</td>
+                    <td align="right" style="padding: 6px 0; font-size: 13px; font-weight: 600; color: #f5f1ec;">{{nombre}}</td>
                   </tr>
                   <tr>
-                    <td style="padding: 6px 0; font-size: 13px; color: #6b7280;">Tipo de Entrada:</td>
-                    <td align="right" style="padding: 6px 0; font-size: 13px; font-weight: 600; color: #111827;">{{tipo_entrada}}</td>
+                    <td style="padding: 6px 0; font-size: 13px; color: #a8a09a;">Tipo de Entrada:</td>
+                    <td align="right" style="padding: 6px 0; font-size: 13px; font-weight: 600; color: #f5f1ec;">{{tipo_entrada}}</td>
                   </tr>
                   <tr>
-                    <td style="padding: 6px 0; font-size: 13px; color: #6b7280;">Institución:</td>
-                    <td align="right" style="padding: 6px 0; font-size: 13px; font-weight: 600; color: #111827;">{{institucion}}</td>
+                    <td style="padding: 6px 0; font-size: 13px; color: #a8a09a;">Institución:</td>
+                    <td align="right" style="padding: 6px 0; font-size: 13px; font-weight: 600; color: #f5f1ec;">{{institucion}}</td>
                   </tr>
                 </table>
               </td>
@@ -261,9 +262,9 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
           return `
             <tr>
               <td align="center" style="padding: 12px 24px;">
-                <div style="display: inline-block; background-color: #f3f4f6; border: 2px dashed ${primaryColor}; border-radius: 8px; padding: 10px 24px;">
-                  <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #6b7280; display: block; letter-spacing: 1px;">Número de Registro</span>
-                  <span style="font-size: 22px; font-weight: 800; font-family: monospace; color: #111827;">{{numero_registro}}</span>
+                <div style="display: inline-block; background-color: #181111; border: 2px dashed ${primaryColor}; border-radius: 8px; padding: 10px 24px;">
+                  <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #a8a09a; display: block; letter-spacing: 1px;">Número de Registro</span>
+                  <span style="font-size: 22px; font-weight: 800; font-family: monospace; color: #f5f1ec;">{{numero_registro}}</span>
                 </div>
               </td>
             </tr>
@@ -272,9 +273,9 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
           return `
             <tr>
               <td align="center" style="padding: 18px 24px;">
-                <div style="background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                <div style="background-color: #160f0f; border: 1px dashed #3d2424; border-radius: 14px; padding: 18px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                   {{qr}}
-                  <p style="margin: 8px 0 0 0; font-size: 11px; color: #6b7280; font-weight: 500;">Presenta este código en el acceso principal</p>
+                  <p style="margin: 8px 0 0 0; font-size: 11px; color: #a8a09a; font-weight: 500;">Presenta este código en el acceso principal</p>
                 </div>
               </td>
             </tr>
@@ -283,9 +284,9 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
           return `
             <tr>
               <td style="padding: 10px 24px;">
-                <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+                <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #181111; border: 1px solid #2d1c1c; border-radius: 10px; padding: 14px;">
                   <tr>
-                    <td style="font-size: 13px; color: #334155;">
+                    <td style="font-size: 13px; color: #e5dfd8;">
                       <strong>Fecha:</strong> {{fecha}}<br/>
                       <strong>Lugar:</strong> {{lugar}}
                     </td>
@@ -299,7 +300,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
             <tr>
               <td style="padding: 12px 24px;">
                 <div style="border-left: 3px solid ${primaryColor}; padding-left: 12px; margin: 4px 0;">
-                  <strong style="font-size: 13px; color: #111827;">Cronograma de Actividades</strong>
+                  <strong style="font-size: 13px; color: #f5f1ec;">Cronograma de Actividades</strong>
                   {{scheduleHtml}}
                 </div>
               </td>
@@ -330,7 +331,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
         case 'FOOTER':
           return `
             <tr>
-              <td align="center" style="padding: 24px 20px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af;">
+              <td align="center" style="padding: 24px 20px; background-color: #0c0808; border-top: 1px solid #261a1a; font-size: 11px; color: #6b6460;">
                 <p style="margin: 0 0 6px 0;">Este mensaje fue generado automáticamente por <strong>EventGrid</strong> para ${eventName}.</p>
                 <p style="margin: 0;">Para consultas o asistencia, responde directamente a este correo.</p>
               </td>
@@ -349,12 +350,12 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${subject || eventName}</title>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 24px 12px;">
+<body style="margin: 0; padding: 0; background-color: #0a0707; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0707; padding: 24px 12px;">
     <tr>
       <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.07); border: 1px solid #e5e7eb;">
-          ${renderedBlocks.join('')}
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #110c0c; border-radius: 16px; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6); border: 1px solid #261a1a;">
+          <tr><td style="height: 6px; background-color: ${primaryColor}; line-height: 6px; font-size: 1px;">&nbsp;</td></tr>\n          ${renderedBlocks.join('')}
         </table>
       </td>
     </tr>
@@ -422,7 +423,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
     let html = rawHtml || renderBlocksToHtml(blocks);
 
     // Datos para sustitución segura
-    const pName = selectedParticipant?.fullName || 'María Pérez Fernández';
+    const pName = selectedParticipant ? selectedParticipant.fullName : 'María Pérez Fernández (Ejemplo)';
     const pFirstName = pName.split(' ')[0] || 'María';
     const pEmail = selectedParticipant?.email || 'maria.perez@ejemplo.edu.do';
     const pTicket = selectedParticipant?.registrationNumber || 'BC26-1042';
@@ -517,6 +518,11 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
     html = html.split('{{ticketPrice}}').join('RD$ 1,750.00');
     html = html.split('{{amountPaid}}').join('RD$ 1,750.00');
     html = html.split('{{balanceDue}}').join('RD$ 0.00');
+    const paymentBadge = '<span style="display: inline-block; font-size: 11px; font-weight: 700; color: #34d399; background-color: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); padding: 2px 8px; border-radius: 4px;">Confirmado</span>';
+    html = html.split('{{paymentStatusText}}').join('Pago Confirmado');
+    html = html.split('{{paymentStatusBadgeHtml}}').join(paymentBadge);
+    html = html.split('{{estado_pago}}').join('Pago Confirmado');
+    html = html.split('{{estado_pago_badge}}').join(paymentBadge);
     html = html.split('{{currencySymbol}}').join('RD$');
     const instHtml = pInst ? `<p style="margin: 3px 0 0 0; font-size: 12px; color: #64748b;">${pInst}</p>` : '';
     const logoHtml = eventLogo ? `<td valign="top" align="right" style="width: 60px; padding-left: 12px;"><img src="${eventLogo}" alt="${eventName}" width="52" height="52" style="display: block; width: 52px; height: 52px; object-fit: contain; border-radius: 10px; border: 1px solid #e2e8f0; padding: 2px; background-color: #ffffff;" /></td>` : '';
@@ -1079,7 +1085,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
           {/* Marco de Vista Previa Aislado (Iframe Sandbox para Máxima Seguridad) */}
           <div className="flex-1 flex items-center justify-center bg-muted/40 p-3 rounded-xl border border-border/70 overflow-hidden">
             <div
-              className={`transition-all duration-200 bg-white shadow-lg overflow-hidden flex flex-col ${
+              className={`transition-all duration-200 bg-[#0a0707] shadow-lg overflow-hidden flex flex-col ${
                 previewViewport === 'mobile'
                   ? 'w-[360px] h-[580px] rounded-[36px] border-[8px] border-slate-800'
                   : 'w-full h-[580px] rounded-xl border border-border'
@@ -1097,7 +1103,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
                 title="Vista Previa de Correo"
                 srcDoc={previewHtmlDoc}
                 sandbox="allow-same-origin"
-                className="w-full flex-1 border-0 bg-white"
+                className="w-full flex-1 border-0 bg-[#0a0707]"
               />
             </div>
           </div>

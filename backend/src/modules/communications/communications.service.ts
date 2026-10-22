@@ -108,28 +108,39 @@ export class CommunicationsService {
    * 3. Plantilla predeterminada del sistema
    */
   static async findTemplate(code: string, eventId?: string | null) {
-    if (eventId) {
-      const editionTemplate = await prisma.emailTemplate.findFirst({
-        where: { code, eventId },
+    const aliasMap: Record<string, string> = {
+      INSCRIPTION_CONFIRMATION: 'REGISTRATION_CONFIRMATION',
+      REGISTRATION_CONFIRMATION: 'INSCRIPTION_CONFIRMATION',
+      INSCRIPTION_CANCELLED: 'CANCELLATION',
+      CANCELLATION: 'INSCRIPTION_CANCELLED',
+    };
+    const codesToTry = [code];
+    if (aliasMap[code]) codesToTry.push(aliasMap[code]);
+
+    for (const c of codesToTry) {
+      if (eventId) {
+        const editionTemplate = await prisma.emailTemplate.findFirst({
+          where: { code: c, eventId },
+        });
+        if (editionTemplate) return editionTemplate;
+      }
+
+      const globalTemplate = await prisma.emailTemplate.findFirst({
+        where: { code: c, eventId: null },
       });
-      if (editionTemplate) return editionTemplate;
-    }
+      if (globalTemplate) return globalTemplate;
 
-    const globalTemplate = await prisma.emailTemplate.findFirst({
-      where: { code, eventId: null },
-    });
-    if (globalTemplate) return globalTemplate;
-
-    const def = this.DEFAULT_TEMPLATES.find((t) => t.code === code);
-    if (def) {
-      return {
-        ...def,
-        id: `default-${code}`,
-        eventId: null,
-        isDefault: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as any;
+      const def = this.DEFAULT_TEMPLATES.find((t) => t.code === c);
+      if (def) {
+        return {
+          ...def,
+          id: `default-${c}`,
+          eventId: null,
+          isDefault: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as any;
+      }
     }
 
     return null;
@@ -363,58 +374,152 @@ export class CommunicationsService {
    */
   public static readonly DEFAULT_TEMPLATES = [
     {
-      code: 'REGISTRATION_CONFIRMATION',
-      name: 'Confirmación de Registro',
-      subject: '¡Registro confirmado para {{eventName}}!',
-      bodyHtml: `
-        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px;">
-          <h2 style="color: #38bdf8;">¡Hola, {{participantName}}!</h2>
-          <p>Tu registro para <strong>{{eventName}}</strong> ha sido completado con éxito.</p>
-          <div style="background: #1e293b; padding: 16px; border-radius: 8px; margin: 20px 0;">
-            <p><strong>Número de Registro:</strong> {{registrationNumber}}</p>
-            <p><strong>Tipo de Entrada:</strong> {{ticketType}}</p>
-            <p><strong>Lugar:</strong> {{eventVenue}}</p>
-            <p><strong>Fecha:</strong> {{eventDate}}</p>
-          </div>
-          {{messageContent}}
-          <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Nos vemos pronto en el evento.</p>
+    code: 'REGISTRATION_CONFIRMATION',
+    name: 'Confirmación de Registro',
+    subject: '¡Registro recibido para {{eventName}}! — {{participantName}}',
+    bodyHtml: `<div style="background-color: #0a0707; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #110c0c; border-radius: 16px; border: 1px solid #261a1a; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6);">
+    <!-- Franja Superior Roja -->
+    <tr>
+      <td style="height: 6px; background-color: #ED2917; line-height: 6px; font-size: 1px;">&nbsp;</td>
+    </tr>
+    <!-- Encabezado del Evento -->
+    <tr>
+      <td style="padding: 24px 28px 18px 28px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="middle" style="text-align: left;">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #ED2917; background-color: rgba(237, 41, 23, 0.12); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(237, 41, 23, 0.3);">
+                CONFIRMACIÓN OFICIAL • EVENTGRID
+              </span>
+              <h1 style="margin: 10px 0 4px 0; font-size: 20px; font-weight: 800; color: #f5f1ec; line-height: 1.25; letter-spacing: -0.3px;">
+                {{eventName}}
+              </h1>
+              <div style="font-size: 12px; color: #a8a09a; margin-top: 4px; line-height: 1.5;">
+                <span style="display: inline-block; margin-right: 14px;">📍 {{eventVenue}}</span>
+                <span style="display: inline-block;">📅 {{eventDate}}</span>
+              </div>
+            </td>
+            {{eventLogoHtml}}
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- Cuerpo del Mensaje -->
+    <tr>
+      <td style="padding: 24px 28px;">
+        <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 800; color: #f5f1ec; letter-spacing: -0.3px;">
+          ¡Hola, {{participantName}}!
+        </h2>
+        <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #e5dfd8;">
+          Tu registro para <strong>{{eventName}}</strong> ha sido recibido satisfactoriamente en el sistema oficial de inscripciones.
+        </p>
+
+        <!-- Tarjeta de Detalles de Inscripción -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #181111; border: 1px solid #2d1c1c; border-radius: 12px; margin-bottom: 20px;">
+          <tr>
+            <td style="padding: 18px 20px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Número de Registro:</td>
+                  <td align="right" style="padding-bottom: 10px; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 14px; font-weight: 800; color: #ED2917;">
+                    {{registrationNumber}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Participante:</td>
+                  <td align="right" style="padding-bottom: 10px; font-size: 13px; font-weight: 700; color: #f5f1ec;">
+                    {{participantName}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Tipo de Entrada:</td>
+                  <td align="right" style="padding-bottom: 10px; font-size: 13px; font-weight: 700; color: #f5f1ec;">
+                    <span style="display: inline-block; background-color: #261a1a; border: 1px solid #3d2424; padding: 2px 8px; border-radius: 4px;">{{ticketType}}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-size: 12px; color: #a8a09a;">Estado de Pago:</td>
+                  <td align="right" style="font-size: 12px;">
+                    {{paymentStatusBadgeHtml}}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Mensaje Personalizado Adicional (opcional) -->
+        {{messageContent}}
+
+        <!-- Botón de Acción -->
+        <div style="text-align: center; margin: 24px 0 16px 0;">
+          <a href="{{scheduleUrl}}" style="display: inline-block; background-color: #ED2917; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; padding: 12px 28px; border-radius: 8px; letter-spacing: 0.3px; box-shadow: 0 4px 12px rgba(237, 41, 23, 0.35);">
+            Consultar Agenda del Evento
+          </a>
         </div>
-      `,
-      bodyText: 'Hola {{participantName}}, tu registro para {{eventName}} ha sido completado. Registro: {{registrationNumber}}.',
-      variables: [
-        'participantName',
-        'eventName',
-        'registrationNumber',
-        'ticketType',
-        'eventVenue',
-        'eventDate',
-        'messageContent',
-      ],
-    },
+
+        <p style="margin: 20px 0 0 0; font-size: 12px; line-height: 1.5; color: #a8a09a; text-align: center;">
+          Conserva este correo como comprobante de tu registro. Si tu entrada incluye código QR, podrás consultarla en el correo de Entrada Digital.
+        </p>
+      </td>
+    </tr>
+
+    <!-- Pie de Página Oficial -->
+    <tr>
+      <td style="padding: 20px 28px; background-color: #0c0808; border-top: 1px solid #261a1a; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #f5f1ec;">
+          BarCamp República Dominicana 2026
+        </p>
+        <p style="margin: 0 0 10px 0; font-size: 11px; color: #6b6460; line-height: 1.4;">
+          Pontificia Universidad Católica Madre y Maestra (PUCMM) • Santiago de los Caballeros, Rep. Dom.
+        </p>
+        <p style="margin: 0; font-size: 10px; color: #6b6460; line-height: 1.4;">
+          Emitido por el sistema <strong>EventGrid</strong>. Para consultas o asistencia, responde a este correo.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>`,
+    bodyText: 'Hola {{participantName}}, tu registro para {{eventName}} ha sido recibido. Registro: {{registrationNumber}}. Tipo: {{ticketType}}. Estado de pago: {{paymentStatusText}}.',
+    variables: [
+      'participantName',
+      'eventName',
+      'registrationNumber',
+      'ticketType',
+      'eventVenue',
+      'eventDate',
+      'paymentStatusText',
+      'paymentStatusBadgeHtml',
+      'scheduleUrl',
+      'messageContent',
+    ],
+  },
     {
-      code: 'DIGITAL_TICKET',
-      name: 'Entrada Digital con QR',
-      subject: 'Tu Entrada Digital para {{eventName}} — Ticket {{registrationNumber}}',
-      bodyHtml: `<div style="background-color: #f1f5f9; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 520px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.06);">
+    code: 'DIGITAL_TICKET',
+    name: 'Entrada Digital con QR',
+    subject: 'Tu Entrada Digital para {{eventName}} — Ticket {{registrationNumber}}',
+    bodyHtml: `<div style="background-color: #0a0707; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 520px; margin: 0 auto; background-color: #110c0c; border-radius: 16px; border: 1px solid #261a1a; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6);">
     <!-- Franja Superior de Color de la Edicion -->
     <tr>
-      <td style="height: 6px; background-color: {{primaryColor}}; line-height: 6px; font-size: 1px;">&nbsp;</td>
+      <td style="height: 6px; background-color: #ED2917; line-height: 6px; font-size: 1px;">&nbsp;</td>
     </tr>
 
     <!-- Encabezado del Evento -->
     <tr>
-      <td style="padding: 24px 28px 16px 28px;">
+      <td style="padding: 24px 28px 16px 28px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
         <table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
             <td valign="top" style="text-align: left;">
-              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: {{primaryColor}}; background-color: rgba(225, 29, 72, 0.08); padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(225, 29, 72, 0.2);">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #ED2917; background-color: rgba(237, 41, 23, 0.12); padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(237, 41, 23, 0.3);">
                 ENTRADA OFICIAL EVENTGRID
               </span>
-              <h1 style="margin: 10px 0 6px 0; font-size: 20px; font-weight: 800; color: #0f172a; line-height: 1.25; letter-spacing: -0.3px;">
+              <h1 style="margin: 10px 0 6px 0; font-size: 20px; font-weight: 800; color: #f5f1ec; line-height: 1.25; letter-spacing: -0.3px;">
                 {{eventName}}
               </h1>
-              <div style="font-size: 12px; color: #64748b; margin-top: 4px; line-height: 1.5;">
+              <div style="font-size: 12px; color: #a8a09a; margin-top: 4px; line-height: 1.5;">
                 <span style="display: inline-block; margin-right: 14px;">📍 {{eventVenue}}</span>
                 <span style="display: inline-block;">📅 {{eventDate}}</span>
               </div>
@@ -428,7 +533,7 @@ export class CommunicationsService {
     <!-- Separador -->
     <tr>
       <td style="padding: 0 28px;">
-        <div style="border-top: 1px solid #e2e8f0; font-size: 1px; line-height: 1px;">&nbsp;</div>
+        <div style="border-top: 1px solid #261a1a; font-size: 1px; line-height: 1px;">&nbsp;</div>
       </td>
     </tr>
 
@@ -439,10 +544,10 @@ export class CommunicationsService {
           <tr>
             <!-- Columna Participante -->
             <td width="55%" valign="top" style="text-align: left; padding-right: 12px;">
-              <p style="margin: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8;">
+              <p style="margin: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #a8a09a;">
                 PARTICIPANTE
               </p>
-              <p style="margin: 4px 0 0 0; font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.2;">
+              <p style="margin: 4px 0 0 0; font-size: 15px; font-weight: 700; color: #f5f1ec; line-height: 1.2;">
                 {{participantName}}
               </p>
               {{institutionHtml}}
@@ -450,14 +555,14 @@ export class CommunicationsService {
 
             <!-- Columna Registro y Entrada -->
             <td width="45%" valign="top" style="text-align: left;">
-              <p style="margin: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8;">
-                NO. REGISTRO & TIPO
+              <p style="margin: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #a8a09a;">
+                NO. REGISTRO &amp; TIPO
               </p>
-              <p style="margin: 4px 0 0 0; font-size: 16px; font-weight: 900; font-family: 'SF Mono', Consolas, Monaco, monospace; color: {{primaryColor}}; line-height: 1.2;">
+              <p style="margin: 4px 0 0 0; font-size: 16px; font-weight: 900; font-family: 'SF Mono', Consolas, Monaco, monospace; color: #ED2917; line-height: 1.2;">
                 {{registrationNumber}}
               </p>
               <div style="margin-top: 5px;">
-                <span style="display: inline-block; font-size: 11px; font-weight: 700; color: #1e293b; background-color: #f1f5f9; padding: 2px 8px; border-radius: 4px; border: 1px solid #cbd5e1;">
+                <span style="display: inline-block; font-size: 11px; font-weight: 700; color: #f5f1ec; background-color: #261a1a; padding: 2px 8px; border-radius: 4px; border: 1px solid #3d2424;">
                   {{ticketType}}
                 </span>
               </div>
@@ -473,13 +578,13 @@ export class CommunicationsService {
     <!-- Codigo QR Individual Central -->
     <tr>
       <td style="padding: 8px 28px 20px 28px;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 14px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #160f0f; border: 1px dashed #3d2424; border-radius: 14px;">
           <tr>
             <td align="center" style="padding: 24px 16px;">
-              <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+              <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 <img src="{{qrDataUrl}}" alt="Código QR de Acceso" width="200" height="200" style="display: block; width: 200px; height: 200px; border: 0;" />
               </div>
-              <p style="margin: 14px auto 0 auto; max-width: 380px; font-size: 12px; font-weight: 600; color: #475569; text-align: center; line-height: 1.4;">
+              <p style="margin: 14px auto 0 auto; max-width: 380px; font-size: 12px; font-weight: 600; color: #e5dfd8; text-align: center; line-height: 1.4;">
                 Presente este código QR en el módulo de recepción para registrar su entrada.
               </p>
             </td>
@@ -491,7 +596,7 @@ export class CommunicationsService {
     <!-- Pie del Ticket -->
     <tr>
       <td style="padding: 0 28px 24px 28px; text-align: center;">
-        <p style="margin: 0; font-size: 11px; color: #94a3b8; line-height: 1.4;">
+        <p style="margin: 0; font-size: 11px; color: #6b6460; line-height: 1.4;">
           Este ticket es oficial, personal e intransferible. Válido para el acceso a <strong>{{eventName}}</strong>.<br/>
           Emitido por el sistema <strong>EventGrid</strong>.
         </p>
@@ -499,244 +604,907 @@ export class CommunicationsService {
     </tr>
   </table>
 </div>`,
-      bodyText: 'Hola {{participantName}}, tu Entrada Digital para {{eventName}} ha sido emitida. Ticket: {{registrationNumber}}. Tipo: {{ticketType}}. Fecha: {{eventDate}}. Lugar: {{eventVenue}}. Presenta tu código QR en la mesa de recepción.',
-      variables: [
-        'participantName',
-        'nombre',
-        'eventName',
-        'evento',
-        'registrationNumber',
-        'numero_registro',
-        'ticketType',
-        'tipo_entrada',
-        'eventVenue',
-        'lugar',
-        'eventDate',
-        'fecha',
-        'institucion',
-        'institutionHtml',
-        'eventLogoHtml',
-        'primaryColor',
-        'qrUrl',
-        'qrDataUrl',
-        'qr',
-        'messageContent',
-      ],
-    },
+    bodyText: 'Hola {{participantName}}, tu Entrada Digital para {{eventName}} ha sido emitida. Ticket: {{registrationNumber}}. Tipo: {{ticketType}}. Fecha: {{eventDate}}. Lugar: {{eventVenue}}. Presenta tu código QR en la mesa de recepción.',
+    variables: [
+      'participantName',
+      'nombre',
+      'eventName',
+      'evento',
+      'registrationNumber',
+      'numero_registro',
+      'ticketType',
+      'tipo_entrada',
+      'eventVenue',
+      'lugar',
+      'eventDate',
+      'fecha',
+      'institucion',
+      'institutionHtml',
+      'eventLogoHtml',
+      'primaryColor',
+      'qrUrl',
+      'qrDataUrl',
+      'qr',
+      'messageContent',
+    ],
+  },
     {
-      code: 'EVENT_REMINDER',
-      name: 'Recordatorio del Evento',
-      subject: 'Recordatorio: ¡{{eventName}} comienza pronto!',
-      bodyHtml: `
-        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px;">
-          <h2 style="color: #fbbf24;">¡Falta poco, {{participantName}}!</h2>
-          <p>Te recordamos que <strong>{{eventName}}</strong> se llevará a cabo en:</p>
-          <p><strong>Lugar:</strong> {{eventVenue}}</p>
-          <p><strong>Fecha:</strong> {{eventDate}}</p>
-          <p>Tu entrada registrada es: <strong>{{registrationNumber}}</strong> ({{ticketType}}).</p>
-          {{messageContent}}
-          <p>¡Esperamos contar con tu presencia!</p>
+    code: 'EVENT_REMINDER',
+    name: 'Recordatorio del Evento',
+    subject: 'Recordatorio: ¡Nos vemos pronto en {{eventName}}!',
+    bodyHtml: `<div style="background-color: #0a0707; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #110c0c; border-radius: 16px; border: 1px solid #261a1a; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6);">
+    <tr>
+      <td style="height: 6px; background-color: #ED2917; line-height: 6px; font-size: 1px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="padding: 24px 28px 18px 28px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="middle" style="text-align: left;">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #ED2917; background-color: rgba(237, 41, 23, 0.12); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(237, 41, 23, 0.3);">
+                RECORDATORIO OFICIAL
+              </span>
+              <h1 style="margin: 10px 0 4px 0; font-size: 20px; font-weight: 800; color: #f5f1ec; line-height: 1.25; letter-spacing: -0.3px;">
+                {{eventName}}
+              </h1>
+              <div style="font-size: 12px; color: #a8a09a; margin-top: 4px; line-height: 1.5;">
+                <span style="display: inline-block; margin-right: 14px;">📍 {{eventVenue}}</span>
+                <span style="display: inline-block;">📅 {{eventDate}}</span>
+              </div>
+            </td>
+            {{eventLogoHtml}}
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 24px 28px;">
+        <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 800; color: #f5f1ec; letter-spacing: -0.3px;">
+          ¡Falta muy poco para vernos, {{participantName}}!
+        </h2>
+        <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #e5dfd8;">
+          Te recordamos los datos clave de tu participación en <strong>{{eventName}}</strong>:
+        </p>
+
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #181111; border: 1px solid #2d1c1c; border-radius: 12px; margin-bottom: 20px;">
+          <tr>
+            <td style="padding: 18px 20px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Lugar:</td>
+                  <td align="right" style="padding-bottom: 10px; font-size: 13px; font-weight: 700; color: #f5f1ec;">
+                    {{eventVenue}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Fecha:</td>
+                  <td align="right" style="padding-bottom: 10px; font-size: 13px; font-weight: 700; color: #f5f1ec;">
+                    {{eventDate}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-size: 12px; color: #a8a09a;">Tu Ticket:</td>
+                  <td align="right" style="font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 14px; font-weight: 800; color: #ED2917;">
+                    {{registrationNumber}} ({{ticketType}})
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Recomendaciones para Asistir -->
+        <div style="background-color: #160f0f; border-left: 3px solid #ED2917; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+          <h3 style="margin: 0 0 10px 0; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #f5f1ec;">
+            Recomendaciones para tu Asistencia
+          </h3>
+          <ul style="margin: 0; padding-left: 20px; font-size: 12px; line-height: 1.6; color: #a8a09a;">
+            <li>Llega con tiempo a la mesa de acreditación para retirar tu kit oficial.</li>
+            <li>Ten a mano en tu celular el código QR de tu Entrada Digital.</li>
+            <li>Trae tus dispositivos con carga completa y actitud participativa.</li>
+          </ul>
         </div>
-      `,
-      bodyText: 'Hola {{participantName}}, te recordamos que {{eventName}} se llevará a cabo en {{eventVenue}} el {{eventDate}}.',
-      variables: [
-        'participantName',
-        'eventName',
-        'registrationNumber',
-        'ticketType',
-        'eventVenue',
-        'eventDate',
-        'messageContent',
-      ],
-    },
+
+        {{messageContent}}
+
+        <div style="text-align: center; margin: 24px 0 16px 0;">
+          <a href="{{scheduleUrl}}" style="display: inline-block; background-color: #ED2917; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; padding: 12px 28px; border-radius: 8px; letter-spacing: 0.3px; box-shadow: 0 4px 12px rgba(237, 41, 23, 0.35);">
+            Ver Agenda y Cronograma
+          </a>
+        </div>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 20px 28px; background-color: #0c0808; border-top: 1px solid #261a1a; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #f5f1ec;">
+          BarCamp República Dominicana 2026
+        </p>
+        <p style="margin: 0; font-size: 10px; color: #6b6460; line-height: 1.4;">
+          Emitido por el sistema <strong>EventGrid</strong>.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>`,
+    bodyText: 'Hola {{participantName}}, te recordamos que {{eventName}} se llevará a cabo en {{eventVenue}} el {{eventDate}}. Ticket: {{registrationNumber}}.',
+    variables: [
+      'participantName',
+      'eventName',
+      'registrationNumber',
+      'ticketType',
+      'eventVenue',
+      'eventDate',
+      'scheduleUrl',
+      'messageContent',
+    ],
+  },
     {
-      code: 'PAYMENT_CONFIRMATION',
-      name: 'Confirmación de Pago',
-      subject: 'Recibo de pago confirmado — {{eventName}}',
-      bodyHtml: `
-        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px;">
-          <h2 style="color: #34d399;">Pago Confirmado</h2>
-          <p>Estimado(a) {{participantName}}, hemos confirmado el pago de tu entrada para <strong>{{eventName}}</strong>.</p>
-          <div style="background: #1e293b; padding: 16px; border-radius: 8px; margin: 16px 0;">
-            <p><strong>Monto Pagado:</strong> {{currencySymbol}} {{amountPaid}}</p>
-            <p><strong>Balance Pendiente:</strong> {{currencySymbol}} {{balanceDue}}</p>
-            <p><strong>Ticket:</strong> {{registrationNumber}}</p>
-          </div>
-          {{messageContent}}
-        </div>
-      `,
-      bodyText: 'Estimado(a) {{participantName}}, confirmamos el pago de {{currencySymbol}} {{amountPaid}} para {{eventName}}.',
-      variables: [
-        'participantName',
-        'eventName',
-        'registrationNumber',
-        'amountPaid',
-        'balanceDue',
-        'currencySymbol',
-        'messageContent',
-      ],
-    },
+    code: 'PAYMENT_CONFIRMATION',
+    name: 'Confirmación de Pago',
+    subject: 'Comprobante de pago confirmado — {{eventName}} (Ticket {{registrationNumber}})',
+    bodyHtml: `<div style="background-color: #0a0707; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #110c0c; border-radius: 16px; border: 1px solid #261a1a; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6);">
+    <tr>
+      <td style="height: 6px; background-color: #10b981; line-height: 6px; font-size: 1px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="padding: 24px 28px 18px 28px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="middle" style="text-align: left;">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #34d399; background-color: rgba(16, 185, 129, 0.12); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.3);">
+                COMPROBANTE DE PAGO
+              </span>
+              <h1 style="margin: 10px 0 4px 0; font-size: 20px; font-weight: 800; color: #f5f1ec; line-height: 1.25; letter-spacing: -0.3px;">
+                {{eventName}}
+              </h1>
+              <div style="font-size: 12px; color: #a8a09a; margin-top: 4px; line-height: 1.5;">
+                <span style="display: inline-block; margin-right: 14px;">📍 {{eventVenue}}</span>
+                <span style="display: inline-block;">📅 {{eventDate}}</span>
+              </div>
+            </td>
+            {{eventLogoHtml}}
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 24px 28px;">
+        <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 800; color: #34d399; letter-spacing: -0.3px;">
+          ¡Pago Confirmado!
+        </h2>
+        <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #e5dfd8;">
+          Estimado(a) <strong>{{participantName}}</strong>, confirmamos que el pago de tu entrada para <strong>{{eventName}}</strong> ha sido procesado y registrado con éxito.
+        </p>
+
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #181111; border: 1px solid #2d1c1c; border-radius: 12px; margin-bottom: 20px;">
+          <tr>
+            <td style="padding: 18px 20px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Ticket / Referencia:</td>
+                  <td align="right" style="padding-bottom: 10px; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 14px; font-weight: 800; color: #ED2917;">
+                    {{registrationNumber}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Monto Acreditado:</td>
+                  <td align="right" style="padding-bottom: 10px; font-size: 15px; font-weight: 900; color: #34d399;">
+                    {{currencySymbol}} {{amountPaid}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Balance Pendiente:</td>
+                  <td align="right" style="padding-bottom: 10px; font-size: 13px; font-weight: 700; color: #f5f1ec;">
+                    {{currencySymbol}} {{balanceDue}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-size: 12px; color: #a8a09a;">Estado:</td>
+                  <td align="right" style="font-size: 12px;">
+                    <span style="display: inline-block; font-size: 11px; font-weight: 700; color: #34d399; background-color: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); padding: 2px 8px; border-radius: 4px;">Confirmado</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        {{messageContent}}
+
+        <p style="margin: 20px 0 0 0; font-size: 12px; line-height: 1.5; color: #a8a09a; text-align: center;">
+          Tu participación queda formalmente acreditada. Podrás presentar tu código QR en recepción el día del evento.
+        </p>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 20px 28px; background-color: #0c0808; border-top: 1px solid #261a1a; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #f5f1ec;">
+          BarCamp República Dominicana 2026
+        </p>
+        <p style="margin: 0; font-size: 10px; color: #6b6460; line-height: 1.4;">
+          Emitido por el sistema <strong>EventGrid</strong>.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>`,
+    bodyText: 'Estimado(a) {{participantName}}, confirmamos el pago de {{currencySymbol}} {{amountPaid}} para {{eventName}}. Ticket: {{registrationNumber}}.',
+    variables: [
+      'participantName',
+      'eventName',
+      'registrationNumber',
+      'amountPaid',
+      'balanceDue',
+      'currencySymbol',
+      'messageContent',
+    ],
+  },
     {
-      code: 'PENDING_BALANCE',
-      name: 'Saldo Pendiente',
-      subject: 'Saldo pendiente de pago — {{eventName}}',
-      bodyHtml: `
-        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px;">
-          <h2 style="color: #f87171;">Aviso de Saldo Pendiente</h2>
-          <p>Hola {{participantName}}, tu inscripción para <strong>{{eventName}}</strong> tiene un balance pendiente:</p>
-          <div style="background: #1e293b; padding: 16px; border-radius: 8px; margin: 16px 0;">
-            <p><strong>Tarifa de Entrada:</strong> {{currencySymbol}} {{ticketPrice}}</p>
-            <p><strong>Monto Abonado:</strong> {{currencySymbol}} {{amountPaid}}</p>
-            <p style="color: #f87171; font-size: 16px;"><strong>Balance Pendiente:</strong> {{currencySymbol}} {{balanceDue}}</p>
-          </div>
-          <p>Puedes completar tu pago en taquilla el día del evento o vía transferencia previa.</p>
-          {{messageContent}}
-        </div>
-      `,
-      bodyText: 'Hola {{participantName}}, tu inscripción para {{eventName}} tiene un saldo pendiente de {{currencySymbol}} {{balanceDue}}.',
-      variables: [
-        'participantName',
-        'eventName',
-        'registrationNumber',
-        'ticketPrice',
-        'amountPaid',
-        'balanceDue',
-        'currencySymbol',
-        'messageContent',
-      ],
-    },
+    code: 'PENDING_BALANCE',
+    name: 'Saldo Pendiente',
+    subject: 'Aviso de saldo pendiente — {{eventName}} (Ticket {{registrationNumber}})',
+    bodyHtml: `<div style="background-color: #0a0707; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #110c0c; border-radius: 16px; border: 1px solid #261a1a; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6);">
+    <tr>
+      <td style="height: 6px; background-color: #f59e0b; line-height: 6px; font-size: 1px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="padding: 24px 28px 18px 28px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="middle" style="text-align: left;">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #fbbf24; background-color: rgba(245, 158, 11, 0.12); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.3);">
+                SALDO PENDIENTE
+              </span>
+              <h1 style="margin: 10px 0 4px 0; font-size: 20px; font-weight: 800; color: #f5f1ec; line-height: 1.25; letter-spacing: -0.3px;">
+                {{eventName}}
+              </h1>
+              <div style="font-size: 12px; color: #a8a09a; margin-top: 4px; line-height: 1.5;">
+                <span style="display: inline-block; margin-right: 14px;">📍 {{eventVenue}}</span>
+                <span style="display: inline-block;">📅 {{eventDate}}</span>
+              </div>
+            </td>
+            {{eventLogoHtml}}
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 24px 28px;">
+        <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 800; color: #fbbf24; letter-spacing: -0.3px;">
+          Aviso de Saldo Pendiente
+        </h2>
+        <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #e5dfd8;">
+          Hola <strong>{{participantName}}</strong>, te informamos que tu inscripción para <strong>{{eventName}}</strong> registra un balance pendiente de pago:
+        </p>
+
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #181111; border: 1px solid #2d1c1c; border-radius: 12px; margin-bottom: 20px;">
+          <tr>
+            <td style="padding: 18px 20px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Ticket / Inscripción:</td>
+                  <td align="right" style="padding-bottom: 10px; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 14px; font-weight: 800; color: #ED2917;">
+                    {{registrationNumber}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Tarifa de Entrada:</td>
+                  <td align="right" style="padding-bottom: 10px; font-size: 13px; font-weight: 700; color: #f5f1ec;">
+                    {{currencySymbol}} {{ticketPrice}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Monto Abonado:</td>
+                  <td align="right" style="padding-bottom: 10px; font-size: 13px; font-weight: 700; color: #f5f1ec;">
+                    {{currencySymbol}} {{amountPaid}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-size: 12px; color: #a8a09a;">Balance Pendiente:</td>
+                  <td align="right" style="font-size: 15px; font-weight: 900; color: #fbbf24;">
+                    {{currencySymbol}} {{balanceDue}}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <p style="margin: 0 0 20px 0; font-size: 13px; line-height: 1.6; color: #a8a09a;">
+          Puedes completar tu pago en la mesa de recepción el día del evento o vía transferencia bancaria previa comunicándote con la organización.
+        </p>
+
+        {{messageContent}}
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 20px 28px; background-color: #0c0808; border-top: 1px solid #261a1a; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #f5f1ec;">
+          BarCamp República Dominicana 2026
+        </p>
+        <p style="margin: 0; font-size: 10px; color: #6b6460; line-height: 1.4;">
+          Emitido por el sistema <strong>EventGrid</strong>.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>`,
+    bodyText: 'Hola {{participantName}}, tu inscripción para {{eventName}} registra un balance pendiente de {{currencySymbol}} {{balanceDue}}.',
+    variables: [
+      'participantName',
+      'eventName',
+      'registrationNumber',
+      'ticketPrice',
+      'amountPaid',
+      'balanceDue',
+      'currencySymbol',
+      'messageContent',
+    ],
+  },
     {
-      code: 'CANCELLATION',
-      name: 'Cancelación de Inscripción',
-      subject: 'Inscripción cancelada — {{eventName}}',
-      bodyHtml: `
-        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px;">
-          <h2 style="color: #94a3b8;">Notificación de Cancelación</h2>
-          <p>Estimado(a) {{participantName}}, te informamos que la inscripción <strong>{{registrationNumber}}</strong> para <strong>{{eventName}}</strong> ha sido cancelada.</p>
-          {{messageContent}}
-          <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Si crees que esto es un error, por favor contáctanos.</p>
-        </div>
-      `,
-      bodyText: 'Hola {{participantName}}, tu inscripción {{registrationNumber}} para {{eventName}} ha sido cancelada.',
-      variables: ['participantName', 'eventName', 'registrationNumber', 'messageContent'],
-    },
+    code: 'CANCELLATION',
+    name: 'Cancelación de Inscripción',
+    subject: 'Inscripción cancelada — {{eventName}} (Ticket {{registrationNumber}})',
+    bodyHtml: `<div style="background-color: #0a0707; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #110c0c; border-radius: 16px; border: 1px solid #261a1a; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6);">
+    <tr>
+      <td style="height: 6px; background-color: #6b6460; line-height: 6px; font-size: 1px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="padding: 24px 28px 18px 28px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="middle" style="text-align: left;">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #a8a09a; background-color: rgba(255, 255, 255, 0.08); padding: 3px 10px; border-radius: 6px; border: 1px solid #332222;">
+                AVISO DE CANCELACIÓN
+              </span>
+              <h1 style="margin: 10px 0 4px 0; font-size: 20px; font-weight: 800; color: #f5f1ec; line-height: 1.25; letter-spacing: -0.3px;">
+                {{eventName}}
+              </h1>
+              <div style="font-size: 12px; color: #a8a09a; margin-top: 4px; line-height: 1.5;">
+                <span style="display: inline-block;">📍 {{eventVenue}}</span>
+              </div>
+            </td>
+            {{eventLogoHtml}}
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 24px 28px;">
+        <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 800; color: #a8a09a; letter-spacing: -0.3px;">
+          Notificación de Cancelación
+        </h2>
+        <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #e5dfd8;">
+          Estimado(a) <strong>{{participantName}}</strong>, te informamos que la inscripción <strong>{{registrationNumber}}</strong> para <strong>{{eventName}}</strong> ha sido cancelada en el sistema.
+        </p>
+
+        {{messageContent}}
+
+        <p style="margin: 20px 0 0 0; font-size: 12px; line-height: 1.5; color: #a8a09a;">
+          Si consideras que esto ocurrió por error o deseas reactivar tu registro, por favor responde a este correo para asistirte.
+        </p>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 20px 28px; background-color: #0c0808; border-top: 1px solid #261a1a; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #f5f1ec;">
+          BarCamp República Dominicana 2026
+        </p>
+        <p style="margin: 0; font-size: 10px; color: #6b6460; line-height: 1.4;">
+          Emitido por el sistema <strong>EventGrid</strong>.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>`,
+    bodyText: 'Hola {{participantName}}, la inscripción {{registrationNumber}} para {{eventName}} ha sido cancelada.',
+    variables: ['participantName', 'eventName', 'registrationNumber', 'messageContent'],
+  },
     {
-      code: 'GENERAL_ANNOUNCEMENT',
-      name: 'Comunicado General',
-      subject: 'Aviso importante sobre {{eventName}}',
-      bodyHtml: `
-        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px;">
-          <h2 style="color: #38bdf8;">Comunicado Oficial</h2>
-          <p>Estimado(a) {{participantName}},</p>
-          {{messageContent}}
-          <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #334155; font-size: 12px; color: #94a3b8;">
-            <p>{{eventName}} — {{eventVenue}}</p>
-          </div>
+    code: 'GENERAL_ANNOUNCEMENT',
+    name: 'Comunicado General',
+    subject: 'Aviso importante sobre {{eventName}}',
+    bodyHtml: `<div style="background-color: #0a0707; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #110c0c; border-radius: 16px; border: 1px solid #261a1a; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6);">
+    <tr>
+      <td style="height: 6px; background-color: #ED2917; line-height: 6px; font-size: 1px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="padding: 24px 28px 18px 28px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="middle" style="text-align: left;">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #ED2917; background-color: rgba(237, 41, 23, 0.12); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(237, 41, 23, 0.3);">
+                COMUNICADO OFICIAL
+              </span>
+              <h1 style="margin: 10px 0 4px 0; font-size: 20px; font-weight: 800; color: #f5f1ec; line-height: 1.25; letter-spacing: -0.3px;">
+                {{eventName}}
+              </h1>
+              <div style="font-size: 12px; color: #a8a09a; margin-top: 4px; line-height: 1.5;">
+                <span style="display: inline-block; margin-right: 14px;">📍 {{eventVenue}}</span>
+                <span style="display: inline-block;">📅 {{eventDate}}</span>
+              </div>
+            </td>
+            {{eventLogoHtml}}
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 24px 28px;">
+        <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 800; color: #f5f1ec; letter-spacing: -0.3px;">
+          Comunicado Oficial
+        </h2>
+        <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #e5dfd8;">
+          Estimado(a) <strong>{{participantName}}</strong>,
+        </p>
+
+        {{messageContent}}
+
+        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #261a1a; font-size: 12px; color: #a8a09a;">
+          <p style="margin: 0;">{{eventName}} — {{eventVenue}}</p>
         </div>
-      `,
-      bodyText: 'Estimado(a) {{participantName}}, comunicado oficial de {{eventName}}.',
-      variables: ['participantName', 'eventName', 'registrationNumber', 'messageContent'],
-    },
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 20px 28px; background-color: #0c0808; border-top: 1px solid #261a1a; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #f5f1ec;">
+          BarCamp República Dominicana 2026
+        </p>
+        <p style="margin: 0; font-size: 10px; color: #6b6460; line-height: 1.4;">
+          Emitido por el sistema <strong>EventGrid</strong>.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>`,
+    bodyText: 'Estimado(a) {{participantName}}, comunicado oficial de {{eventName}}.',
+    variables: ['participantName', 'eventName', 'registrationNumber', 'messageContent'],
+  },
     {
-      code: 'SCHEDULE_ANNOUNCEMENT',
-      name: 'Cronograma Oficial del Evento',
-      subject: 'Cronograma Oficial y Charlas — {{eventName}}',
-      bodyHtml: `
-        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px; max-width: 650px; margin: 0 auto;">
-          <h2 style="color: #38bdf8; margin-top: 0;">¡Hola, {{participantName}}!</h2>
-          <p>Te compartimos la agenda y cronograma de actividades confirmadas para <strong>{{eventName}}</strong>:</p>
-          <div style="background: #1e293b; padding: 16px; border-radius: 8px; margin: 20px 0;">
-            <p style="margin: 4px 0;"><strong>Fecha:</strong> {{eventDate}}</p>
-            <p style="margin: 4px 0;"><strong>Lugar:</strong> {{eventVenue}}</p>
-            <p style="margin: 4px 0;"><strong>Tu Entrada:</strong> {{registrationNumber}} ({{ticketType}})</p>
-          </div>
-          {{messageContent}}
-          <div style="margin-top: 24px;">
-            <h3 style="color: #fbbf24; border-bottom: 1px solid #334155; padding-bottom: 8px;">Agenda de Actividades</h3>
-            {{scheduleHtml}}
-          </div>
-          <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Las actividades pueden estar sujetas a cambios de última hora por imprevistos. Te recomendamos llegar puntual.</p>
+    code: 'SCHEDULE_ANNOUNCEMENT',
+    name: 'Cronograma Oficial del Evento',
+    subject: 'Cronograma Oficial y Charlas — {{eventName}}',
+    bodyHtml: `<div style="background-color: #0a0707; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 650px; margin: 0 auto; background-color: #110c0c; border-radius: 16px; border: 1px solid #261a1a; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6);">
+    <tr>
+      <td style="height: 6px; background-color: #ED2917; line-height: 6px; font-size: 1px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="padding: 24px 28px 18px 28px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="middle" style="text-align: left;">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #ED2917; background-color: rgba(237, 41, 23, 0.12); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(237, 41, 23, 0.3);">
+                AGENDA &amp; CRONOGRAMA
+              </span>
+              <h1 style="margin: 10px 0 4px 0; font-size: 20px; font-weight: 800; color: #f5f1ec; line-height: 1.25; letter-spacing: -0.3px;">
+                {{eventName}}
+              </h1>
+              <div style="font-size: 12px; color: #a8a09a; margin-top: 4px; line-height: 1.5;">
+                <span style="display: inline-block; margin-right: 14px;">📍 {{eventVenue}}</span>
+                <span style="display: inline-block;">📅 {{eventDate}}</span>
+              </div>
+            </td>
+            {{eventLogoHtml}}
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 24px 28px;">
+        <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 800; color: #f5f1ec; letter-spacing: -0.3px;">
+          ¡Hola, {{participantName}}!
+        </h2>
+        <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #e5dfd8;">
+          Te compartimos la agenda y cronograma oficial de conferencias y actividades para <strong>{{eventName}}</strong>:
+        </p>
+
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #181111; border: 1px solid #2d1c1c; border-radius: 12px; margin-bottom: 20px;">
+          <tr>
+            <td style="padding: 14px 18px;">
+              <span style="font-size: 12px; color: #a8a09a;">Tu entrada registrada: </span>
+              <strong style="font-family: 'SF Mono', Consolas, Monaco, monospace; color: #ED2917; font-size: 13px;">{{registrationNumber}}</strong>
+              <span style="color: #6b6460;"> • </span>
+              <span style="font-size: 12px; color: #f5f1ec;">{{ticketType}}</span>
+            </td>
+          </tr>
+        </table>
+
+        {{messageContent}}
+
+        <div style="margin-top: 24px;">
+          <h3 style="color: #ED2917; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #261a1a; padding-bottom: 8px; margin: 0 0 12px 0;">
+            Charlas y Actividades Confirmadas
+          </h3>
+          {{scheduleHtml}}
         </div>
-      `,
-      bodyText: 'Hola {{participantName}}, consulta el cronograma oficial de {{eventName}} en {{eventVenue}}.',
-      variables: [
-        'participantName',
-        'eventName',
-        'registrationNumber',
-        'ticketType',
-        'eventVenue',
-        'eventDate',
-        'scheduleHtml',
-        'messageContent',
-      ],
-    },
+
+        <p style="margin: 20px 0 0 0; font-size: 11px; line-height: 1.5; color: #6b6460; text-align: center;">
+          Las actividades pueden estar sujetas a ajustes menores de última hora. Te recomendamos llegar con anticipación.
+        </p>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 20px 28px; background-color: #0c0808; border-top: 1px solid #261a1a; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #f5f1ec;">
+          BarCamp República Dominicana 2026
+        </p>
+        <p style="margin: 0; font-size: 10px; color: #6b6460; line-height: 1.4;">
+          Emitido por el sistema <strong>EventGrid</strong>.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>`,
+    bodyText: 'Hola {{participantName}}, consulta el cronograma oficial de {{eventName}} en {{eventVenue}}.',
+    variables: [
+      'participantName',
+      'eventName',
+      'registrationNumber',
+      'ticketType',
+      'eventVenue',
+      'eventDate',
+      'scheduleHtml',
+      'messageContent',
+    ],
+  },
     {
-      code: 'SCHEDULE_CHANGE_ALERT',
-      name: 'Actualización del Cronograma (Cambio de Horario/Actividad)',
-      subject: 'Actualización del cronograma — {{activityTitle}}',
-      bodyHtml: `
-        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #38bdf8; margin-top: 0;">¡Hola, {{participantName}}!</h2>
-          <p>Te informamos sobre una actualización en el cronograma oficial de <strong>{{eventName}}</strong>:</p>
-          <div style="background: #1e293b; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #38bdf8;">
-            <h3 style="color: #f8fafc; margin-top: 0; font-size: 16px;">{{activityTitle}}</h3>
-            {{changeSummaryHtml}}
-          </div>
-          {{messageContent}}
-          <div style="text-align: center; margin: 24px 0;">
-            <a href="{{scheduleUrl}}" style="background: #0284c7; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Consultar Cronograma Actualizado</a>
-          </div>
-          <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Nos vemos en el evento.</p>
+    code: 'SCHEDULE_CHANGE_ALERT',
+    name: 'Actualización del Cronograma (Cambio de Horario/Actividad)',
+    subject: 'Actualización del cronograma — {{activityTitle}}',
+    bodyHtml: `<div style="background-color: #0a0707; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #110c0c; border-radius: 16px; border: 1px solid #261a1a; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6);">
+    <tr>
+      <td style="height: 6px; background-color: #ED2917; line-height: 6px; font-size: 1px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="padding: 24px 28px 18px 28px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="middle" style="text-align: left;">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #ED2917; background-color: rgba(237, 41, 23, 0.12); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(237, 41, 23, 0.3);">
+                CAMBIO DE CRONOGRAMA
+              </span>
+              <h1 style="margin: 10px 0 4px 0; font-size: 20px; font-weight: 800; color: #f5f1ec; line-height: 1.25; letter-spacing: -0.3px;">
+                {{eventName}}
+              </h1>
+            </td>
+            {{eventLogoHtml}}
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 24px 28px;">
+        <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 800; color: #f5f1ec; letter-spacing: -0.3px;">
+          ¡Hola, {{participantName}}!
+        </h2>
+        <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #e5dfd8;">
+          Te informamos sobre una actualización en el cronograma oficial de <strong>{{eventName}}</strong>:
+        </p>
+
+        <div style="background-color: #181111; padding: 20px; border-radius: 12px; margin: 20px 0; border-left: 4px solid #ED2917; border: 1px solid #2d1c1c;">
+          <h3 style="color: #f5f1ec; margin-top: 0; font-size: 16px; font-weight: 800;">{{activityTitle}}</h3>
+          {{changeSummaryHtml}}
         </div>
-      `,
-      bodyText: 'Hola {{participantName}}, la conferencia {{activityTitle}} en {{eventName}} ha sido actualizada. Consulta el cronograma en {{scheduleUrl}}',
-      variables: [
-        'participantName',
-        'eventName',
-        'activityTitle',
-        'changeSummaryHtml',
-        'scheduleUrl',
-        'messageContent',
-      ],
-    },
+
+        {{messageContent}}
+
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="{{scheduleUrl}}" style="background-color: #ED2917; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 800; font-size: 13px; display: inline-block;">
+            Consultar Cronograma Actualizado
+          </a>
+        </div>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 20px 28px; background-color: #0c0808; border-top: 1px solid #261a1a; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #f5f1ec;">
+          BarCamp República Dominicana 2026
+        </p>
+        <p style="margin: 0; font-size: 10px; color: #6b6460; line-height: 1.4;">
+          Emitido por el sistema <strong>EventGrid</strong>.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>`,
+    bodyText: 'Hola {{participantName}}, la conferencia {{activityTitle}} en {{eventName}} ha sido actualizada. Consulta el cronograma en {{scheduleUrl}}',
+    variables: [
+      'participantName',
+      'eventName',
+      'activityTitle',
+      'changeSummaryHtml',
+      'scheduleUrl',
+      'messageContent',
+    ],
+  },
     {
-      code: 'KEYNOTE_ANNOUNCEMENT',
-      name: 'Anuncio de Keynote / Conferencia Magistral',
-      subject: '¡Ya tenemos keynote! — {{eventName}}',
-      bodyHtml: `
-        <div style="font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 32px; border-radius: 12px; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #fbbf24; margin-top: 0;">¡Llegó el momento de anunciar nuestra presentación principal!</h2>
-          <p>Hola, <strong>{{participantName}}</strong>:</p>
-          <div style="background: #1e293b; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #fbbf24;">
-            <span style="background: #d97706; color: #ffffff; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 4px; text-transform: uppercase;">Keynote Oficial</span>
-            <h3 style="color: #f8fafc; margin: 10px 0 6px 0; font-size: 18px;">{{activityTitle}}</h3>
-            <p style="margin: 4px 0; color: #94a3b8;"><strong>Ponente:</strong> <span style="color: #f8fafc;">{{speakerName}}</span> {{speakerCompany}}</p>
-            <p style="margin: 4px 0; color: #94a3b8;"><strong>Horario:</strong> <span style="color: #f8fafc;">{{activityTime}} ({{activityDay}})</span></p>
-            <p style="margin: 4px 0; color: #94a3b8;"><strong>Lugar:</strong> <span style="color: #f8fafc;">{{activityRoom}}</span></p>
-            {{keynoteDescriptionHtml}}
-          </div>
-          {{messageContent}}
-          <p style="color: #cbd5e1;">Te esperamos para disfrutar esta presentación.</p>
-          <div style="text-align: center; margin: 24px 0;">
-            <a href="{{scheduleUrl}}" style="background: #f59e0b; color: #000000; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Ver Cronograma Completo</a>
-          </div>
+    code: 'KEYNOTE_ANNOUNCEMENT',
+    name: 'Anuncio de Keynote / Conferencia Magistral',
+    subject: '¡Ya tenemos keynote! — {{eventName}}',
+    bodyHtml: `<div style="background-color: #0a0707; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #110c0c; border-radius: 16px; border: 1px solid #261a1a; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6);">
+    <tr>
+      <td style="height: 6px; background-color: #ED2917; line-height: 6px; font-size: 1px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="padding: 24px 28px 18px 28px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="middle" style="text-align: left;">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #ED2917; background-color: rgba(237, 41, 23, 0.12); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(237, 41, 23, 0.3);">
+                KEYNOTE OFICIAL
+              </span>
+              <h1 style="margin: 10px 0 4px 0; font-size: 20px; font-weight: 800; color: #f5f1ec; line-height: 1.25; letter-spacing: -0.3px;">
+                {{eventName}}
+              </h1>
+            </td>
+            {{eventLogoHtml}}
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 24px 28px;">
+        <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 800; color: #f5f1ec; letter-spacing: -0.3px;">
+          ¡Llegó el momento de anunciar nuestra conferencia magistral!
+        </h2>
+        <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #e5dfd8;">
+          Hola, <strong>{{participantName}}</strong>:
+        </p>
+
+        <div style="background-color: #181111; padding: 20px; border-radius: 12px; margin: 20px 0; border-left: 4px solid #ED2917; border: 1px solid #2d1c1c;">
+          <span style="background-color: #ED2917; color: #ffffff; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; font-family: 'SF Mono', Consolas, monospace;">Keynote Oficial</span>
+          <h3 style="color: #f5f1ec; margin: 12px 0 8px 0; font-size: 18px; font-weight: 800;">{{activityTitle}}</h3>
+          <p style="margin: 4px 0; color: #a8a09a; font-size: 13px;"><strong>Ponente:</strong> <span style="color: #f5f1ec;">{{speakerName}}</span> {{speakerCompany}}</p>
+          <p style="margin: 4px 0; color: #a8a09a; font-size: 13px;"><strong>Horario:</strong> <span style="color: #f5f1ec;">{{activityTime}} ({{activityDay}})</span></p>
+          <p style="margin: 4px 0; color: #a8a09a; font-size: 13px;"><strong>Lugar:</strong> <span style="color: #f5f1ec;">{{activityRoom}}</span></p>
+          {{keynoteDescriptionHtml}}
         </div>
-      `,
-      bodyText: 'Hola {{participantName}}, ¡Llegó el momento de anunciar el Keynote de {{eventName}}! {{activityTitle}} por {{speakerName}}. Horario: {{activityTime}}, Lugar: {{activityRoom}}.',
-      variables: [
-        'participantName',
-        'eventName',
-        'activityTitle',
-        'speakerName',
-        'speakerCompany',
-        'activityTime',
-        'activityDay',
-        'activityRoom',
-        'keynoteDescriptionHtml',
-        'scheduleUrl',
-        'messageContent',
-      ],
-    },
+
+        {{messageContent}}
+
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="{{scheduleUrl}}" style="background-color: #ED2917; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 800; font-size: 13px; display: inline-block;">
+            Ver Cronograma Completo
+          </a>
+        </div>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 20px 28px; background-color: #0c0808; border-top: 1px solid #261a1a; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #f5f1ec;">
+          BarCamp República Dominicana 2026
+        </p>
+        <p style="margin: 0; font-size: 10px; color: #6b6460; line-height: 1.4;">
+          Emitido por el sistema <strong>EventGrid</strong>.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>`,
+    bodyText: 'Hola {{participantName}}, ¡Llegó el momento de anunciar el Keynote de {{eventName}}! {{activityTitle}} por {{speakerName}}.',
+    variables: [
+      'participantName',
+      'eventName',
+      'activityTitle',
+      'speakerName',
+      'speakerCompany',
+      'activityTime',
+      'activityDay',
+      'activityRoom',
+      'keynoteDescriptionHtml',
+      'scheduleUrl',
+      'messageContent',
+    ],
+  },
+    {
+    code: 'INSCRIPTION_CONFIRMATION',
+    name: 'Confirmación de Registro',
+    subject: '¡Registro recibido para {{eventName}}! — {{participantName}}',
+    bodyHtml: `<div style="background-color: #0a0707; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #110c0c; border-radius: 16px; border: 1px solid #261a1a; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6);">
+    <!-- Franja Superior Roja -->
+    <tr>
+      <td style="height: 6px; background-color: #ED2917; line-height: 6px; font-size: 1px;">&nbsp;</td>
+    </tr>
+    <!-- Encabezado del Evento -->
+    <tr>
+      <td style="padding: 24px 28px 18px 28px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="middle" style="text-align: left;">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #ED2917; background-color: rgba(237, 41, 23, 0.12); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(237, 41, 23, 0.3);">
+                CONFIRMACIÓN OFICIAL • EVENTGRID
+              </span>
+              <h1 style="margin: 10px 0 4px 0; font-size: 20px; font-weight: 800; color: #f5f1ec; line-height: 1.25; letter-spacing: -0.3px;">
+                {{eventName}}
+              </h1>
+              <div style="font-size: 12px; color: #a8a09a; margin-top: 4px; line-height: 1.5;">
+                <span style="display: inline-block; margin-right: 14px;">📍 {{eventVenue}}</span>
+                <span style="display: inline-block;">📅 {{eventDate}}</span>
+              </div>
+            </td>
+            {{eventLogoHtml}}
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- Cuerpo del Mensaje -->
+    <tr>
+      <td style="padding: 24px 28px;">
+        <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 800; color: #f5f1ec; letter-spacing: -0.3px;">
+          ¡Hola, {{participantName}}!
+        </h2>
+        <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #e5dfd8;">
+          Tu registro para <strong>{{eventName}}</strong> ha sido recibido satisfactoriamente en el sistema oficial de inscripciones.
+        </p>
+
+        <!-- Tarjeta de Detalles de Inscripción -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #181111; border: 1px solid #2d1c1c; border-radius: 12px; margin-bottom: 20px;">
+          <tr>
+            <td style="padding: 18px 20px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Número de Registro:</td>
+                  <td align="right" style="padding-bottom: 10px; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 14px; font-weight: 800; color: #ED2917;">
+                    {{registrationNumber}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Participante:</td>
+                  <td align="right" style="padding-bottom: 10px; font-size: 13px; font-weight: 700; color: #f5f1ec;">
+                    {{participantName}}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom: 10px; font-size: 12px; color: #a8a09a;">Tipo de Entrada:</td>
+                  <td align="right" style="padding-bottom: 10px; font-size: 13px; font-weight: 700; color: #f5f1ec;">
+                    <span style="display: inline-block; background-color: #261a1a; border: 1px solid #3d2424; padding: 2px 8px; border-radius: 4px;">{{ticketType}}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-size: 12px; color: #a8a09a;">Estado de Pago:</td>
+                  <td align="right" style="font-size: 12px;">
+                    {{paymentStatusBadgeHtml}}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Mensaje Personalizado Adicional (opcional) -->
+        {{messageContent}}
+
+        <!-- Botón de Acción -->
+        <div style="text-align: center; margin: 24px 0 16px 0;">
+          <a href="{{scheduleUrl}}" style="display: inline-block; background-color: #ED2917; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; padding: 12px 28px; border-radius: 8px; letter-spacing: 0.3px; box-shadow: 0 4px 12px rgba(237, 41, 23, 0.35);">
+            Consultar Agenda del Evento
+          </a>
+        </div>
+
+        <p style="margin: 20px 0 0 0; font-size: 12px; line-height: 1.5; color: #a8a09a; text-align: center;">
+          Conserva este correo como comprobante de tu registro. Si tu entrada incluye código QR, podrás consultarla en el correo de Entrada Digital.
+        </p>
+      </td>
+    </tr>
+
+    <!-- Pie de Página Oficial -->
+    <tr>
+      <td style="padding: 20px 28px; background-color: #0c0808; border-top: 1px solid #261a1a; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #f5f1ec;">
+          BarCamp República Dominicana 2026
+        </p>
+        <p style="margin: 0 0 10px 0; font-size: 11px; color: #6b6460; line-height: 1.4;">
+          Pontificia Universidad Católica Madre y Maestra (PUCMM) • Santiago de los Caballeros, Rep. Dom.
+        </p>
+        <p style="margin: 0; font-size: 10px; color: #6b6460; line-height: 1.4;">
+          Emitido por el sistema <strong>EventGrid</strong>. Para consultas o asistencia, responde a este correo.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>`,
+    bodyText: 'Hola {{participantName}}, tu registro para {{eventName}} ha sido recibido. Registro: {{registrationNumber}}. Tipo: {{ticketType}}. Estado de pago: {{paymentStatusText}}.',
+    variables: [
+      'participantName',
+      'eventName',
+      'registrationNumber',
+      'ticketType',
+      'eventVenue',
+      'eventDate',
+      'paymentStatusText',
+      'paymentStatusBadgeHtml',
+      'scheduleUrl',
+      'messageContent',
+    ],
+  },
+    {
+    code: 'INSCRIPTION_CANCELLED',
+    name: 'Cancelación de Inscripción',
+    subject: 'Inscripción cancelada — {{eventName}} (Ticket {{registrationNumber}})',
+    bodyHtml: `<div style="background-color: #0a0707; padding: 24px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5f1ec;">
+  <table align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; margin: 0 auto; background-color: #110c0c; border-radius: 16px; border: 1px solid #261a1a; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.6);">
+    <tr>
+      <td style="height: 6px; background-color: #6b6460; line-height: 6px; font-size: 1px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="padding: 24px 28px 18px 28px; background-color: #140d0d; border-bottom: 1px solid #261a1a;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="middle" style="text-align: left;">
+              <span style="display: inline-block; font-family: 'SF Mono', Consolas, Monaco, monospace; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #a8a09a; background-color: rgba(255, 255, 255, 0.08); padding: 3px 10px; border-radius: 6px; border: 1px solid #332222;">
+                AVISO DE CANCELACIÓN
+              </span>
+              <h1 style="margin: 10px 0 4px 0; font-size: 20px; font-weight: 800; color: #f5f1ec; line-height: 1.25; letter-spacing: -0.3px;">
+                {{eventName}}
+              </h1>
+              <div style="font-size: 12px; color: #a8a09a; margin-top: 4px; line-height: 1.5;">
+                <span style="display: inline-block;">📍 {{eventVenue}}</span>
+              </div>
+            </td>
+            {{eventLogoHtml}}
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 24px 28px;">
+        <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 800; color: #a8a09a; letter-spacing: -0.3px;">
+          Notificación de Cancelación
+        </h2>
+        <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #e5dfd8;">
+          Estimado(a) <strong>{{participantName}}</strong>, te informamos que la inscripción <strong>{{registrationNumber}}</strong> para <strong>{{eventName}}</strong> ha sido cancelada en el sistema.
+        </p>
+
+        {{messageContent}}
+
+        <p style="margin: 20px 0 0 0; font-size: 12px; line-height: 1.5; color: #a8a09a;">
+          Si consideras que esto ocurrió por error o deseas reactivar tu registro, por favor responde a este correo para asistirte.
+        </p>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding: 20px 28px; background-color: #0c0808; border-top: 1px solid #261a1a; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #f5f1ec;">
+          BarCamp República Dominicana 2026
+        </p>
+        <p style="margin: 0; font-size: 10px; color: #6b6460; line-height: 1.4;">
+          Emitido por el sistema <strong>EventGrid</strong>.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>`,
+    bodyText: 'Hola {{participantName}}, la inscripción {{registrationNumber}} para {{eventName}} ha sido cancelada.',
+    variables: ['participantName', 'eventName', 'registrationNumber', 'messageContent'],
+  }
   ];
 
   /**
@@ -857,7 +1625,7 @@ export class CommunicationsService {
           scheduleHtml = `
             <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-family: Arial, sans-serif; font-size: 14px;">
               <thead>
-                <tr style="background: #1e293b; color: #94a3b8; text-align: left;">
+                <tr style="background: #181010; color: #a8a09a; border-bottom: 2px solid #ED2917; text-align: left;">
                   <th style="padding: 10px 12px; border-radius: 6px 0 0 6px;">Hora</th>
                   <th style="padding: 10px 12px;">Actividad / Charla</th>
                   <th style="padding: 10px 12px;">Salón</th>
@@ -867,7 +1635,7 @@ export class CommunicationsService {
               <tbody>
                 ${scheduleItems.map((item, idx) => `
                   <tr style="border-bottom: 1px solid #334155; background: ${idx % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent'};">
-                    <td style="padding: 10px 12px; color: #38bdf8; font-weight: bold; white-space: nowrap;">${item.startTime} - ${item.endTime}</td>
+                    <td style="padding: 10px 12px; color: #ED2917; font-weight: bold; font-family: monospace; white-space: nowrap;">${item.startTime} - ${item.endTime}</td>
                     <td style="padding: 10px 12px; color: #f8fafc;">
                       <div style="font-weight: 600;">${item.title}</div>
                       ${item.category ? `<span style="display: inline-block; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #334155; color: #cbd5e1; margin-top: 4px;">${item.category}</span>` : ''}
@@ -893,11 +1661,11 @@ export class CommunicationsService {
     const rawLogoUrl = registration.event?.settings?.logoUrl || (registration.event as any)?.logoUrl || '';
     const logoUrl = rawLogoUrl ? (rawLogoUrl.startsWith('http') ? rawLogoUrl : `${publicUrlBase}${rawLogoUrl.startsWith('/') ? '' : '/'}${rawLogoUrl}`) : '';
     const eventLogoHtml = logoUrl
-      ? `<td valign="top" align="right" style="width: 60px; padding-left: 12px;"><img src="${logoUrl}" alt="${registration.event?.name || 'Evento'}" width="52" height="52" style="display: block; width: 52px; height: 52px; object-fit: contain; border-radius: 10px; border: 1px solid #e2e8f0; padding: 2px; background-color: #ffffff;" /></td>`
-      : '';
+      ? `<td valign="top" align="right" style="width: 60px; padding-left: 12px;"><img src="${logoUrl}" alt="${registration.event?.name || 'Evento'}" width="52" height="52" style="display: block; width: 52px; height: 52px; object-fit: contain; border-radius: 10px; border: 1px solid #261a1a; padding: 2px; background-color: #1a1212;" /></td>`
+      : `<td valign="top" align="right" style="width: 60px; padding-left: 12px;"><div style="background-color: #1a1212; border: 1px solid #2b1b1b; border-radius: 10px; padding: 6px 8px; text-align: center; display: inline-block;"><span style="font-family: Arial, sans-serif; font-weight: 900; font-size: 15px; color: #ED2917; letter-spacing: -0.5px;">BC</span><span style="font-family: monospace; font-weight: 800; font-size: 13px; color: #f5f1ec;">26</span></div></td>`;
 
     const scheduleUrl = `${publicUrlBase}/schedule`;
-    const primaryColor = registration.event?.settings?.primaryColor || '#e11d48';
+    const primaryColor = registration.event?.settings?.primaryColor || '#ED2917';
 
     const variables: Record<string, string> = {
       primaryColor,
