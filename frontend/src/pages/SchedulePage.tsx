@@ -1,3 +1,4 @@
+import { formatTimeDraft } from '../utils/timeDraft';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
@@ -74,8 +75,8 @@ export const SchedulePage: React.FC = () => {
     speakerCompany: '',
     room: '',
     day: 'Día 1',
-    startTime: '09:00',
-    endTime: '10:00',
+    startTime: '',
+    endTime: '',
     category: '',
     status: 'CONFIRMED' as 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED',
     description: '',
@@ -189,8 +190,8 @@ export const SchedulePage: React.FC = () => {
       speakerCompany: '',
       room: data.rooms[0] || 'Aula Principal',
       day: data.days[0] || 'Día 1',
-      startTime: '09:00',
-      endTime: '10:00',
+      startTime: '',
+      endTime: '',
       category: data.categories[0] || 'Tecnología',
       status: 'CONFIRMED',
       description: '',
@@ -1137,10 +1138,12 @@ export const SchedulePage: React.FC = () => {
                   <input
                     type="text"
                     required
-                    pattern="^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+                    pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
                     value={itemForm.startTime}
-                    onChange={(e) => setItemForm({ ...itemForm, startTime: e.target.value })}
-                    placeholder="09:00"
+                    onChange={(e) => setItemForm({ ...itemForm, startTime: formatTimeDraft(e.target.value, itemForm.startTime) })}
+                    inputMode="numeric"
+                    maxLength={5}
+                    placeholder="HH:MM"
                     className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   />
                 </div>
@@ -1151,10 +1154,12 @@ export const SchedulePage: React.FC = () => {
                   <input
                     type="text"
                     required
-                    pattern="^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+                    pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
                     value={itemForm.endTime}
-                    onChange={(e) => setItemForm({ ...itemForm, endTime: e.target.value })}
-                    placeholder="10:00"
+                    onChange={(e) => setItemForm({ ...itemForm, endTime: formatTimeDraft(e.target.value, itemForm.endTime) })}
+                    inputMode="numeric"
+                    maxLength={5}
+                    placeholder="HH:MM"
                     className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                   />
                 </div>

@@ -144,8 +144,10 @@ export const AttendancePage: React.FC = () => {
   }, [currentEvent]);
 
   // Cargar datos y contadores
+  const requestVersion = useRef(0);
   const fetchAttendance = useCallback(async () => {
     if (!currentEvent) return;
+    const version = ++requestVersion.current;
     try {
       setLoading(true);
       const res = await attendanceService.searchAndList({
@@ -155,7 +157,9 @@ export const AttendancePage: React.FC = () => {
         limit: 20,
       });
 
+      if (version !== requestVersion.current) return;
       setRegistrations(res.data);
+      setSelectedRegistration(prev => { const fresh = res.data.find((r: any) => r.id === prev?.id); return prev && fresh ? { ...prev, ...fresh } : prev; });
       setCounters(res.counters);
       setTotalFound(res.pagination.total);
       setTotalPages(res.pagination.totalPages);
@@ -183,53 +187,7 @@ export const AttendancePage: React.FC = () => {
   }, [fetchAttendance]);
 
   // Sincronización en tiempo real sin recargas de página completa ni pérdida de contexto
-  useRealtimeEvent('CHECK_IN_CONFIRMED', (event) => {
-    const data = event.data;
-    if (!data?.registrationId) return;
-
-    // Actualizar registro en lista en memoria (in-place sin recargar tabla)
-    setRegistrations((prev) =>
-      prev.map((reg) => {
-        if (reg.id === data.registrationId) {
-          return {
-            ...reg,
-            attended: true,
-            attendedAt: data.attendedAt || new Date().toISOString(),
-            attendedByUser: data.attendedByName ? { id: data.attendedByUserId || '', fullName: data.attendedByName, email: data.attendedByEmail || '' } : reg.attendedByUser,
-            tshirtSize: data.tshirtSize || reg.tshirtSize,
-            tshirtDelivered: data.tshirtDelivered !== undefined ? data.tshirtDelivered : reg.tshirtDelivered,
-          };
-        }
-        return reg;
-      })
-    );
-
-    // Actualizar contadores inmediatamente
-    if (data.counters) {
-      setCounters(data.counters);
-    } else {
-      setCounters((prev) => ({
-        ...prev,
-        attendedCount: prev.attendedCount + 1,
-        pendingCount: Math.max(0, prev.pendingCount - 1),
-      }));
-    }
-
-    // Actualizar ficha de participante si está abierta (sin cerrarla)
-    setSelectedRegistration((prev) => {
-      if (prev && prev.id === data.registrationId) {
-        return {
-          ...prev,
-          attended: true,
-          attendedAt: data.attendedAt || new Date().toISOString(),
-          attendedByUser: data.attendedByName ? { id: data.attendedByUserId || '', fullName: data.attendedByName, email: data.attendedByEmail || '' } : prev.attendedByUser,
-          tshirtSize: data.tshirtSize || prev.tshirtSize,
-          tshirtDelivered: data.tshirtDelivered !== undefined ? data.tshirtDelivered : prev.tshirtDelivered,
-        };
-      }
-      return prev;
-    });
-  });
+  useRealtimeEvent('CHECK_IN_CONFIRMED', () => { fetchAttendance(); });
 
   useRealtimeEvent('ATTENDANCE_REVERTED', (event) => {
     const data = event.data;

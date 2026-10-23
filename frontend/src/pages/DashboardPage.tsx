@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { useRealtimeEvent } from '../context/RealtimeContext';
@@ -116,8 +116,10 @@ export const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
+  const requestVersion = useRef(0);
   const loadAllData = useCallback(async (isSilent = false) => {
     if (!currentEvent) return;
+    const version = ++requestVersion.current;
     if (!isSilent) setLoading(true);
     else setRefreshing(true);
 
@@ -128,6 +130,7 @@ export const DashboardPage: React.FC = () => {
         eventsService.getFinancialSummary(currentEvent.id).catch(() => null),
       ]);
 
+      if (version !== requestVersion.current) return;
       setRegistrations(regsRes.data || []);
       if (statsRes) setStats(statsRes);
       if (finRes) setFinancialSummary(finRes);
@@ -144,34 +147,7 @@ export const DashboardPage: React.FC = () => {
   }, [loadAllData]);
 
   // Sincronización reactiva en tiempo real sin recargar página
-  useRealtimeEvent('CHECK_IN_CONFIRMED', (event) => {
-    const data = event.data;
-    setStats((prev: any) => {
-      if (!prev || !prev.participants) return prev;
-      const newAttended = (prev.participants.attended || 0) + 1;
-      const notAttended = Math.max(0, (prev.participants.notAttended || 0) - 1);
-      const activeTotal = Math.max(1, prev.participants.total - (prev.participants.cancelled || 0));
-      return {
-        ...prev,
-        participants: {
-          ...prev.participants,
-          attended: newAttended,
-          notAttended,
-          attendanceRate: Math.round((newAttended / activeTotal) * 100),
-        },
-      };
-    });
-
-    if (data?.registrationId) {
-      setRegistrations((prev) =>
-        prev.map((r) =>
-          r.id === data.registrationId
-            ? { ...r, attended: true, attendedAt: data.attendedAt || new Date().toISOString() }
-            : r
-        )
-      );
-    }
-  });
+  useRealtimeEvent('CHECK_IN_CONFIRMED', () => { loadAllData(); });
 
   useRealtimeEvent('ATTENDANCE_REVERTED', (event) => {
     const data = event.data;

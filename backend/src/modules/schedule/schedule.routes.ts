@@ -15,7 +15,6 @@ router.use(editionContext);
 
 // Consultas autenticadas (cualquier rol)
 router.get('/', requireAnyRole, ScheduleController.getItems);
-router.get('/:id', requireAnyRole, ScheduleController.getItemById);
 
 // Gestión de charlas e importaciones (Admin u Operador)
 router.post('/', requireOperatorOrAdmin, ScheduleController.createItem);
@@ -31,6 +30,8 @@ router.delete('/demo', requireOperatorOrAdmin, ScheduleController.clearDemoSched
 // Historial de cambios y notificaciones programadas
 router.get('/history', requireAnyRole, ScheduleController.getChangeHistory);
 router.get('/scheduled', requireAnyRole, ScheduleController.getScheduledNotifications);
+router.get('/:id', requireAnyRole, ScheduleController.getItemById);
+
 router.delete('/scheduled/:id', requireOperatorOrAdmin, ScheduleController.cancelScheduledNotification);
 
 // Anuncios y notificaciones de cronograma

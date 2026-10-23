@@ -81,19 +81,7 @@ export class AttendanceController {
       }
 
       const adminUserId = req.user!.id;
-      const result = await AttendanceService.revertAttendance(
-        AttendanceController.getEventId(req),
-        parseResult.data.registrationId,
-        adminUserId,
-        parseResult.data.reason
-      );
-
-      res.status(200).json({
-        status: 'success',
-        message: result.message,
-        data: result.registration,
-        counters: result.counters,
-      });
+      await AttendanceService.revertAttendance(req.params.eventId || req.eventId!, parseResult.data.registrationId, req.user!.id, parseResult.data.reason);
     } catch (err) {
       next(err);
     }

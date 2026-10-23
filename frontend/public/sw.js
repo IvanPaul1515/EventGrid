@@ -8,7 +8,7 @@ const PUBLIC_FILES = [
   '/apple-touch-icon.png', '/favicon.svg',
 ];
 const SHELL = [...PUBLIC_FILES, ...BUILD_ASSETS];
-const APP_ROUTES = ['/', '/login', '/attendance', '/participants', '/import', '/sales',
+const APP_ROUTES = ['/', '/login', '/staff', '/attendance', '/participants', '/import', '/sales',
   '/sponsors', '/inventory', '/editions', '/schedule', '/communications', '/settings',
   '/users', '/audit', '/activity'];
 self.addEventListener('install', (event) => {

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const CheckInSchema = z.object({
+  confirmed: z.literal(true, { errorMap: () => ({ message: 'Debe confirmar expresamente el ingreso definitivo.' }) }),
   registrationId: z.string().uuid('ID de inscripción inválido'),
   tshirtSize: z.string().optional(), // Talla de camiseta registrada en check-in
   tshirtDelivered: z.boolean().optional(), // Si la camiseta fue entregada físicamente

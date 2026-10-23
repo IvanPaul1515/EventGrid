@@ -12,7 +12,7 @@ const base = process.env.EVENTGRID_TEST_URL || 'http://127.0.0.1:5178';
    const user = { id: 'fake-user', fullName: 'Simulated User', email: 'fake@example.invalid', role };
    const event = { id: 'fake-event', name: 'BarCamp RD 2026', year: 2026, status: 'ACTIVE', isDefault: true, settings: { tshirtSizesEnabled: true, tshirtSizes: ['M', 'L'] } };
    const categories = ['Geek Gold', 'Geek Silver', 'Geek'].map(name => ({ name, value: null }));
-   const sponsors = []; let qrFailed = false, checkins = 0, lastCheckin;
+   const sponsors = [], staff = [], accounts = []; let invitations = 0; let qrFailed = false, checkins = 0, lastCheckin;
    await page.route('**/api/**', async route => {
     const url = new URL(route.request().url()), path = url.pathname, method = route.request().method(); let data = [];
     if (path.endsWith('/stream')) return route.fulfill({ contentType: 'text/event-stream', body: ': connected\n\n' });
@@ -20,6 +20,12 @@ const base = process.env.EVENTGRID_TEST_URL || 'http://127.0.0.1:5178';
     if (path.endsWith('/demo-login')) data = { token: 'fake-token', user };
     else if (path.endsWith('/auth/me')) data = user;
     else if (path.endsWith('/events')) data = [event];
+    else if (path.endsWith('/staff') && method === 'POST') { data = { ...route.request().postDataJSON(), id: 'staff-1' }; staff.push(data); }
+    else if (path.endsWith('/staff')) data = staff;
+    else if (path.endsWith('/users') && method === 'POST') { data = { ...route.request().postDataJSON(), id: 'account-' + accounts.length, isActive: false }; accounts.push(data); }
+    else if (path.endsWith('/users')) data = accounts;
+    else if (path.endsWith('/invitations/preview')) data = { issues: [], count: route.request().postDataJSON().rows.length };
+    else if (path.endsWith('/invitations/send')) { invitations++; data = { status: 'COMPLETED', results: route.request().postDataJSON().userIds.map(userId => ({ userId, status: 'PENDING' })) }; }
     else if (path.endsWith('/stats') || path.endsWith('/financial-summary')) data = null;
     else if (path.endsWith('/sponsors/categories')) data = categories;
     else if (path.endsWith('/sponsors/summary')) data = {};
@@ -55,6 +61,24 @@ const base = process.env.EVENTGRID_TEST_URL || 'http://127.0.0.1:5178';
     await page.goto(base + '/participants'); assert.equal(await page.getByRole('button', { name: 'Nuevo Participante', exact: true }).count(), 0);
    }
    if (role === 'ADMIN') {
+    await page.goto(base + '/staff');
+    await page.getByRole('button', { name: 'Agregar miembro', exact: true }).click();
+    const staffForm = page.getByRole('dialog', { name: 'Miembro de staff' });
+    await staffForm.getByLabel('Nombre', { exact: true }).fill('Fictitious');
+    await staffForm.getByLabel('Apellido', { exact: true }).fill('Staff');
+    await staffForm.getByLabel('Correo', { exact: true }).fill('staff@example.invalid');
+    await staffForm.getByRole('button', { name: 'Guardar', exact: true }).click();
+    await staffForm.waitFor({ state: 'hidden' }); assert.equal(accounts.length, 0); assert.equal(invitations, 0);
+    await page.goto(base + '/users');
+    await page.getByText('Invitar personal', { exact: true }).click();
+    await page.getByRole('button', { name: 'Agregar persona', exact: true }).click();
+    await page.getByLabel('Nombre del invitado', { exact: true }).fill('Fictitious Invitee');
+    await page.getByLabel('Correo del invitado', { exact: true }).fill('invite@example.invalid');
+    await page.getByRole('button', { name: 'Vista previa', exact: true }).click();
+    await page.getByText('Confirmar envío de 1 invitaciones').waitFor(); assert.equal(invitations, 0); assert.equal(accounts.length, 0);
+    await page.getByRole('button', { name: 'Enviar invitaciones', exact: true }).evaluate(e => { e.click(); e.click(); });
+    await page.getByRole('status').filter({ hasText: 'PENDING' }).waitFor(); assert.equal(invitations, 1); assert.equal(accounts.length, 1);
+    checks.push('Staff stays separate from users; invitation preview has no sends; one confirmation dispatches one batch, disabled-provider result stays pending');
     await page.goto(base + '/sponsors');
     for (const category of categories) {
      await page.getByRole('button', { name: 'Nuevo Patrocinador', exact: true }).click(); const modal = page.getByRole('dialog');
@@ -106,14 +130,13 @@ const base = process.env.EVENTGRID_TEST_URL || 'http://127.0.0.1:5178';
     await qr.getByRole('button', { name: 'Lector USB / Manual', exact: true }).click();
     await qr.locator('input').fill('fake-qr'); await qr.getByRole('button', { name: 'Validar', exact: true }).click();
     assert.equal(checkins, 0);
-    await qr.getByRole('button', { name: 'MARCAR ASISTENCIA AHORA', exact: true }).click();
-    const confirm = page.getByRole('dialog', { name: 'Confirmar asistencia', exact: true });
-    assert(await confirm.getByRole('button', { name: /^M/ }).getAttribute('class').then(v => v.includes('bg-primary')));
-    await confirm.getByRole('button', { name: /^L/ }).click();
-    page.once('dialog', d => d.accept()); await confirm.getByRole('button', { name: 'Confirmar Asistencia', exact: true }).click();
-    assert.equal(checkins, 0); assert.equal(await confirm.isVisible(), true);
-    await confirm.getByRole('button', { name: 'Confirmar Asistencia', exact: true }).evaluate(e => { e.click(); e.click(); });
-    await qr.waitFor({ state: 'hidden' }); assert.equal(checkins, 1); assert.equal(lastCheckin.tshirtSize, 'L');
+    assert(await qr.getByRole('button', { name: 'M', exact: true }).getAttribute('class').then(v => v.includes('bg-primary')));
+    assert.equal(await qr.getByLabel('Entregar más tarde').isChecked(), true);
+    await qr.getByRole('button', { name: 'L', exact: true }).click();
+    page.once('dialog', d => d.accept()); await qr.getByRole('button', { name: 'Confirmar asistencia', exact: true }).click();
+    assert.equal(checkins, 0); assert.equal(await qr.isVisible(), true);
+    await qr.getByRole('button', { name: 'Confirmar asistencia', exact: true }).evaluate(e => { e.click(); e.click(); });
+    await qr.waitFor({ state: 'hidden' }); assert.equal(checkins, 1); assert.equal(lastCheckin.tshirtSize, 'L'); assert.equal(lastCheckin.tshirtDelivered, false); assert.equal(lastCheckin.confirmed, true);
     await page.getByText('Asistencia confirmada', { exact: true }).waitFor();
     checks.push('Dashboard reuses QR; explicit confirmation, previous size, changed size, failure without false success, one request, returns to attendance');
    }

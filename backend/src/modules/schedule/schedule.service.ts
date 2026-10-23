@@ -12,6 +12,18 @@ import { CommunicationsService } from '../communications/communications.service.
 import * as XLSX from 'xlsx';
 
 export class ScheduleService {
+  private static async validateTimes(eventId: string, data: any, excludeId?: string) {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(data.startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(data.endTime) || data.endTime <= data.startTime) {
+      throw new BadRequestError('Indique horas completas HH:MM y una hora final posterior al inicio.');
+    }
+    if (data.room && data.status !== 'CANCELLED') {
+      const conflict = await prisma.scheduleItem.findFirst({ where: {
+        eventId, room: data.room, day: data.day || 'Día 1', status: { not: 'CANCELLED' },
+        ...(excludeId ? { id: { not: excludeId } } : {}), startTime: { lt: data.endTime }, endTime: { gt: data.startTime },
+      } });
+      if (conflict) throw new BadRequestError('Existe otra actividad en esa sala durante el horario indicado.');
+    }
+  }
   /**
    * Obtener lista de ítems de cronograma para un evento con filtros
    */
@@ -112,6 +124,7 @@ export class ScheduleService {
    * Crear nuevo ítem en el cronograma
    */
   static async createItem(eventId: string, input: CreateScheduleItemInput) {
+    await this.validateTimes(eventId, input);
     const event = await prisma.event.findUnique({
       where: { id: eventId },
     });
@@ -151,6 +164,7 @@ export class ScheduleService {
    */
   static async updateItem(eventId: string, id: string, input: UpdateScheduleItemInput, userId?: string) {
     const existing = await this.getItemById(eventId, id);
+    await this.validateTimes(eventId, { ...existing, ...input }, id);
 
     // Detectar modificaciones en campos de impacto
     const changedFields: string[] = [];
@@ -608,9 +622,9 @@ export class ScheduleService {
     const item = await this.getItemById(eventId, id);
     const action = (input as any).action;
     const scheduledFor = (input as any).scheduledFor || input.scheduleNotificationAt || input.schedulePublicationAt;
-    const isPublishOnly = Boolean(input.publishOnly || action === 'PUBLISH_ONLY');
+    const isPublishOnly = Boolean(input.publishOnly || action === 'PUBLISH_ONLY' || (!action && !input.sendNow && !input.schedulePublicationAt && !input.scheduleNotificationAt));
     const isSchedule = Boolean(action === 'SCHEDULE_PUBLISH_AND_NOTIFY' || input.schedulePublicationAt || input.scheduleNotificationAt);
-    const shouldSendNow = Boolean(action === 'PUBLISH_AND_NOTIFY' || (!isPublishOnly && !isSchedule));
+    const shouldSendNow = Boolean(input.sendNow || action === 'PUBLISH_AND_NOTIFY');
 
     // 1. Solo publicar (hacer visible en cronograma sin enviar correos)
     if (isPublishOnly) {
@@ -662,10 +676,11 @@ export class ScheduleService {
         scheduled: true,
         notification: scheduledNotif,
         scheduledNotification: scheduledNotif,
-        message: 'Keynote programado para publicación y anuncio.',
+        message: 'Registro programado conservado. El envío requiere una nueva confirmación explícita; no se ejecutará automáticamente.',
       };
     }
 
+    if (!shouldSendNow) throw new BadRequestError('Debe autorizar expresamente Publicar y enviar ahora.');
     // 3. Publicar y enviar ahora
     const updated = await prisma.scheduleItem.update({
       where: { id },

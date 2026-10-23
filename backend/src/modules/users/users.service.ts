@@ -1,3 +1,4 @@
+import { InvitationsService } from './invitations.service.js';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/db.js';
@@ -46,6 +47,8 @@ export class UsersService {
           fullName: true,
           role: true,
           assignedEventId: true,
+        accountStatus: true,
+        staffArea: true,
           isActive: true,
           lastLoginAt: true,
           createdAt: true,
@@ -80,6 +83,8 @@ export class UsersService {
         fullName: true,
         role: true,
         assignedEventId: true,
+        accountStatus: true,
+        staffArea: true,
         isActive: true,
         lastLoginAt: true,
         createdAt: true,
@@ -108,7 +113,7 @@ export class UsersService {
     }
 
     // Si no se suministra contraseña, generar contraseña temporal segura de un solo uso
-    const temporaryPassword = input.password || `${crypto.randomBytes(6).toString('hex')}Aa1!`;
+    const temporaryPassword = crypto.randomBytes(32).toString('base64url');
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
 
     const user = await prisma.user.create({
@@ -117,7 +122,9 @@ export class UsersService {
         fullName: input.fullName,
         role: input.role,
         assignedEventId: input.assignedEventId,
-        isActive: input.isActive ?? true,
+        isActive: false,
+        accountStatus: 'PENDING',
+        staffArea: input.staffArea,
         passwordHash,
       },
       select: {
@@ -126,6 +133,8 @@ export class UsersService {
         fullName: true,
         role: true,
         assignedEventId: true,
+        accountStatus: true,
+        staffArea: true,
         isActive: true,
         lastLoginAt: true,
         createdAt: true,
@@ -150,10 +159,8 @@ export class UsersService {
       },
     }).catch(() => {});
 
-    return {
-      user,
-      temporaryPassword: input.password ? undefined : temporaryPassword,
-    };
+    await InvitationsService.prepare(user.id);
+    return { user, temporaryPassword: undefined };
   }
 
   /**
@@ -182,6 +189,7 @@ export class UsersService {
     await this.validateAssignment(input.assignedEventId);
     const data: any = {};
     if (input.assignedEventId !== undefined) data.assignedEventId = input.assignedEventId;
+    if (input.staffArea !== undefined) data.staffArea = input.staffArea;
     if (input.fullName !== undefined) data.fullName = input.fullName;
     if (input.role !== undefined) data.role = input.role;
     if (input.isActive !== undefined) data.isActive = input.isActive;
@@ -195,6 +203,8 @@ export class UsersService {
         fullName: true,
         role: true,
         assignedEventId: true,
+        accountStatus: true,
+        staffArea: true,
         isActive: true,
         lastLoginAt: true,
         createdAt: true,
@@ -250,6 +260,8 @@ export class UsersService {
         fullName: true,
         role: true,
         assignedEventId: true,
+        accountStatus: true,
+        staffArea: true,
         isActive: true,
         lastLoginAt: true,
         createdAt: true,
@@ -275,37 +287,11 @@ export class UsersService {
    * Restablecer acceso mediante contraseña temporal de un solo uso
    */
   static async resetPassword(id: string, input?: ResetPasswordInput, actorUserId?: string) {
-    const user = await prisma.user.findUnique({
-      where: { id },
-    });
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundError('Usuario no encontrado');
+    await InvitationsService.prepare(id);
+    return { message: 'Invitación preparada. Utilice Enviar invitaciones para autorizar su envío.', temporaryPassword: undefined };
 
-    if (!user) {
-      throw new NotFoundError('Usuario no encontrado');
-    }
-
-    const temporaryPassword = input?.password || `${crypto.randomBytes(6).toString('hex')}Aa1!`;
-    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
-
-    await prisma.user.update({
-      where: { id },
-      data: { passwordHash },
-    });
-
-    // Auditoría
-    await prisma.auditLog.create({
-      data: {
-        userId: actorUserId || null,
-        action: 'USER_PASSWORD_RESET',
-        entity: 'USER',
-        entityId: id,
-        changes: JSON.stringify({ resetAt: new Date().toISOString() }),
-      },
-    }).catch(() => {});
-
-    return {
-      message: 'Contraseña restablecida exitosamente.',
-      temporaryPassword,
-    };
   }
 
   /**

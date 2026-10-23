@@ -11,7 +11,6 @@ import { communicationsService } from '../../services/communications.service';
 import { RecordPaymentModal } from './RecordPaymentModal';
 import { AssignCourtesyModal } from './AssignCourtesyModal';
 import { ReasonModal } from './ReasonModal';
-import { RevertModal } from '../attendance/RevertModal';
 import { CheckInConfirmModal } from '../attendance/CheckInConfirmModal';
 import { DigitalTicketModal } from '../qr/DigitalTicketModal';
 import { SendSingleEmailModal } from '../communications/SendSingleEmailModal';
@@ -99,7 +98,6 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
   const [showCourtesyModal, setShowCourtesyModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showReactivateModal, setShowReactivateModal] = useState(false);
-  const [showRevertModal, setShowRevertModal] = useState(false);
   const [showCheckInConfirmModal, setShowCheckInConfirmModal] = useState(false);
   const [showReturnTshirtModal, setShowReturnTshirtModal] = useState(false);
   const [deliveringTshirt, setDeliveringTshirt] = useState(false);
@@ -161,7 +159,6 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
           showCourtesyModal ||
           showCancelModal ||
           showReactivateModal ||
-          showRevertModal ||
           showCheckInConfirmModal ||
           showReturnTshirtModal ||
           showTicketModal ||
@@ -189,7 +186,6 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
     showCourtesyModal,
     showCancelModal,
     showReactivateModal,
-    showRevertModal,
     showCheckInConfirmModal,
     showReturnTshirtModal,
     showTicketModal,
@@ -428,26 +424,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
     }
   };
 
-  // Reversión de Asistencia (ADMIN)
-  const handleConfirmRevert = async (reason: string) => {
-    const res = await attendanceService.revert(registration.id, reason);
-    const updatedDetailed: DetailedRegistration = {
-      ...registration,
-      ...res.registration,
-      attended: false,
-      attendedAt: undefined,
-      attendedByUserId: undefined,
-      attendedByUser: undefined,
-      status: res.registration.status,
-    };
-    if (onUpdated) onUpdated(updatedDetailed);
-    window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
-    setShowRevertModal(false);
-    setFeedbackMsg({
-      type: 'success',
-      text: 'Asistencia revertida exitosamente. Estado: No ha llegado.',
-    });
-  };
+
 
   // Registrar Abono
   const handleConfirmPayment = async (amount: number, paymentMethodId: string, notes?: string) => {
@@ -762,20 +739,6 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                         </span>
                       </div>
                     </div>
-
-                    {/* Botón de Revertir Asistencia (Solo ADMIN) */}
-                    {isAdmin && (
-                      <div className="pt-2 border-t border-emerald-500/20 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => setShowRevertModal(true)}
-                          className="text-[11px] font-bold text-rose-400 hover:text-rose-300 flex items-center gap-1 transition-colors cursor-pointer"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Revertir Asistencia (Admin)</span>
-                        </button>
-                      </div>
-                    )}
 
                     {/* T-shirt size — show/edit after check-in */}
                     {tshirtEnabled && (
@@ -1831,13 +1794,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
         onConfirm={handleConfirmReactivate}
       />
 
-      <RevertModal
-        registration={registration}
-        isOpen={showRevertModal}
-        loading={false}
-        onClose={() => setShowRevertModal(false)}
-        onConfirm={handleConfirmRevert}
-      />
+
 
       <DigitalTicketModal
         registrationId={registration.id}

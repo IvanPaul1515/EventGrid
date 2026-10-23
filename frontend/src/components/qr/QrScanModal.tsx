@@ -6,7 +6,6 @@ import { attendanceService } from '../../services/attendance.service';
 import { QrScanResult, Registration } from '../../types';
 import { useEdition } from '../../context/EditionContext';
 import { TshirtSizeSelector } from '../attendance/TshirtSizeSelector';
-import { CheckInConfirmModal } from '../attendance/CheckInConfirmModal';
 import {
   X,
   QrCode,
@@ -52,7 +51,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraLoading, setCameraLoading] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [deliverNow, setDeliverNow] = useState(false);
 
   const tshirtEnabled = currentEvent?.settings?.tshirtSizesEnabled === true;
   const rawTshirtSizes = currentEvent?.settings?.tshirtSizes;
@@ -143,6 +142,11 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     try {
       setIsScanning(true);
       setCheckInSuccess(null);
+      setCameraActive(false);
+      setCameraLoading(false);
+      cameraGeneration.current += 1;
+      cameraQueue.current = cameraQueue.current.catch(() => {}).then(releaseCamera);
+      await cameraQueue.current;
       const result = await qrService.scan(trimmed, currentEvent?.id);
       if (generation !== scanGeneration.current) return;
       setScanResult(result);
@@ -161,7 +165,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
         setIsScanning(false);
       }
     }
-  }, [currentEvent?.id]);
+  }, [currentEvent?.id, releaseCamera]);
 
   const startCamera = useCallback(async () => {
     const generation = ++cameraGeneration.current;
@@ -243,7 +247,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     scanGeneration.current += 1;
     scanBusy.current = false;
     setIsScanning(false);
-    setShowConfirmModal(false);
+    setDeliverNow(false);
     if (isOpen) {
       setScanInput('');
       setScanResult(null);
@@ -323,7 +327,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
           tshirtDelivered: tshirtDelivered ?? false,
         },
       });
-      setShowConfirmModal(false);
+      setDeliverNow(false);
     } catch (err: any) {
       alert(err?.response?.data?.message || 'Error al registrar asistencia');
     } finally {
@@ -333,6 +337,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
   };
 
   const handleResetForNext = () => {
+    setDeliverNow(false);
     setScanInput('');
     setScanResult(null);
     setCheckInSuccess(null);
@@ -412,7 +417,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
         {/* Cuerpo del Modal */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
           {/* MODO 1: CÁMARA CON GUÍA CUADRADA */}
-          {scanMode === 'camera' && (
+          {scanMode === 'camera' && !isScanning && !scanResult && (
             <div className="space-y-3">
               {/* Contenedor Cuadrado con Retícula y Láser */}
               <div className="relative w-full max-w-[310px] aspect-square mx-auto rounded-2xl overflow-hidden bg-black border-2 border-primary/40 shadow-inner flex items-center justify-center">
@@ -643,17 +648,22 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                     </div>
                   )}
 
+                  {scanResult.canCheckIn && tshirtEnabled && <fieldset className="flex flex-wrap gap-4 text-xs p-3 rounded-xl bg-background border border-border">
+                    <label className="flex items-center gap-2"><input type="radio" name="qr-delivery" checked={!deliverNow} onChange={() => setDeliverNow(false)} disabled={isCheckingIn} />Entregar más tarde</label>
+                    <label className="flex items-center gap-2"><input type="radio" name="qr-delivery" checked={deliverNow} onChange={() => setDeliverNow(true)} disabled={isCheckingIn || !selectedTshirtSize} />Entregar ahora</label>
+                  </fieldset>}
+
                   {/* Botón Principal: Confirmar Asistencia con salvaguarda anti doble clic */}
                   {scanResult.canCheckIn && (
                     <div className="pt-1">
                       <button
                         type="button"
-                        onClick={() => setShowConfirmModal(true)}
+                        onClick={() => handleConfirmCheckIn(selectedTshirtSize, deliverNow)}
                         disabled={isCheckingIn}
                         className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm tracking-wide shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50"
                       >
                         <UserCheck className="w-5 h-5" />
-                        <span>{isCheckingIn ? 'Registrando entrada...' : 'MARCAR ASISTENCIA AHORA'}</span>
+                        <span>{isCheckingIn ? 'Registrando entrada...' : 'Confirmar asistencia'}</span>
                       </button>
                       <p className="text-[10px] text-muted-foreground text-center mt-1.5">
                         El escáner no marca automáticamente para prevenir ingresos accidentales. Confirme la identidad antes de pulsar.
@@ -692,22 +702,6 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
           )}
         </div>
 
-        {/* Modal de Confirmación de Check-in y entrega de camiseta */}
-        {showConfirmModal && scanResult?.registration && (
-          <CheckInConfirmModal
-            isOpen={showConfirmModal}
-            onClose={() => setShowConfirmModal(false)}
-            onConfirm={handleConfirmCheckIn}
-            participantName={scanResult.registration.participant.fullName}
-            registrationNumber={scanResult.registration.registrationNumber}
-            ticketTypeName={scanResult.registration.ticketType?.name || 'General'}
-            tshirtEnabled={tshirtEnabled}
-            availableSizes={tshirtSizes}
-            eventId={currentEvent?.id}
-            initialTshirtSize={selectedTshirtSize}
-            isLoading={isCheckingIn}
-          />
-        )}
       </div>
     </div>, document.body
   );

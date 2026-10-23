@@ -26,8 +26,8 @@ export const TestEmailSchema = z
 
 export const SendEmailSchema = z.object({
   eventId: z.string().optional().nullable(),
-  registrationId: z.string().min(1, 'El identificador de inscripción es requerido'),
-  templateCode: z.string().min(1, 'El código de plantilla es requerido'),
+  registrationId: z.string({ required_error: 'Debe seleccionar un participante.' }).min(1, 'El identificador de inscripción es requerido'),
+  templateCode: z.string({ required_error: 'Debe seleccionar una plantilla.' }).min(1, 'El código de plantilla es requerido'),
   customSubject: z.string().optional().nullable(),
   customBodyHtml: z.string().optional().nullable(),
   customMessage: z.string().optional().nullable(),

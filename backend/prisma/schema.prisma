@@ -105,6 +105,8 @@ enum AuditEntity {
 model User {
   id           String        @id @default(uuid())
   email        String        @unique
+  accountStatus String @default("ACTIVE")
+  staffArea String?
   assignedEventId String?
   passwordHash String
   fullName     String
@@ -492,6 +494,8 @@ model EmailTemplate {
 }
 
 model EmailLog {
+  dispatchKey String? @unique
+  messageId String? @unique
   id             String   @id @default(uuid())
   eventId        String?
   registrationId String?
@@ -781,4 +785,48 @@ model SponsorPayment {
   @@index([status])
   @@index([paymentDate])
   @@map("sponsor_payments")
+}
+
+model StaffMember {
+  id String @id @default(uuid())
+  eventId String
+  firstName String
+  lastName String
+  email String
+  phone String?
+  function String?
+  area String?
+  status String @default("ACTIVE")
+  notes String?
+  userId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([eventId])
+  @@map("staff_members")
+}
+
+model UserInvitation {
+  id String @id @default(uuid())
+  userId String
+  tokenHash String? @unique
+  expiresAt DateTime?
+  usedAt DateTime?
+  revokedAt DateTime?
+  status String @default("PENDING")
+  messageId String?
+  errorMessage String?
+  createdAt DateTime @default(now())
+  sentAt DateTime?
+  @@index([userId])
+  @@map("user_invitations")
+}
+
+model InvitationDispatch {
+  id String @id @default(uuid())
+  requestKey String @unique
+  actorUserId String
+  status String @default("PROCESSING")
+  results String?
+  createdAt DateTime @default(now())
+  @@map("invitation_dispatches")
 }

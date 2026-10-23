@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { useEdition } from './EditionContext';
+import { api } from '../services/api';
 import { useAuth } from './AuthContext';
 
 export interface RealtimeEvent<T = any> {
@@ -31,6 +32,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [status, setStatus] = useState<RealtimeStatus>('disconnected');
   const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null);
 
+  const retryCount = useRef(0);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeEventIdRef = useRef<string | null>(null);
@@ -59,7 +61,8 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     activeEventIdRef.current = currentEvent.id;
 
     const token = localStorage.getItem('barcamp_token') || '';
-    const sseUrl = `/api/events/${currentEvent.id}/stream?token=${encodeURIComponent(token)}`;
+    const apiBase = (api.defaults.baseURL || '/api/v1').replace(/\/$/, '');
+    const sseUrl = `${apiBase}/events/${currentEvent.id}/stream?token=${encodeURIComponent(token)}`;
 
     try {
       const es = new EventSource(sseUrl);
@@ -67,6 +70,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       es.onopen = () => {
         if (!isMountedRef.current) return;
+        retryCount.current = 0;
         setStatus('connected');
       };
 
@@ -86,6 +90,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       es.onerror = () => {
         if (!isMountedRef.current) return;
+        if (++retryCount.current > 5) { cleanupConnection(); setStatus('disconnected'); return; }
         setStatus('reconnecting');
         cleanupConnection();
 
@@ -94,7 +99,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (isMountedRef.current && isAuthenticated && currentEvent) {
             connect();
           }
-        }, 3000);
+        }, Math.min(30000, 1000 * 2 ** retryCount.current));
       };
     } catch {
       setStatus('disconnected');

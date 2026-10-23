@@ -1,3 +1,4 @@
+import { brevoTransport, usesBrevoHttps } from './brevo.transport.js';
 import { EmailQueueWorker } from './communications.queue.js';
 import { prisma } from '../../config/db.js';
 import { BadRequestError, NotFoundError } from '../../utils/errors.js';
@@ -54,6 +55,7 @@ export class CommunicationsService {
       };
     }
 
+    if (usesBrevoHttps()) return brevoTransport();
     const rawPassword = config.password ? decryptSecret(config.password) : '';
     const isExternalSmtp = Boolean(
       config.host &&
@@ -282,7 +284,7 @@ export class CommunicationsService {
       isTest ||
       isBlocked ||
       (isDev && !allowRealInDev) ||
-      !rawPassword ||
+      (!rawPassword && !usesBrevoHttps()) ||
       config.host.includes('mailtrap') ||
       config.host.includes('example') ||
       recipientEmail.includes('@eventgrid.test');
@@ -316,40 +318,12 @@ export class CommunicationsService {
         await (transporter as any).verify();
       }
 
-      await transporter.sendMail({
-        from: `"${config.fromName}" <${config.fromEmail}>`,
-        to: recipientEmail,
-        replyTo: config.replyToEmail || undefined,
-        subject: 'Prueba de Configuración de Correo — EventGrid',
-        text: 'Este es un correo de prueba generado desde la plataforma EventGrid para verificar la conectividad SMTP.',
-        html: `
-          <div style="font-family: sans-serif; padding: 24px; background: #09090b; color: #ffffff; border-radius: 12px; border: 1px solid #27272a;">
-            <h2 style="color: #10b981; margin-top: 0;">Conexión Exitosa con EventGrid</h2>
-            <p>La configuración del servidor SMTP está funcionando correctamente.</p>
-            <p style="font-size: 13px; color: #a1a1aa;">Servidor: <strong>${config.host}:${config.port}</strong></p>
-            <p style="font-size: 13px; color: #a1a1aa;">Remitente: <strong>${config.fromEmail}</strong></p>
-            <p style="font-size: 11px; color: #71717a; margin-top: 20px;">EventGrid Platform — Sistema de Gestión de Eventos</p>
-          </div>
-        `,
-      });
-
-      const log = await prisma.emailLog.create({
-        data: {
-          eventId: eventId || null,
-          recipientEmail,
-          recipientName: 'Prueba SMTP',
-          templateCode: 'TEST_CONNECTION',
-          subject: 'Prueba de Configuración de Correo — EventGrid',
-          status: 'ACCEPTED_BY_SMTP',
-          sentByUserId: userId || null,
-        },
-      });
-
+      if (typeof (transporter as any).close === 'function') (transporter as any).close();
       return {
         success: true,
         simulated: false,
-        message: `Correo de prueba enviado exitosamente a ${recipientEmail}`,
-        log,
+        message: 'Conexión SMTP verificada. No se envió ningún correo.',
+        log: null,
       };
     } catch (err: any) {
       await prisma.emailLog.create({
@@ -2070,7 +2044,7 @@ export class CommunicationsService {
     }
 
     const rawPassword = config?.password ? decryptSecret(config.password) : '';
-    if (config?.user && (!rawPassword || rawPassword.trim() === '')) {
+    if (!usesBrevoHttps() && config?.user && (!rawPassword || rawPassword.trim() === '')) {
       throw new BadRequestError(
         'Configuración SMTP incompleta: se especificó usuario pero la contraseña está ausente.'
       );
@@ -2085,8 +2059,10 @@ export class CommunicationsService {
     }
 
     // QA-INTEGRAL: Registro persistente PREVIO al intento SMTP para evitar pérdida de estado
-    const preLog = await prisma.emailLog.create({
+    let preLog;
+    try { preLog = await prisma.emailLog.create({
       data: {
+        dispatchKey: `${registration.id}:${input.templateCode}`,
         eventId,
         registrationId: registration.id,
         recipientEmail: registration.participant.email,
@@ -2097,6 +2073,10 @@ export class CommunicationsService {
         sentByUserId: userId || null,
       },
     });
+    } catch (error: any) {
+      if (error.code === 'P2002') throw new BadRequestError('Ya existe un envío en curso para este participante y plantilla.');
+      throw error;
+    }
 
     // Envío real mediante transporte configurado o fábrica de pruebas
     try {
@@ -2125,12 +2105,14 @@ export class CommunicationsService {
         : [];
       const isExplicitRejected = rejectedList.includes(cleanRecipient);
 
-      const finalStatus = isExplicitRejected ? 'REJECTED' : 'ACCEPTED_BY_SMTP';
+      const accepted = Array.isArray(sendResult?.accepted) && sendResult.accepted.some((email: any) => String(email).toLowerCase().trim() === cleanRecipient);
+      const finalStatus = isExplicitRejected ? 'REJECTED' : accepted ? 'ACCEPTED_BY_SMTP' : 'UNKNOWN_DELIVERY_STATUS';
 
       const log = await prisma.emailLog.update({
         where: { id: preLog.id },
         data: {
           status: finalStatus,
+          messageId: sendResult.messageId || null,
           errorMessage: isExplicitRejected ? 'Rechazado por el servidor SMTP' : null,
         },
       });
@@ -2154,21 +2136,23 @@ export class CommunicationsService {
       }
 
       return {
-        success: true,
+        success: finalStatus === 'ACCEPTED_BY_SMTP',
         log,
         simulated: false,
-        message: `Correo aceptado por SMTP exitosamente para ${registration.participant.email}`,
+        message: finalStatus === 'ACCEPTED_BY_SMTP' ? 'Correo aceptado por el proveedor; entrega aún no confirmada.' : 'El proveedor no confirmó la aceptación del mensaje.',
       };
     } catch (err: any) {
       const log = await prisma.emailLog.update({
         where: { id: preLog.id },
         data: {
-          status: 'FAILED',
+          status: err.code === 'ETIMEDOUT' && err.command !== 'CONN' ? 'UNKNOWN_DELIVERY_STATUS' : 'FAILED',
           errorMessage: err.message || 'Error de envío',
         },
       });
 
       throw new BadRequestError(`Fallo al enviar correo: ${err.message}`);
+    } finally {
+      await prisma.emailLog.update({ where: { id: preLog.id }, data: { dispatchKey: null } }).catch(() => {});
     }
   }
 
@@ -2437,7 +2421,7 @@ export class CommunicationsService {
 
     // Disparar procesamiento asíncrono en cola sin bloquear la respuesta HTTP
     setImmediate(() => {
-      EmailQueueWorker.processBatch(batchId, {
+      EmailQueueWorker.authorizeAndProcessBatch(batchId, {
         customSubject: input.customSubject || undefined,
         customBodyHtml: input.customBodyHtml || undefined,
         customMessage: input.customMessage || undefined,
@@ -3035,7 +3019,7 @@ export class CommunicationsService {
    */
   static async handleBrevoWebhook(body: any, authSecret?: string) {
     const configuredSecret = process.env.BREVO_WEBHOOK_SECRET;
-    if (configuredSecret && authSecret && configuredSecret !== authSecret) {
+    if (!configuredSecret || !authSecret || configuredSecret !== authSecret) {
       throw new BadRequestError('Firma o secreto de webhook inválido');
     }
 
@@ -3050,7 +3034,7 @@ export class CommunicationsService {
       const messageId = evt['message-id'] || evt.messageId || null;
       const reason = evt.reason || evt.description || null;
 
-      if (!email && !messageId) continue;
+      if (!messageId) continue;
 
       let targetStatus: string | null = null;
       let errorDesc: string | null = null;
@@ -3058,10 +3042,10 @@ export class CommunicationsService {
       if (eventType === 'delivered') {
         targetStatus = 'DELIVERED';
       } else if (['soft_bounce', 'hard_bounce', 'blocked', 'invalid_email', 'error', 'spam'].includes(eventType)) {
-        targetStatus = eventType === 'soft_bounce' ? 'FAILED' : 'REJECTED';
+        targetStatus = eventType === 'soft_bounce' ? 'DEFERRED' : 'REJECTED';
         errorDesc = `Brevo (${eventType}): ${reason || 'Fallo de entrega reportado por el servidor de correo'}`;
       } else if (['deferred'].includes(eventType)) {
-        targetStatus = 'PROCESSING';
+        targetStatus = 'DEFERRED';
       }
 
       if (!targetStatus) continue;
@@ -3081,8 +3065,8 @@ export class CommunicationsService {
       // 2. Actualizar EmailLog idempotentemente
       const matchingLog = await prisma.emailLog.findFirst({
         where: {
-          recipientEmail: email,
-          status: { in: ['ACCEPTED_BY_SMTP', 'SENT', 'PROCESSING', 'PENDING', 'UNKNOWN_DELIVERY_STATUS'] },
+          messageId,
+          status: { in: ['ACCEPTED_BY_SMTP', 'SENT', 'PROCESSING', 'PENDING', 'UNKNOWN_DELIVERY_STATUS', 'DEFERRED'] },
         },
         orderBy: { sentAt: 'desc' },
       });

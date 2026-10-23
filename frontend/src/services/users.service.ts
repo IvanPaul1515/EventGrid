@@ -3,6 +3,8 @@ import { api } from './api';
 export interface UserItem {
   id: string;
   email: string;
+  staffArea?: string | null;
+  accountStatus?: string;
   assignedEventId?: string | null;
   fullName: string;
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
@@ -24,6 +26,8 @@ export interface ListUsersResponse {
 
 export interface CreateUserData {
   email: string;
+  staffArea?: string | null;
+  accountStatus?: string;
   assignedEventId?: string | null;
   fullName: string;
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
@@ -32,6 +36,8 @@ export interface CreateUserData {
 }
 
 export interface UpdateUserData {
+  staffArea?: string | null;
+  accountStatus?: string;
   assignedEventId?: string | null;
   fullName?: string;
   role?: 'ADMIN' | 'OPERATOR' | 'VIEWER';

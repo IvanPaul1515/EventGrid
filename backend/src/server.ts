@@ -1,8 +1,6 @@
 import { app } from './app.js';
 import { ENV } from './config/env.js';
 import { checkDatabaseConnection } from './config/db.js';
-import { EmailQueueWorker } from './modules/communications/communications.queue.js';
-import { ScheduledNotificationsWorker } from './modules/schedule/scheduled-notifications.worker.js';
 
 async function startServer() {
   console.log('🚀 Iniciando servidor administrativo BarCamp RD...');
@@ -10,10 +8,7 @@ async function startServer() {
   const dbOk = await checkDatabaseConnection();
   if (dbOk) {
     console.log('✅ Base de datos conectada exitosamente.');
-    // Iniciar cola de correos masivos en segundo plano y recuperar trabajos (Fase 4)
-    EmailQueueWorker.start();
-    // Iniciar procesador de notificaciones y anuncios programados (Fase 11)
-    ScheduledNotificationsWorker.start();
+    // Email jobs require a new explicit send/retry action; never resume on startup.
   } else {
     console.warn('⚠️ Advertencia: No se pudo verificar la conexión con la base de datos al iniciar.');
   }
