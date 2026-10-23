@@ -49,7 +49,7 @@ export const attendanceService = {
     registration: Registration;
     counters: AttendanceCounters;
   }> {
-    const res = await api.post('/attendance/check-in', {
+    const res = await api.post('/attendance/check-in', { confirmed: true,
       registrationId,
       ...(tshirtSize ? { tshirtSize } : {}),
       ...(tshirtDelivered !== undefined ? { tshirtDelivered } : {}),

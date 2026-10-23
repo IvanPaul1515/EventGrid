@@ -94,6 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       badge: 'Aportes',
       roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
     },
+    { to: '/staff', label: 'Staff / Colaboradores', icon: Users, roles: ['ADMIN', 'OPERATOR', 'VIEWER'] },
     {
       to: '/inventory',
       label: 'Inventario T-shirts',

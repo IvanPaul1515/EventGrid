@@ -1,5 +1,5 @@
 import { MobileSearchInput } from '../components/common/MobileSearchInput';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { useRealtimeEvent } from '../context/RealtimeContext';
@@ -127,8 +127,10 @@ export const ParticipantsPage: React.FC = () => {
   }, [currentEvent]);
 
   // Cargar participantes
+  const requestVersion = useRef(0);
   const fetchParticipants = useCallback(async () => {
     if (!currentEvent) return;
+    const version = ++requestVersion.current;
     try {
       setLoading(true);
       setFetchError(null);
@@ -146,7 +148,9 @@ export const ParticipantsPage: React.FC = () => {
         sortBy,
         sortOrder,
       });
+      if (version !== requestVersion.current) return;
       setRegistrations(res.data);
+      setSelectedForDetail(prev => { const fresh = res.data.find((r: any) => r.id === prev?.id); return prev && fresh ? { ...prev, ...fresh } : prev; });
       setTotal(res.pagination.total);
       setTotalPages(res.pagination.totalPages);
       if (res.stats) {
@@ -178,52 +182,7 @@ export const ParticipantsPage: React.FC = () => {
   }, [fetchParticipants]);
 
   // Sincronización en tiempo real sin recargar página completa ni perder contexto
-  useRealtimeEvent('CHECK_IN_CONFIRMED', (event) => {
-    const data = event.data;
-    if (!data?.registrationId) return;
-
-    setRegistrations((prev) =>
-      prev.map((reg) => {
-        if (reg.id === data.registrationId) {
-          return {
-            ...reg,
-            attended: true,
-            attendedAt: data.attendedAt || new Date().toISOString(),
-            attendedByUser: data.attendedByName ? { id: data.attendedByUserId || '', fullName: data.attendedByName, email: data.attendedByEmail || '' } : reg.attendedByUser,
-            tshirtSize: data.tshirtSize || reg.tshirtSize,
-            tshirtDelivered: data.tshirtDelivered !== undefined ? data.tshirtDelivered : reg.tshirtDelivered,
-          };
-        }
-        return reg;
-      })
-    );
-
-    setSelectedForDetail((prev) => {
-      if (prev && prev.id === data.registrationId) {
-        return {
-          ...prev,
-          attended: true,
-          attendedAt: data.attendedAt || new Date().toISOString(),
-          attendedByUser: data.attendedByName ? { id: data.attendedByUserId || '', fullName: data.attendedByName, email: data.attendedByEmail || '' } : prev.attendedByUser,
-          tshirtSize: data.tshirtSize || prev.tshirtSize,
-          tshirtDelivered: data.tshirtDelivered !== undefined ? data.tshirtDelivered : prev.tshirtDelivered,
-        };
-      }
-      return prev;
-    });
-
-    setStats((prev: any) => {
-      if (!prev) return prev;
-      const newAttended = (prev.attended || 0) + 1;
-      const total = prev.total || 1;
-      return {
-        ...prev,
-        attended: newAttended,
-        notAttended: Math.max(0, (prev.notAttended || 0) - 1),
-        attendanceRate: Math.round((newAttended / total) * 100),
-      };
-    });
-  });
+  useRealtimeEvent('CHECK_IN_CONFIRMED', () => { fetchParticipants(); });
 
   useRealtimeEvent('ATTENDANCE_REVERTED', (event) => {
     const data = event.data;
@@ -626,11 +585,11 @@ export const ParticipantsPage: React.FC = () => {
             <span className="text-xl font-black text-foreground">{stats.totalRegistrations}</span>
           </div>
           <div className="p-3 rounded-xl bg-card border border-border">
-            <span className="text-[10px] uppercase font-mono tracking-wider text-emerald-400 block">Confirmados</span>
+            <span className="text-[10px] uppercase font-mono tracking-wider text-emerald-400 block" title="Inscripción confirmada; no equivale a asistencia física">Confirmados (registro)</span>
             <span className="text-xl font-black text-emerald-400">{stats.confirmedCount}</span>
           </div>
           <div className="p-3 rounded-xl bg-card border border-border">
-            <span className="text-[10px] uppercase font-mono tracking-wider text-amber-400 block">Pendientes</span>
+            <span className="text-[10px] uppercase font-mono tracking-wider text-amber-400 block" title="Inscripción pendiente; la asistencia se muestra por separado">Pendientes (registro)</span>
             <span className="text-xl font-black text-amber-400">{stats.pendingCount}</span>
           </div>
           <div className="p-3 rounded-xl bg-card border border-border">

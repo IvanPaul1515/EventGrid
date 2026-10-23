@@ -43,7 +43,7 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
   isLoading = false,
 }) => {
   const [selectedSize, setSelectedSize] = useState<string | null>(initialTshirtSize);
-  const [deliverTshirt, setDeliverTshirt] = useState<boolean>(true);
+  const [deliverTshirt, setDeliverTshirt] = useState<boolean>(false);
   const [inventoryItems, setInventoryItems] = useState<TshirtInventoryItem[]>([]);
   const [loadingInventory, setLoadingInventory] = useState(false);
 
@@ -255,25 +255,10 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
               {/* Control de Entrega Física (Solo si hay talla y existencias) */}
               {selectedSize && !isSelectedOutOfStock && (
                 <div className="p-3 rounded-xl bg-muted/40 border border-border space-y-2">
-                  <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={deliverTshirt}
-                      onChange={(e) => setDeliverTshirt(e.target.checked)}
-                      disabled={isLoading}
-                      className="mt-0.5 w-4 h-4 rounded text-primary focus:ring-primary border-border bg-background"
-                    />
-                    <div className="text-xs">
-                      <span className="font-bold text-foreground block">
-                        Entregar camiseta físicamente en este momento
-                      </span>
-                      <span className="text-[11px] text-muted-foreground block">
-                        {deliverTshirt
-                          ? `Descontará exactamente 1 unidad de la talla "${selectedSize}" del inventario oficial (${currentAvailable} disponibles).`
-                          : 'Solo registrará la talla elegida. La camiseta quedará PENDIENTE de entrega y NO se descontará del inventario.'}
-                      </span>
-                    </div>
-                  </label>
+                  <fieldset className="flex flex-wrap gap-4 text-xs">
+                    <label className="flex items-center gap-2"><input type="radio" name="manual-delivery" checked={!deliverTshirt} onChange={() => setDeliverTshirt(false)} disabled={isLoading} />Entregar más tarde</label>
+                    <label className="flex items-center gap-2"><input type="radio" name="manual-delivery" checked={deliverTshirt} onChange={() => setDeliverTshirt(true)} disabled={isLoading} />Entregar ahora</label>
+                  </fieldset>
                 </div>
               )}
             </div>
@@ -295,6 +280,7 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
           </div>
         </div>
 
+        <p className="px-4 pb-3 text-xs text-amber-500">Esta operación registrará definitivamente su asistencia y no podrá deshacerse.</p>
         {/* Acciones del Modal */}
         <div className="p-4 border-t border-border bg-muted/20 flex items-center justify-end gap-2.5 shrink-0 max-sm:flex-wrap">
           <button

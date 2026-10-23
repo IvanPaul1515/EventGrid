@@ -9,6 +9,9 @@ import { Layout } from './components/common/Layout';
 import { AppLoadingScreen } from './components/common/AppLoadingScreen';
 import { useMobileViewport } from './hooks/useMobileViewport';
 
+const StaffPage = React.lazy(() => import('./pages/StaffPage').then(m => ({ default: m.StaffPage })));
+const ActivationPage = React.lazy(() => import('./pages/ActivationPage').then(m => ({ default: m.ActivationPage })));
+
 // Lazy loading optimizado por ruta para rendimiento SPA
 const LoginPage = React.lazy(() => import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })));
 const DashboardPage = React.lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
@@ -37,6 +40,7 @@ export const App: React.FC = () => {
                 <Routes>
                   {/* Ruta Pública */}
                   <Route path="/login" element={<LoginPage />} />
+                  <Route path="/activate" element={<ActivationPage />} />
 
                   {/* Rutas Administrativas Protegidas */}
                   <Route element={<ProtectedRoute />}>
@@ -50,6 +54,7 @@ export const App: React.FC = () => {
                       </Route>
                       <Route path="/sales" element={<SalesPage />} />
                       <Route path="/sponsors" element={<SponsorsPage />} />
+                      <Route path="/staff" element={<StaffPage />} />
                       <Route path="/inventory" element={<TshirtInventoryPage />} />
                       <Route path="/schedule" element={<SchedulePage />} />
                       <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>

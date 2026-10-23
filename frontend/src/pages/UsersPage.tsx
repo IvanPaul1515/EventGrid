@@ -1,3 +1,4 @@
+import { PersonnelInvitations } from '../components/common/PersonnelInvitations';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   UserCog,
@@ -58,6 +59,7 @@ export const UsersPage: React.FC = () => {
     fullName: '',
     role: 'OPERATOR' as 'ADMIN' | 'OPERATOR' | 'VIEWER',
     password: '',
+    staffArea: '',
     assignedEventId: '',
   });
 
@@ -66,6 +68,7 @@ export const UsersPage: React.FC = () => {
     fullName: '',
     role: 'OPERATOR' as 'ADMIN' | 'OPERATOR' | 'VIEWER',
     isActive: true,
+    staffArea: '',
     assignedEventId: '',
   });
 
@@ -108,11 +111,11 @@ export const UsersPage: React.FC = () => {
         fullName: createForm.fullName.trim(),
         role: createForm.role,
         assignedEventId: createForm.assignedEventId || null,
-        password: createForm.password.trim() || undefined,
+        staffArea: createForm.staffArea || null,
       });
 
       setIsCreateModalOpen(false);
-      setCreateForm({ email: '', fullName: '', role: 'OPERATOR', password: '', assignedEventId: '' });
+      setCreateForm({ email: '', fullName: '', role: 'OPERATOR', password: '', assignedEventId: '', staffArea: '' });
 
       if (res.temporaryPassword) {
         setResetResult({
@@ -121,7 +124,7 @@ export const UsersPage: React.FC = () => {
         });
         setIsResetModalOpen(true);
       } else {
-        setSuccessMsg(`Usuario ${res.user.fullName} creado exitosamente.`);
+        setSuccessMsg(`Cuenta de ${res.user.fullName} preparada. Use Invitar personal para enviar su enlace.`);
         setTimeout(() => setSuccessMsg(null), 4000);
       }
 
@@ -139,6 +142,7 @@ export const UsersPage: React.FC = () => {
       fullName: u.fullName,
       role: u.role,
       isActive: u.isActive,
+      staffArea: u.staffArea || '',
       assignedEventId: u.assignedEventId || '',
     });
     setIsEditModalOpen(true);
@@ -230,6 +234,7 @@ export const UsersPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <PersonnelInvitations users={users} onSaved={fetchUsers} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -428,7 +433,7 @@ export const UsersPage: React.FC = () => {
                             title="Haz clic para alternar activación"
                           >
                             <span className={`w-2 h-2 rounded-full ${u.isActive ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
-                            <span>{u.isActive ? 'Activo' : 'Inactivo'}</span>
+                            <span>{u.accountStatus === 'PENDING' ? 'Pendiente de activación' : u.isActive ? 'Activo' : 'Inactivo'}</span>
                           </button>
                         </td>
 
@@ -452,7 +457,7 @@ export const UsersPage: React.FC = () => {
                             <button
                               onClick={() => handleResetPassword(u)}
                               className="p-1.5 rounded-lg border border-border hover:bg-muted text-amber-400 hover:text-amber-300 transition-colors"
-                              title="Restablecer contraseña de acceso"
+                              title="Preparar invitación de acceso"
                             >
                               <KeyRound className="w-3.5 h-3.5" />
                             </button>
@@ -517,7 +522,7 @@ export const UsersPage: React.FC = () => {
                     <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
                       <div className="flex items-center gap-1">
                         <span className={`w-2 h-2 rounded-full ${u.isActive ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
-                        <span>{u.isActive ? 'Activo' : 'Inactivo'}</span>
+                        <span>{u.accountStatus === 'PENDING' ? 'Pendiente de activación' : u.isActive ? 'Activo' : 'Inactivo'}</span>
                       </div>
                       <div className="flex items-center gap-1 text-[10px]">
                         <Clock className="w-3 h-3" />
@@ -645,22 +650,9 @@ export const UsersPage: React.FC = () => {
                   {events.map(event => <option key={event.id} value={event.id}>{event.name} · {event.year}</option>)}
                 </select>
               </div>
+              <label className="block text-xs">Área del staff (opcional)<input value={createForm.staffArea} onChange={e => setCreateForm({ ...createForm, staffArea: e.target.value })} className="mt-1 w-full p-2 rounded-xl bg-background border border-border" /></label>
 
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">
-                  Contraseña Inicial (Opcional)
-                </label>
-                <input
-                  type="password"
-                  placeholder="Dejar en blanco para generar clave temporal segura"
-                  value={createForm.password}
-                  onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
-                />
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  Si se omite, el sistema generará una contraseña temporal aleatoria de un solo uso.
-                </p>
-              </div>
+
 
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-border">
                 <button
@@ -731,6 +723,7 @@ export const UsersPage: React.FC = () => {
                   {events.map(event => <option key={event.id} value={event.id}>{event.name} · {event.year}</option>)}
                 </select>
               </div>
+              <label className="block text-xs">Área del staff (opcional)<input value={editForm.staffArea} onChange={e => setEditForm({ ...editForm, staffArea: e.target.value })} className="mt-1 w-full p-2 rounded-xl bg-background border border-border" /></label>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border">
                 <div>
