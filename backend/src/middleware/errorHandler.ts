@@ -13,7 +13,9 @@ export function errorHandler(
   if (err instanceof ZodError) {
     return res.status(400).json({
       status: 'error',
-      message: 'Error de validación en los datos enviados',
+      message: req.originalUrl.includes('/communications/')
+        ? `Solicitud de correo inválida: ${err.errors.map(e => e.message).join('; ')}`
+        : 'Error de validación en los datos enviados',
       errors: err.errors.map((e) => ({
         path: e.path.join('.'),
         message: e.message,

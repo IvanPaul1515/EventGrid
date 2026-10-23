@@ -1,3 +1,4 @@
+import { personnelRoutes } from './modules/users/personnel.routes.js';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -124,6 +125,7 @@ app.use(`${ENV.API_PREFIX}/qr`, qrRoutes);
 app.use(`${ENV.API_PREFIX}/communications`, communicationsRoutes);
 app.use(`${ENV.API_PREFIX}/inventory`, inventoryRoutes);
 app.use(`${ENV.API_PREFIX}/users`, usersRoutes);
+app.use(`${ENV.API_PREFIX}/staff`, personnelRoutes);
 app.use(`${ENV.API_PREFIX}/schedule`, scheduleRoutes);
 app.use(`${ENV.API_PREFIX}/sponsors`, sponsorsRoutes);
 

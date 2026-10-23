@@ -14,7 +14,7 @@ export class AuthService {
       throw new UnauthorizedError('Credenciales incorrectas');
     }
 
-    if (!user.isActive) {
+    if (!user.isActive || user.accountStatus === 'PENDING') {
       throw new UnauthorizedError('La cuenta de usuario se encuentra desactivada');
     }
 

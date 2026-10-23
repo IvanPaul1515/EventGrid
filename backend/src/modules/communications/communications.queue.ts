@@ -1,3 +1,4 @@
+import { usesBrevoHttps } from './brevo.transport.js';
 import nodemailer, { type Transporter } from 'nodemailer';
 import { prisma } from '../../config/db.js';
 import { decryptSecret } from '../../utils/crypto.js';
@@ -15,6 +16,7 @@ export type TransporterFactory = (config: any) => Transporter | any;
 
 export class EmailQueueWorker {
   private static isRunning = false;
+  private static authorizedJobs = new Set<string>();
   private static pollTimer: NodeJS.Timeout | null = null;
   private static activeJobs: Map<string, Promise<void>> = new Map();
   private static customTransporterFactory: TransporterFactory | null = null;
@@ -31,20 +33,7 @@ export class EmailQueueWorker {
    * Inicializa el worker en segundo plano
    */
   static start() {
-    if (this.isRunning) return;
-    this.isRunning = true;
-
-    // Recuperación inicial de ítems huérfanos tras reinicio del servidor (QA-22, QA-28)
-    this.recoverStaleJobs().catch((err) => {
-      console.error('[EmailQueueWorker] Error en recuperación inicial tras reinicio:', err);
-    });
-
-    // Polling recurrente cada 5 segundos
-    this.pollTimer = setInterval(() => {
-      this.processPendingBatches().catch((err) => {
-        console.error('[EmailQueueWorker] Error en ciclo periódico de lotes:', err);
-      });
-    }, 5000);
+    // No startup recovery or polling: persisted jobs require a new user action.
   }
 
   /**
@@ -62,9 +51,7 @@ export class EmailQueueWorker {
    * Dispara inmediatamente la verificación de lotes pendientes
    */
   static trigger() {
-    setImmediate(() => {
-      this.processPendingBatches().catch(() => {});
-    });
+    // A generic queue wakeup must never authorize historical mail.
   }
 
   /**
@@ -73,79 +60,31 @@ export class EmailQueueWorker {
    * marca como UNKNOWN_DELIVERY_STATUS en lugar de volver ciegamente a PENDING.
    */
   static async recoverStaleJobs() {
-    const now = new Date();
-
-    const staleItems = await prisma.emailBatchItem.findMany({
-      where: {
-        status: 'PROCESSING',
-        leaseUntil: { lt: now },
-      },
-      take: 200,
-    });
-
-    for (const item of staleItems) {
-      if (item.attempts >= 1) {
-        // QA-22 / QA-28: Incertidumbre SMTP. No reenviar automáticamente para evitar duplicados.
-        await prisma.emailBatchItem.update({
-          where: { id: item.id },
-          data: {
-            status: 'UNKNOWN_DELIVERY_STATUS',
-            leaseUntil: null,
-            errorMessage: 'Resultado de entrega incierto: el servidor se reinició o perdió conexión durante el envío SMTP. Reenvío automático suspendido para evitar duplicados.',
-          },
-        }).catch(() => {});
-      } else {
-        // Ítem reclamado pero nunca se intentó (attempts === 0)
-        await prisma.emailBatchItem.update({
-          where: { id: item.id },
-          data: {
-            status: 'PENDING',
-            leaseUntil: null,
-          },
-        }).catch(() => {});
-      }
-    }
-
-    // Localizar lotes en PROCESSING o PENDING para reanudarlos
-    const pendingBatches = await prisma.emailBatchJob.findMany({
-      where: {
-        status: { in: ['PENDING', 'PROCESSING'] },
-      },
-      select: { id: true },
-      take: 10,
-    });
-
-    for (const batch of pendingBatches) {
-      this.processBatch(batch.id).catch(() => {});
-    }
-
-    return staleItems.length;
+    // Preserve persisted jobs and delivery history unchanged.
+    return 0;
   }
 
   /**
    * Escanea y procesa lotes que tengan estado PENDING o PROCESSING
    */
   static async processPendingBatches() {
-    const batches = await prisma.emailBatchJob.findMany({
-      where: {
-        status: { in: ['PENDING', 'PROCESSING'] },
-      },
-      select: { id: true },
-      take: 5,
-      orderBy: { createdAt: 'asc' },
-    });
-
-    for (const batch of batches) {
-      if (!this.activeJobs.has(batch.id)) {
-        this.processBatch(batch.id).catch(() => {});
-      }
-    }
+    // Only explicitly authorized individual batches may execute.
   }
 
   /**
    * Procesa un lote individual en fragmentos atómicos (QA-27, QA-28, QA-29, QA-30)
    */
+  // Called only by explicit send/retry operations after their existing role checks.
+  // Authorization is process-local, so a restart cannot resurrect pending mail.
+  static async authorizeAndProcessBatch(jobId: string, customParams?: EnqueueCustomParams): Promise<void> {
+    if (this.activeJobs.has(jobId)) return this.activeJobs.get(jobId);
+    this.authorizedJobs.add(jobId);
+    try { await this.processBatch(jobId, customParams); }
+    finally { this.authorizedJobs.delete(jobId); }
+  }
+
   static async processBatch(jobId: string, customParams?: EnqueueCustomParams): Promise<void> {
+    if (!this.authorizedJobs.has(jobId)) return;
     const existing = this.activeJobs.get(jobId);
     if (existing) {
       return existing;
@@ -205,7 +144,7 @@ export class EmailQueueWorker {
           }
 
           const rawPassword = config.password ? decryptSecret(config.password) : '';
-          if (config.user && (!rawPassword || rawPassword.trim() === '')) {
+          if (!usesBrevoHttps() && config.user && (!rawPassword || rawPassword.trim() === '')) {
             await prisma.emailBatchJob.update({
               where: { id: jobId },
               data: {
@@ -501,12 +440,13 @@ export class EmailQueueWorker {
                   const has250Response = typeof sendResult?.response === 'string' && sendResult.response.trim().startsWith('250');
                   const isExplicitRejected = rejectedList.includes(cleanRecipient);
 
-                  if (hasExplicitAccepted || has250Response) {
+                  if (!isExplicitRejected && (hasExplicitAccepted || has250Response)) {
                     // Aceptado efectivamente por SMTP
                     await prisma.emailBatchItem.update({
                       where: { id: item.id },
                       data: {
                         status: 'ACCEPTED_BY_SMTP',
+                        messageId: sendResult.messageId || item.messageId,
                         sentAt: new Date(),
                         errorMessage: null,
                       },
@@ -520,7 +460,8 @@ export class EmailQueueWorker {
                         recipientName: item.recipientName || email,
                         templateCode: job.templateCode || 'CUSTOM',
                         subject: rendered.subject,
-                        status: 'SENT',
+                        status: 'ACCEPTED_BY_SMTP',
+                        messageId: sendResult.messageId || item.messageId,
                         batchId: job.id,
                         sentByUserId: job.createdById || null,
                       },
@@ -901,7 +842,7 @@ export class EmailQueueWorker {
       });
 
       setImmediate(() => {
-        this.processBatch(jobId).catch(() => {});
+        this.authorizeAndProcessBatch(jobId).catch(() => {});
       });
     }
 
@@ -997,7 +938,7 @@ export class EmailQueueWorker {
 
     if (result.count > 0) {
       setImmediate(() => {
-        this.processBatch(jobId).catch(() => {});
+        this.authorizeAndProcessBatch(jobId).catch(() => {});
       });
     }
 

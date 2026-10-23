@@ -1,3 +1,4 @@
+import { INITIAL_TSHIRT_INVENTORY } from '../src/modules/inventory/inventory.service.js';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -113,6 +114,7 @@ async function main() {
     },
   });
 
+  const newDemoSettings = process.env.DEMO_QUICK_ACCESS === 'true' && !await prisma.eventSettings.findUnique({ where: { eventId: event2026.id } });
   // Configuración visual BarCamp 2026
   await prisma.eventSettings.upsert({
     where: { eventId: event2026.id },
@@ -129,6 +131,14 @@ async function main() {
       registrationPrefix: 'BC26-',
     },
   });
+
+  // Only initialize fresh authorized demo data. Never refill existing editions.
+  if (newDemoSettings) {
+    await prisma.eventSettings.update({ where: { eventId: event2026.id }, data: { tshirtSizesEnabled: true, tshirtSizes: JSON.stringify(INITIAL_TSHIRT_INVENTORY.map(item => item.size)) } });
+    for (const item of INITIAL_TSHIRT_INVENTORY) {
+      await prisma.tshirtInventory.upsert({ where: { eventId_size: { eventId: event2026.id, size: item.size } }, update: {}, create: { eventId: event2026.id, size: item.size, initialQuantity: item.quantity } });
+    }
+  }
 
   // Métodos de pago oficiales para 2026
   const paymentMethods2026 = [
