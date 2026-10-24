@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { FailureKind, failureKind } from '../utils/appError';
 import { EventEdition } from '../types';
 import { api } from '../services/api';
 import { useAuth } from './AuthContext';
@@ -7,6 +8,7 @@ interface EditionContextType {
   events: EventEdition[];
   currentEvent: EventEdition | null;
   isLoading: boolean;
+  error: FailureKind | null;
   switchEdition: (eventId: string) => void;
   refreshEditions: () => Promise<void>;
 }
@@ -19,7 +21,11 @@ export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [currentEvent, setCurrentEvent] = useState<EventEdition | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  const [error, setError] = useState<FailureKind | null>(null);
+  const fetchVersion = React.useRef(0);
   const fetchEditions = async () => {
+    const version = ++fetchVersion.current;
+    setError(null);
     if (!isAuthenticated) {
       setEvents([]);
       setCurrentEvent(null);
@@ -30,6 +36,7 @@ export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       setIsLoading(true);
       const res = await api.get('/events');
+      if (version !== fetchVersion.current) return;
       const rawEvents: EventEdition[] = res.data.data;
       const loadedEvents = (rawEvents || []).map((e) => {
         if (e.settings && typeof (e.settings as any).tshirtSizes === 'string') {
@@ -73,9 +80,9 @@ export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       }
     } catch (error) {
-      console.error('❌ Error al cargar ediciones:', error);
+      if (version === fetchVersion.current) setError(failureKind(error));
     } finally {
-      setIsLoading(false);
+      if (version === fetchVersion.current) setIsLoading(false);
     }
   };
 
@@ -100,6 +107,7 @@ export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         events,
         currentEvent,
         isLoading,
+        error,
         switchEdition,
         refreshEditions: fetchEditions,
       }}

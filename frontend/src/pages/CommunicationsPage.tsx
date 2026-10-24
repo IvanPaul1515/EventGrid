@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { ErrorPanel } from '../components/common/ErrorPanel';
+import { FailureKind, failureKind } from '../utils/appError';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
@@ -284,13 +286,15 @@ export const CommunicationsPage: React.FC = () => {
     }
   };
 
+  const [statusError, setStatusError] = useState<FailureKind | null>(null);
   const loadServiceStatus = async () => {
     if (!currentEvent) return;
     try {
       const config = await communicationsService.getConfig(currentEvent.id);
       setServiceConfig(config);
+      setStatusError(null);
     } catch (err) {
-      console.error('Error cargando estado de servicio SMTP:', err);
+      setStatusError(failureKind(err));
     }
   };
 
@@ -559,6 +563,7 @@ export const CommunicationsPage: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {statusError && <ErrorPanel kind={statusError} onRetry={() => { void loadServiceStatus(); void loadTemplates(); }} />}
       {/* Cabecera y Banner de Estado SMTP */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>

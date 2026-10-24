@@ -1,8 +1,10 @@
 import axios from 'axios';
+import { failureKind, failureCopy } from '../utils/appError';
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
   withCredentials: true,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -26,18 +28,18 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Interceptor para manejo global de 401
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response && error.response.status === 401) {
-      // Si la sesión expiró y no estamos ya en la página de login
-      if (!window.location.pathname.includes('/login')) {
-        localStorage.removeItem('barcamp_token');
-        localStorage.removeItem('barcamp_user');
-        window.location.href = '/login?expired=true';
-      }
-    }
-    return Promise.reject(error);
+// Report failures without navigation/reloading: forms retain their local values.
+api.interceptors.response.use(response => response, error => {
+  if (axios.isCancel(error)) return Promise.reject(error);
+  const kind = failureKind(error);
+  const path = error.config?.url || '';
+  const authentication = /\/auth\/(login|demo-login|accept-invitation|logout)$/.test(path);
+  if (error.response?.status === 401 && !authentication && localStorage.getItem('barcamp_token')) {
+    localStorage.removeItem('barcamp_token'); localStorage.removeItem('barcamp_user');
+    window.dispatchEvent(new Event('eventgrid:session-expired'));
+  } else if (!authentication && (!error.response || error.response.status >= 500 || error.response.status === 403)) {
+    window.dispatchEvent(new CustomEvent('eventgrid:request-error', { detail: { kind } }));
   }
-);
+  if (error.response?.status >= 500) error.response.data = { message: failureCopy[kind].message };
+  return Promise.reject(error);
+});
