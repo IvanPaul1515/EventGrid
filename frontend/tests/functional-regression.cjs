@@ -54,8 +54,8 @@ const base = process.env.EVENTGRID_TEST_URL || 'http://127.0.0.1:5178';
    await page.getByRole('link', { name: 'Participantes', exact: true }).click();
    if (role !== 'ADMIN') assert.equal(await page.getByTitle('Edición asignada').isDisabled(), true);
    await page.goto(base + '/editions');
-   if (role !== 'ADMIN') await page.getByText('Acceso No Autorizado', { exact: true }).waitFor();
-   else assert.equal(await page.getByText('Acceso No Autorizado', { exact: true }).count(), 0);
+   if (role !== 'ADMIN') await page.getByText('Acceso restringido', { exact: true }).waitFor();
+   else assert.equal(await page.getByText('Acceso restringido', { exact: true }).count(), 0);
    if (role === 'VIEWER') {
     await page.goto(base + '/'); assert.equal(await page.getByRole('button', { name: 'Escanear QR', exact: true }).count(), 0);
     await page.goto(base + '/participants'); assert.equal(await page.getByRole('button', { name: 'Nuevo Participante', exact: true }).count(), 0);
