@@ -23,7 +23,7 @@ export const Layout: React.FC = () => {
         <ConnectionBanner />
         <main ref={scrollRef} data-app-scroll className="flex-1 overflow-y-auto p-3.5 sm:p-6 md:p-8 bg-background pb-safe-content">
           <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
-            <ErrorBoundary>
+            <ErrorBoundary key={pathname}>
               <div className="spa-content-area">
                 <Suspense
                   fallback={

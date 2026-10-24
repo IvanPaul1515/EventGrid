@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { FailureKind, failureKind } from '../utils/appError';
 import { User, Role } from '../types';
 import { api } from '../services/api';
 
@@ -7,6 +8,8 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  authError: FailureKind | null;
+  retryAuth: () => void;
   login: (token: string, user: User) => void;
   logout: () => Promise<void>;
   hasRole: (roles: Role[]) => boolean;
@@ -19,38 +22,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  const [authError, setAuthError] = useState<FailureKind | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const retryAuth = () => { setIsLoading(true); setAuthError(null); setAttempt(value => value + 1); };
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const expired = () => { setAuthError('401'); setToken(null); setUser(null); setIsLoading(false); };
+    window.addEventListener('eventgrid:session-expired', expired);
     const initAuth = async () => {
       const storedToken = localStorage.getItem('barcamp_token');
       const storedUser = localStorage.getItem('barcamp_user');
-
       if (storedToken && storedUser) {
         try {
-          setToken(storedToken);
-          setUser(JSON.parse(storedUser));
-          // Verificar validez con el backend
-          const res = await api.get('/auth/me');
-          if (res.data.data) {
-            setUser(res.data.data);
+          JSON.parse(storedUser); // Reject malformed local state without trusting it as a session.
+          const res = await api.get('/auth/me', { signal: controller.signal });
+          if (active && res.data.data) {
+            setToken(storedToken); setUser(res.data.data);
             localStorage.setItem('barcamp_user', JSON.stringify(res.data.data));
           }
-        } catch {
-          // Token inválido o expirado
-          localStorage.removeItem('barcamp_token');
-          localStorage.removeItem('barcamp_user');
-          setToken(null);
-          setUser(null);
+        } catch (error: any) {
+          if (!active) return;
+          if (error instanceof SyntaxError) {
+            localStorage.removeItem('barcamp_token'); localStorage.removeItem('barcamp_user');
+          } else setAuthError(failureKind(error));
         }
       }
-      setIsLoading(false);
+      if (active) setIsLoading(false);
     };
-
     initAuth();
-  }, []);
+    return () => { active = false; controller.abort(); window.removeEventListener('eventgrid:session-expired', expired); };
+  }, [attempt]);
 
   const login = (newToken: string, newUser: User) => {
     localStorage.setItem('barcamp_token', newToken);
     localStorage.setItem('barcamp_user', JSON.stringify(newUser));
+    setAuthError(null);
     setToken(newToken);
     setUser(newUser);
   };
@@ -81,6 +88,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         isAuthenticated: !!user,
         isLoading,
+        authError,
+        retryAuth,
         login,
         logout,
         hasRole,

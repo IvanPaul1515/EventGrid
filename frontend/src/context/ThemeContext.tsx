@@ -99,9 +99,14 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const applyCustomPalette = (primary: string, secondary: string, accent?: string, bg?: string) => {
     const root = document.documentElement;
     try {
-      if (primary && primary.startsWith('#')) {
+      if (/^#(?:[a-f0-9]{3}|[a-f0-9]{6})$/i.test(primary || '')) {
         const primaryHsl = hexToHSL(primary);
         root.style.setProperty('--primary', primaryHsl);
+        root.style.setProperty('--primary-hover', primaryHsl);
+        const hex = primary.slice(1).length === 3 ? primary.slice(1).split('').map(c => c + c).join('') : primary.slice(1);
+        const channels = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
+        const luminance = .2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2];
+        root.style.setProperty('--primary-foreground', luminance > .179 ? '0 0% 0%' : '0 0% 100%');
         root.style.setProperty('--ring', primaryHsl);
       }
       if (secondary && secondary.startsWith('#')) {
@@ -124,6 +129,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const resetDefaultTheme = () => {
     const root = document.documentElement;
     root.style.removeProperty('--primary');
+    root.style.removeProperty('--primary-hover');
+    root.style.removeProperty('--primary-foreground');
     root.style.removeProperty('--secondary');
     root.style.removeProperty('--accent');
     root.style.removeProperty('--background');

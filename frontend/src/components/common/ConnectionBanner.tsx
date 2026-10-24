@@ -1,17 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { WifiOff, ServerCrash, RefreshCw, Sparkles, X } from 'lucide-react';
+import { failureCopy, FailureKind } from '../../utils/appError';
 import { api } from '../../services/api';
 
 export const ConnectionBanner: React.FC = () => {
+  const [failure, setFailure] = useState<FailureKind | null>(null);
+  const [checking, setChecking] = useState(false);
+  const retry = async () => { if (checking) return; setChecking(true); try { await api.get('/health'); setIsOffline(!navigator.onLine); setFailure(null); } finally { setChecking(false); } };
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isSlowServer, setIsSlowServer] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
+    const handleOnline = () => { setIsOffline(false); setFailure('network'); };
+    const handleFailure = (event: Event) => setFailure((event as CustomEvent).detail.kind);
     const handleOffline = () => setIsOffline(true);
     const handleUpdate = () => setUpdateAvailable(true);
 
+    window.addEventListener('eventgrid:request-error', handleFailure);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('eventgrid:pwa-update-available', handleUpdate);
@@ -43,6 +49,7 @@ export const ConnectionBanner: React.FC = () => {
     return () => {
       isCancelled = true;
       clearTimeout(startTimer);
+      window.removeEventListener('eventgrid:request-error', handleFailure);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('eventgrid:pwa-update-available', handleUpdate);
@@ -66,13 +73,13 @@ export const ConnectionBanner: React.FC = () => {
     }
   };
 
-  if (isOffline) {
-    return (
-      <div className="bg-amber-500/15 border-b border-amber-500/30 px-3 py-2 text-xs text-amber-400 flex items-center justify-center gap-2 font-medium z-30">
-        <WifiOff className="w-4 h-4 shrink-0" />
-        <span>Sin conexión a internet. Algunas funciones no están disponibles.</span>
-      </div>
-    );
+  if (isOffline || failure) {
+    const kind = isOffline ? 'offline' : failure!;
+    return <div role="alert" className="bg-card border-b border-border px-3 py-3 text-sm text-foreground flex flex-wrap items-center justify-center gap-3 z-30">
+      <WifiOff aria-hidden="true" className="w-4 h-4 text-primary shrink-0" />
+      <div><strong>{failureCopy[kind].title}</strong><p className="text-xs text-muted-foreground">{failureCopy[kind].message}</p></div>
+      <button disabled={checking} onClick={() => { void retry().catch(() => {}); }} className="px-3 py-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50">{checking ? 'Comprobando...' : 'Reintentar conexión'}</button>
+    </div>;
   }
 
   if (isSlowServer) {

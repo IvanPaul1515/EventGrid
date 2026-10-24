@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { ErrorPanel } from '../components/common/ErrorPanel';
+import { failureKind, FailureKind } from '../utils/appError';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { useRealtimeEvent } from '../context/RealtimeContext';
@@ -116,6 +118,7 @@ export const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
+  const [loadError, setLoadError] = useState<FailureKind | null>(null);
   const requestVersion = useRef(0);
   const loadAllData = useCallback(async (isSilent = false) => {
     if (!currentEvent) return;
@@ -124,21 +127,23 @@ export const DashboardPage: React.FC = () => {
     else setRefreshing(true);
 
     try {
-      const [regsRes, statsRes, finRes] = await Promise.all([
-        participantsService.list({ limit: 10 }).catch(() => ({ data: [], pagination: { total: 0 } })),
-        eventsService.getStats(currentEvent.id).catch(() => null),
-        eventsService.getFinancialSummary(currentEvent.id).catch(() => null),
+      const results = await Promise.allSettled([
+        participantsService.list({ limit: 10 }),
+        eventsService.getStats(currentEvent.id),
+        eventsService.getFinancialSummary(currentEvent.id),
       ]);
 
       if (version !== requestVersion.current) return;
-      setRegistrations(regsRes.data || []);
-      if (statsRes) setStats(statsRes);
-      if (finRes) setFinancialSummary(finRes);
+      const [regs, statsResult, finances] = results;
+      if (regs.status === 'fulfilled') setRegistrations(regs.value.data || []);
+      if (statsResult.status === 'fulfilled' && statsResult.value) setStats(statsResult.value);
+      if (finances.status === 'fulfilled' && finances.value) setFinancialSummary(finances.value);
+      const failed = results.find(result => result.status === 'rejected');
+      setLoadError(failed?.status === 'rejected' ? failureKind(failed.reason) : null);
     } catch (err) {
-      console.error('Error cargando estadísticas del dashboard:', err);
+      if (version === requestVersion.current) setLoadError(failureKind(err));
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (version === requestVersion.current) { setLoading(false); setRefreshing(false); }
     }
   }, [currentEvent]);
 
@@ -233,6 +238,7 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {loadError && <ErrorPanel kind={loadError} onRetry={() => { void loadAllData(); }} />}
       {/* Banner de Bienvenida y Edición Activa Adaptativo */}
       <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-r from-card via-card to-primary/10 border border-border p-4 sm:p-6 md:p-8 shadow-md sm:shadow-xl">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">

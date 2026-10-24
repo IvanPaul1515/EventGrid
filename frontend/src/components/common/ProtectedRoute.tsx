@@ -1,45 +1,20 @@
 import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Link, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useEdition } from '../../context/EditionContext';
 import { Role } from '../../types';
 import { AppLoadingScreen } from './AppLoadingScreen';
-
-interface ProtectedRouteProps {
-  allowedRoles?: Role[];
-}
-
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) => {
-  const { isAuthenticated, isLoading, user } = useAuth();
-
-  if (isLoading) {
-    return (
-      <AppLoadingScreen
-        message="Verificando sesión..."
-        submessage="Validando credenciales de acceso"
-      />
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    return (
-      <div className="p-8 max-w-lg mx-auto mt-20 text-center bg-card border border-border rounded-xl">
-        <h2 className="text-xl font-bold text-destructive mb-2">Acceso No Autorizado</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Tu rol actual (<strong className="font-mono text-foreground">{user.role}</strong>) no dispone de permisos para acceder a esta sección administrativa.
-        </p>
-        <button
-          onClick={() => window.history.back()}
-          className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-hover transition-colors"
-        >
-          Regresar
-        </button>
-      </div>
-    );
-  }
-
+import { ErrorPanel } from './ErrorPanel';
+export const ProtectedRoute: React.FC<{ allowedRoles?: Role[] }> = ({ allowedRoles }) => {
+  const { isAuthenticated, isLoading, user, authError, retryAuth } = useAuth();
+  const edition = useEdition();
+  const { pathname } = useLocation();
+  if (isLoading) return <AppLoadingScreen message="Verificando sesión..." submessage="Validando credenciales de acceso" />;
+  if (authError) return <ErrorPanel kind={authError} fullScreen home="/login" onRetry={authError === '401' ? undefined : retryAuth} />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (allowedRoles && user && !allowedRoles.includes(user.role)) return <ErrorPanel kind="403" fullScreen />;
+  if (edition.isLoading) return <AppLoadingScreen message="Cargando ediciones..." />;
+  if (edition.error) return <ErrorPanel kind={edition.error} fullScreen onRetry={edition.refreshEditions} />;
+  if (!edition.currentEvent && !(user?.role === 'ADMIN' && pathname === '/editions')) return <section role="alert" className="p-8 bg-background text-foreground text-center space-y-4"><h1 className="text-xl font-bold">No hay ediciones disponibles</h1><p className="text-muted-foreground">Solicita al administrador una edición autorizada para continuar.</p><Link className="text-primary underline" to={user?.role === 'ADMIN' ? '/editions' : '/login'}>{user?.role === 'ADMIN' ? 'Gestionar ediciones' : 'Ir al inicio'}</Link></section>;
   return <Outlet />;
 };

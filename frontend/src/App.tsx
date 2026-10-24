@@ -1,5 +1,8 @@
 import React, { Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { ErrorPanel } from './components/common/ErrorPanel';
+import { useAuth } from './context/AuthContext';
 import { AuthProvider } from './context/AuthContext';
 import { EditionProvider } from './context/EditionContext';
 import { RealtimeProvider } from './context/RealtimeContext';
@@ -28,10 +31,12 @@ const SettingsPage = React.lazy(() => import('./pages/SettingsPage').then((m) =>
 const UsersPage = React.lazy(() => import('./pages/UsersPage').then((m) => ({ default: m.UsersPage })));
 const AuditPage = React.lazy(() => import('./pages/AuditPage').then((m) => ({ default: m.AuditPage })));
 
+const NotFound = () => { const { isAuthenticated } = useAuth(); return <ErrorPanel kind="404" fullScreen home={isAuthenticated ? '/' : '/login'} />; };
+
 export const App: React.FC = () => {
   useMobileViewport();
   return (
-    <AuthProvider>
+    <ErrorBoundary><AuthProvider>
       <EditionProvider>
         <RealtimeProvider>
           <ThemeProvider>
@@ -68,14 +73,14 @@ export const App: React.FC = () => {
                   </Route>
 
                   {/* Fallback */}
-                  <Route path="*" element={<Navigate to="/" replace />} />
+                  <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
             </BrowserRouter>
           </ThemeProvider>
         </RealtimeProvider>
       </EditionProvider>
-    </AuthProvider>
+    </AuthProvider></ErrorBoundary>
   );
 };
 

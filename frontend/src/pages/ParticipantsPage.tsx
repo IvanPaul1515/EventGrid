@@ -1,5 +1,6 @@
 import { MobileSearchInput } from '../components/common/MobileSearchInput';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { failureKind, failureCopy } from '../utils/appError';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { useRealtimeEvent } from '../context/RealtimeContext';
@@ -157,10 +158,9 @@ export const ParticipantsPage: React.FC = () => {
         setStats(res.stats);
       }
     } catch (err: any) {
-      console.error('Error al cargar participantes:', err);
-      setFetchError(err.response?.data?.message || 'Error al conectar con el servidor.');
+      if (version === requestVersion.current) setFetchError(failureCopy[failureKind(err)].message);
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
   }, [currentEvent, page, limit, search, paymentMethodId, salesResponsibleId, status, isCourtesyFilter, sortBy, sortOrder]);
 
