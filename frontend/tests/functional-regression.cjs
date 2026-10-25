@@ -24,6 +24,7 @@ const base = process.env.EVENTGRID_TEST_URL || 'http://127.0.0.1:5178';
     else if (path.endsWith('/staff')) data = staff;
     else if (path.endsWith('/users') && method === 'POST') { data = { ...route.request().postDataJSON(), id: 'account-' + accounts.length, isActive: false }; accounts.push(data); }
     else if (path.endsWith('/users')) data = accounts;
+    else if (path.endsWith('/invitations/selection')) data = accounts.filter(account => route.request().postDataJSON().userIds.includes(account.id));
     else if (path.endsWith('/invitations/preview')) data = { issues: [], count: route.request().postDataJSON().rows.length };
     else if (path.endsWith('/invitations/send')) { invitations++; data = { status: 'COMPLETED', results: route.request().postDataJSON().userIds.map(userId => ({ userId, status: 'PENDING' })) }; }
     else if (path.endsWith('/stats') || path.endsWith('/financial-summary')) data = null;
@@ -62,23 +63,28 @@ const base = process.env.EVENTGRID_TEST_URL || 'http://127.0.0.1:5178';
    }
    if (role === 'ADMIN') {
     await page.goto(base + '/staff');
-    await page.getByRole('button', { name: 'Agregar miembro', exact: true }).click();
+    await page.getByRole('button', { name: 'Agregar colaborador', exact: true }).click();
     const staffForm = page.getByRole('dialog', { name: 'Miembro de staff' });
     await staffForm.getByLabel('Nombre', { exact: true }).fill('Fictitious');
     await staffForm.getByLabel('Apellido', { exact: true }).fill('Staff');
-    await staffForm.getByLabel('Correo', { exact: true }).fill('staff@example.invalid');
+    await staffForm.getByLabel('Correo electrónico', { exact: true }).fill('staff@example.invalid');
     await staffForm.getByRole('button', { name: 'Guardar', exact: true }).click();
     await staffForm.waitFor({ state: 'hidden' }); assert.equal(accounts.length, 0); assert.equal(invitations, 0);
     await page.goto(base + '/users');
-    await page.getByText('Invitar personal', { exact: true }).click();
+    await page.getByText('Agregar varios usuarios', { exact: true }).click();
     await page.getByRole('button', { name: 'Agregar persona', exact: true }).click();
     await page.getByLabel('Nombre del invitado', { exact: true }).fill('Fictitious Invitee');
     await page.getByLabel('Correo del invitado', { exact: true }).fill('invite@example.invalid');
     await page.getByRole('button', { name: 'Vista previa', exact: true }).click();
-    await page.getByText('Confirmar envío de 1 invitaciones').waitFor(); assert.equal(invitations, 0); assert.equal(accounts.length, 0);
-    await page.getByRole('button', { name: 'Enviar invitaciones', exact: true }).evaluate(e => { e.click(); e.click(); });
-    await page.getByRole('status').filter({ hasText: 'PENDING' }).waitFor(); assert.equal(invitations, 1); assert.equal(accounts.length, 1);
-    checks.push('Staff stays separate from users; invitation preview has no sends; one confirmation dispatches one batch, disabled-provider result stays pending');
+    await page.getByText('Crear 1 cuentas pendientes').waitFor(); assert.equal(invitations, 0); assert.equal(accounts.length, 0);
+    await page.getByRole('button', { name: 'Crear usuarios', exact: true }).click();
+    assert.equal(invitations, 0); await page.getByRole('checkbox', { name: 'Seleccionar Fictitious Invitee' }).filter({ visible: true }).check();
+    await page.getByRole('button', { name: 'Enviar invitaciones (1)', exact: true }).click();
+    const invitationModal = page.getByRole('dialog', { name: 'Confirmar invitaciones' });
+    await invitationModal.getByRole('button', { name: 'Confirmar envío', exact: true }).dblclick();
+    assert.equal(invitations, 1); await invitationModal.getByRole('heading', { name: 'Resultado de invitaciones' }).waitFor();
+    await invitationModal.getByRole('button', { name: 'Cerrar', exact: true }).click();
+    checks.push('Staff stays separate; bulk creation has no sends; selected-list confirmation dispatches one batch with disabled-provider pending result');
     await page.goto(base + '/sponsors');
     for (const category of categories) {
      await page.getByRole('button', { name: 'Nuevo Patrocinador', exact: true }).click(); const modal = page.getByRole('dialog');

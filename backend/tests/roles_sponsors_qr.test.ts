@@ -197,7 +197,7 @@ describe('staff and explicit invitations', () => {
       const result = await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send(payload);
       expect(result.status).toBe(200); expect(send).toHaveBeenCalledTimes(2);
       await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send(payload); expect(send).toHaveBeenCalledTimes(2);
-      const tokens = send.mock.calls.map(([mail]) => new URL(mail.text.match(/https:\/\/\S+/)[0]).searchParams.get('token')!);
+      const tokens = users.map(user => { const mail = send.mock.calls.find(([mail]) => mail.to === user.email)![0]; return new URL(mail.text.match(/https:\/\/\S+/)[0]).searchParams.get('token')!; });
       expect(tokens[0]).not.toBe(tokens[1]);
       const stored = await prisma.userInvitation.findFirstOrThrow({ where: { userId: users[0].id, revokedAt: null } });
       expect(stored.tokenHash).not.toContain(tokens[0]); expect(stored.expiresAt!.getTime() - stored.createdAt.getTime()).toBeGreaterThan(86300000);
@@ -239,6 +239,7 @@ describe('communication preview and explicit endpoint validation', () => {
     expect((await request(app).post(`/api/v1/events/${event.id}/schedule`).set(headers('ADMIN')).send({ title: 'Invalid time', startTime: '12:00', endTime: '11:00', room: 'Test room' })).status).toBe(400);
     const valid = await request(app).post(`/api/v1/events/${event.id}/schedule`).set(headers('ADMIN')).send({ title: 'Mock talk', startTime: '09:00', endTime: '10:00', room: 'Test room' });
     expect(valid.status).toBe(201);
+    expect((await request(app).get(`/api/v1/events/${event.id}/schedule`).set(headers('ADMIN'))).body.data.items.some((item: any) => item.id === valid.body.data.id)).toBe(true);
     const conflict = await request(app).post(`/api/v1/events/${event.id}/schedule`).set(headers('ADMIN')).send({ title: 'Overlap', startTime: '09:30', endTime: '10:30', room: 'Test room' });
     expect(conflict.status).toBe(400);
   });
@@ -265,3 +266,116 @@ describe('manual provider acceptance and duplicate protection', () => {
     } finally { raw.mockRestore(); factory.mockRestore(); vi.unstubAllEnvs(); }
   });
 });
+
+
+describe('simplified personnel and selected access invitations', () => {
+  it('retains hidden staff history, detects normalized duplicates per event, and does not create accounts', async () => {
+    const payload = { firstName: 'History', lastName: 'Preserved', email: 'history-staff@example.invalid', phone: '000', function: 'Historic function', area: 'Historic area', notes: 'Keep', status: 'INACTIVE' };
+    const created = await request(app).post('/api/v1/staff').set(headers('ADMIN')).send(payload);
+    expect(created.status).toBe(200);
+    const updated = await request(app).put(`/api/v1/staff/${created.body.data.id}`).set(headers('ADMIN')).send({ firstName: 'Updated', lastName: 'Preserved', email: payload.email, phone: '' });
+    expect(updated.body.data).toMatchObject({ function: payload.function, area: payload.area, notes: 'Keep', status: 'INACTIVE' });
+    expect((await request(app).post('/api/v1/staff').set(headers('ADMIN')).send({ ...payload, email: ' HISTORY-STAFF@EXAMPLE.INVALID ' })).status).toBe(400);
+    expect((await request(app).post('/api/v1/staff').set(headers('ADMIN', other.id)).send(payload)).status).toBe(200);
+    expect(await prisma.user.count({ where: { email: payload.email } })).toBe(0);
+  });
+  it('creates from three fields with internal edition binding, no usable password, no automatic activation or send', async () => {
+    const send = vi.fn(); const factory = vi.spyOn(CommunicationsService, 'createTransporter').mockReturnValue({ sendMail: send } as any);
+    try {
+      const created = await request(app).post('/api/v1/users').set(headers('ADMIN', other.id)).send({ fullName: 'Three Fields', email: 'three-fields@example.invalid', role: 'VIEWER', password: 'MustNeverBecomePassword123!', isActive: true });
+      expect(created.status).toBe(201); expect(created.body).not.toHaveProperty('temporaryPassword'); expect(created.body.data).toMatchObject({ assignedEventId: other.id, accountStatus: 'PENDING', isActive: false });
+      const stored = await prisma.user.findUniqueOrThrow({ where: { id: created.body.data.id } }); expect(stored.passwordHash).toMatch(/^pending-activation:/);
+      expect((await request(app).patch(`/api/v1/users/${stored.id}/toggle-status`).set(headers('ADMIN'))).status).toBe(400);
+      expect((await request(app).put(`/api/v1/users/${stored.id}`).set(headers('ADMIN')).send({ isActive: true })).status).toBe(400);
+      expect((await request(app).post('/api/v1/users').set(headers('ADMIN')).send({ fullName: 'Duplicate', email: stored.email.toUpperCase(), role: 'VIEWER' })).status).toBe(400);
+      expect(send).not.toHaveBeenCalled(); expect(factory).not.toHaveBeenCalled();
+    } finally { factory.mockRestore(); }
+  });
+  it('keeps scoped administrators inside their edition and preserves legacy global administration', async () => {
+    const created = await request(app).post('/api/v1/users').set(headers('ADMIN')).send({ fullName: 'Scoped Admin', email: 'scoped-admin@example.invalid', role: 'ADMIN' });
+    expect(created.body.data.assignedEventId).toBe(event.id);
+    await prisma.user.update({ where: { id: created.body.data.id }, data: { accountStatus: 'ACTIVE', isActive: true } });
+    const token = jwt.sign({ id: created.body.data.id }, 'isolated-functional-test-secret'); const h = { Authorization: `Bearer ${token}`, 'X-Event-Id': event.id };
+    expect((await request(app).get('/api/v1/events').set(h)).body.data.map((item: any) => item.id)).toEqual([event.id]);
+    expect((await request(app).get('/api/v1/participants').set({ ...h, 'X-Event-Id': other.id })).status).toBe(403);
+    expect((await request(app).post('/api/v1/events').set(h).send({})).status).toBe(403);
+    const foreign = await prisma.user.findUniqueOrThrow({ where: { email: 'three-fields@example.invalid' } });
+    for (const endpoint of [`/api/v1/users/${foreign.id}`, `/api/v1/users/${foreign.id}/invitations`]) expect((await request(app).get(endpoint).set(h)).status).toBe(403);
+    expect((await request(app).post('/api/v1/users/invitations/send').set(h).send({ userIds: [foreign.id], requestKey: crypto.randomUUID(), confirmed: true })).status).toBe(403);
+    expect((await request(app).put(`/api/v1/users/${created.body.data.id}`).set(h).send({ assignedEventId: null })).status).toBe(403);
+    const list = await request(app).get('/api/v1/users').set(h); expect(list.body.data.every((item: any) => item.assignedEventId === event.id)).toBe(true);
+    expect((await request(app).get('/api/v1/events').set(headers('ADMIN'))).body.data).toHaveLength(2);
+  });
+  it('denies every invitation operation to operators and viewers', async () => {
+    for (const role of ['OPERATOR', 'VIEWER']) for (const endpoint of ['selection', 'send', 'preview']) expect((await request(app).post(`/api/v1/users/invitations/${endpoint}`).set(headers(role)).send({})).status).toBe(403);
+  });
+  it('invites only selected unique accounts, isolates failures, skips active users and records authenticated delivery', async () => {
+    const pending = await Promise.all([1, 2, 3].map(i => prisma.user.create({ data: { fullName: 'Selected ' + i, email: `selected-${i}@example.invalid`, role: 'VIEWER', assignedEventId: event.id, accountStatus: 'PENDING', isActive: false, passwordHash: 'unusable' } })));
+    const active = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@barcamp.org.do' } });
+    const send = vi.fn(async (mail: any) => { if (mail.to === pending[1].email) throw Object.assign(new Error('mock authentication failure'), { code: 'EAUTH' }); return { accepted: [mail.to], messageId: '<selection-' + crypto.randomUUID() + '>' }; });
+    const raw = vi.spyOn(CommunicationsService, 'getRawConfig').mockResolvedValue({ isEnabled: true, fromName: 'Mock', fromEmail: 'sender@example.invalid' } as any);
+    const factory = vi.spyOn(CommunicationsService, 'createTransporter').mockReturnValue({ sendMail: send, close: vi.fn() } as any); vi.stubEnv('FRONTEND_URL', 'https://eventgrid.example.invalid');
+    try {
+      const payload = { userIds: [pending[0].id, pending[1].id, pending[0].id, active.id], requestKey: crypto.randomUUID(), confirmed: true };
+      const result = await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send(payload);
+      expect(result.status).toBe(200); expect(send).toHaveBeenCalledTimes(2); expect(send.mock.calls.every(([mail]) => mail.to !== pending[2].email && mail.to !== active.email)).toBe(true);
+      expect(result.body.data.results.find((item: any) => item.userId === pending[1].id).status).toBe('FAILED');
+      expect(result.body.data.results.find((item: any) => item.userId === active.id).status).toBe('ACTIVATED');
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: active.id } })).passwordHash).toBe(active.passwordHash);
+      await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send(payload); expect(send).toHaveBeenCalledTimes(2);
+      expect((await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({ ...payload, userIds: [pending[2].id] })).status).toBe(400);
+      await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({ ...payload, requestKey: crypto.randomUUID(), userIds: [pending[0].id] }); expect(send).toHaveBeenCalledTimes(2);
+      const old = await prisma.userInvitation.findFirstOrThrow({ where: { userId: pending[0].id, revokedAt: null } });
+      vi.stubEnv('BREVO_WEBHOOK_SECRET', 'mock-invitation-webhook');
+      await request(app).post('/api/v1/communications/webhooks/brevo').set('x-brevo-webhook-secret', 'mock-invitation-webhook').send({ event: 'delivered', messageId: old.messageId });
+      expect((await prisma.userInvitation.findUniqueOrThrow({ where: { id: old.id } })).status).toBe('DELIVERED');
+      const history = await request(app).get(`/api/v1/users/${pending[0].id}/invitations`).set(headers('ADMIN')); expect(history.status).toBe(200); expect(history.body.data[0]).not.toHaveProperty('tokenHash');
+      await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({ ...payload, requestKey: crypto.randomUUID(), userIds: [pending[0].id], reinvite: true });
+      expect(send).toHaveBeenCalledTimes(3); expect((await prisma.userInvitation.findUniqueOrThrow({ where: { id: old.id } })).revokedAt).toBeTruthy();
+      expect((await prisma.auditLog.findMany({ where: { action: 'USER_UPDATE' } })).some(log => JSON.parse(String(log.changes)).operation === 'INVITATIONS_DISPATCH')).toBe(true);
+    } finally { raw.mockRestore(); factory.mockRestore(); vi.unstubAllEnvs(); }
+  });
+});
+
+
+describe('invitation concurrency and explicit reinvitation', () => {
+  it('claims one account across distinct concurrent batches and only reinvites active accounts on explicit authorization', async () => {
+    const pending = await prisma.user.create({ data: { fullName: 'Concurrent Invite', email: 'concurrent-invite@example.invalid', role: 'OPERATOR', assignedEventId: event.id, accountStatus: 'PENDING', isActive: false, passwordHash: 'unusable' } });
+    const send = vi.fn(async (mail: any) => { await new Promise(resolve => setTimeout(resolve, 80)); return { accepted: [mail.to], messageId: '<concurrent-' + crypto.randomUUID() + '>' }; });
+    const raw = vi.spyOn(CommunicationsService, 'getRawConfig').mockResolvedValue({ isEnabled: true, fromName: 'Mock', fromEmail: 'sender@example.invalid' } as any);
+    const factory = vi.spyOn(CommunicationsService, 'createTransporter').mockReturnValue({ sendMail: send } as any); vi.stubEnv('FRONTEND_URL', 'https://eventgrid.example.invalid');
+    const dispatch = (extra = {}) => request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({ userIds: [pending.id], requestKey: crypto.randomUUID(), confirmed: true, ...extra });
+    try {
+      await Promise.all([dispatch(), dispatch()]); expect(send).toHaveBeenCalledOnce();
+      const firstMail = send.mock.calls[0][0]; const token = new URL(firstMail.text.match(/https:\/\/\S+/)[0]).searchParams.get('token');
+      expect((await request(app).post('/api/v1/auth/accept-invitation').send({ token, password: 'UserChosenPassword123!' })).status).toBe(200);
+      const active = await prisma.user.findUniqueOrThrow({ where: { id: pending.id } });
+      await dispatch(); expect(send).toHaveBeenCalledOnce();
+      await dispatch({ reinvite: true }); expect(send).toHaveBeenCalledTimes(2);
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: pending.id } })).passwordHash).toBe(active.passwordHash);
+      expect((await request(app).post('/api/v1/auth/login').send({ email: pending.email, password: 'UserChosenPassword123!' })).status).toBe(200);
+    } finally { raw.mockRestore(); factory.mockRestore(); vi.unstubAllEnvs(); }
+  });
+});
+
+
+it.runIf(process.env.EVENTGRID_REALTIME_BROWSER === 'true')('synchronizes real operations across independent browser sessions over actual SSE', async () => {
+  const paymentMethod = await prisma.paymentMethod.create({ data: { eventId: event.id, name: 'Realtime cash' } });
+  const ticket = await prisma.ticketType.findFirstOrThrow({ where: { eventId: event.id, price: 123 } });
+  const participant = await prisma.participant.create({ data: { firstName: 'Live', lastName: 'Arrival', fullName: 'Live Arrival', email: 'live-arrival@example.invalid', documentId: 'live-arrival-doc' } });
+  const arrival = await prisma.registration.create({ data: { eventId: event.id, participantId: participant.id, registrationNumber: 'LIVE-ARRIVAL', ticketTypeId: ticket.id, status: 'CONFIRMED', paymentStatus: 'PAID', amountPaid: 100, ticketPrice: 100, totalAmount: 100, balanceDue: 0, tshirtSize: 'L' } });
+  const raceParticipant = await prisma.participant.create({ data: { firstName: 'Live', lastName: 'Race', fullName: 'Live Race', email: 'live-race@example.invalid' } });
+  const raceArrival = await prisma.registration.create({ data: { eventId: event.id, participantId: raceParticipant.id, registrationNumber: 'LIVE-RACE', ticketTypeId: ticket.id, status: 'CONFIRMED', paymentStatus: 'PAID', amountPaid: 100, ticketPrice: 100, totalAmount: 100, balanceDue: 0, tshirtSize: 'L' } });
+  const activateUser = await prisma.user.create({ data: { fullName: 'Activated QA User', email: 'activated-qa@example.invalid', role: 'VIEWER', assignedEventId: event.id, accountStatus: 'PENDING', isActive: false, passwordHash: 'unusable' } });
+  const activationToken = crypto.randomBytes(32).toString('base64url');
+  await prisma.userInvitation.create({ data: { userId: activateUser.id, tokenHash: crypto.createHash('sha256').update(activationToken).digest('hex'), expiresAt: new Date(Date.now() + 86400000), status: 'ACCEPTED_BY_PROVIDER' } });
+  const account = async (role: string) => ({ token: tokens[role], user: await prisma.user.findUniqueOrThrow({ where: { email: role === 'ADMIN' ? 'admin@barcamp.org.do' : role === 'OPERATOR' ? 'operador@barcamp.org.do' : 'consulta@barcamp.org.do' }, select: { id: true, email: true, fullName: true, role: true, assignedEventId: true } }) });
+  const operatorTwo = await prisma.user.create({ data: { fullName: 'Second Operator', email: 'second-operator@example.invalid', role: 'OPERATOR', assignedEventId: event.id, passwordHash: 'unusable' } });
+  const server = app.listen(4191, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
+  const factory = vi.spyOn(CommunicationsService, 'createTransporter').mockImplementation(() => { throw new Error('Real email forbidden in browser QA'); });
+  try {
+    const run = createRequire(import.meta.url)('../../frontend/tests/realtime-multiuser.cjs');
+    await run({ api: 'http://127.0.0.1:4191/api/v1', base: 'http://127.0.0.1:5189', eventId: event.id, otherId: other.id, admin: await account('ADMIN'), operator: await account('OPERATOR'), secondOperator: { token: jwt.sign({ id: operatorTwo.id }, 'isolated-functional-test-secret'), user: { id: operatorTwo.id, fullName: operatorTwo.fullName, email: operatorTwo.email, role: operatorTwo.role, assignedEventId: event.id } }, viewer: await account('VIEWER'), registrationId: arrival.id, concurrentRegistrationId: raceArrival.id, paymentMethodId: paymentMethod.id, ticketTypeId: ticket.id, activationToken, activationUserId: activateUser.id });
+    expect(factory).not.toHaveBeenCalled();
+  } finally { factory.mockRestore(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+}, 180000);
