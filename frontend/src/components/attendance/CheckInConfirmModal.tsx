@@ -43,50 +43,45 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
   isLoading = false,
 }) => {
   const [selectedSize, setSelectedSize] = useState<string | null>(initialTshirtSize);
-  const [deliverTshirt, setDeliverTshirt] = useState<boolean>(false);
+  const [deliverTshirt, setDeliverTshirt] = useState<boolean>(true);
   const [inventoryItems, setInventoryItems] = useState<TshirtInventoryItem[]>([]);
   const [loadingInventory, setLoadingInventory] = useState(false);
 
   // Cargar existencias en tiempo real de la edición
   useEffect(() => {
+    let active = true;
     if (isOpen && tshirtEnabled) {
       setLoadingInventory(true);
       inventoryService
         .getInventory(eventId)
         .then((res) => {
-          setInventoryItems(res.items);
+          if (active) setInventoryItems(res.items);
         })
         .catch((err) => {
           console.error('Error al cargar existencias de inventario:', err);
         })
         .finally(() => {
-          setLoadingInventory(false);
+          if (active) setLoadingInventory(false);
         });
     }
-  }, [isOpen, tshirtEnabled, eventId]);
+    return () => { active = false; };
+  }, [isOpen, tshirtEnabled, eventId, registrationNumber]);
 
   // Mapa de disponibilidad por talla
   const stockMap: Record<string, number> = {};
   for (const item of inventoryItems) {
-    stockMap[item.size] = item.availableQuantity;
+    if (item.isActive !== false) stockMap[item.size] = item.availableQuantity;
   }
 
-  const currentAvailable = selectedSize ? (stockMap[selectedSize] ?? 999) : 0;
+  const currentAvailable = selectedSize ? (stockMap[selectedSize] ?? 0) : 0;
   const isSelectedOutOfStock = selectedSize ? currentAvailable <= 0 : false;
 
-  // Si la talla seleccionada está agotada, no permitir marcar entrega física
-  useEffect(() => {
-    if (isSelectedOutOfStock) {
-      setDeliverTshirt(false);
-    } else if (selectedSize && !isSelectedOutOfStock) {
-      setDeliverTshirt(true);
-    }
-  }, [selectedSize, isSelectedOutOfStock]);
+  useEffect(() => { if (isOpen) { setSelectedSize(initialTshirtSize); setDeliverTshirt(true); setInventoryItems([]); } }, [isOpen, registrationNumber, eventId]);
 
   if (!isOpen) return null;
 
   const handleConfirm = async () => {
-    const finalDelivered = Boolean(selectedSize && !isSelectedOutOfStock && deliverTshirt);
+    const finalDelivered = Boolean(selectedSize && !loadingInventory && !isSelectedOutOfStock && deliverTshirt);
     await onConfirm(selectedSize, finalDelivered);
   };
 
@@ -256,7 +251,7 @@ export const CheckInConfirmModal: React.FC<CheckInConfirmModalProps> = ({
               {selectedSize && !isSelectedOutOfStock && (
                 <div className="p-3 rounded-xl bg-muted/40 border border-border space-y-2">
                   <fieldset className="flex flex-wrap gap-4 text-xs">
-                    <label className="flex items-center gap-2"><input type="radio" name="manual-delivery" checked={!deliverTshirt} onChange={() => setDeliverTshirt(false)} disabled={isLoading} />Entregar más tarde</label>
+                    <label className="flex items-center gap-2"><input type="radio" name="manual-delivery" checked={!deliverTshirt} onChange={() => setDeliverTshirt(false)} disabled={isLoading} />Registrar entrega pendiente</label>
                     <label className="flex items-center gap-2"><input type="radio" name="manual-delivery" checked={deliverTshirt} onChange={() => setDeliverTshirt(true)} disabled={isLoading} />Entregar ahora</label>
                   </fieldset>
                 </div>

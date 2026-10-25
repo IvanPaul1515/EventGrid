@@ -1,3 +1,4 @@
+import { inventoryService, TshirtInventoryItem } from '../../services/inventory.service';
 import { useRealtimeRefresh } from '../../context/RealtimeContext';
 import { participantsService } from '../../services/participants.service';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -53,7 +54,9 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraLoading, setCameraLoading] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [deliverNow, setDeliverNow] = useState(false);
+  const [deliverNow, setDeliverNow] = useState(true);
+  const [inventoryItems, setInventoryItems] = useState<TshirtInventoryItem[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
 
   const tshirtEnabled = currentEvent?.settings?.tshirtSizesEnabled === true;
   const rawTshirtSizes = currentEvent?.settings?.tshirtSizes;
@@ -69,6 +72,18 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     }
     return ['Medium (M)', 'XL', 'L', '2XL', 'Size 16', 'Size 12', 'Size 14', 'S'];
   })();
+
+  useEffect(() => {
+    let active = true;
+    setInventoryItems([]);
+    if (isOpen && tshirtEnabled && scanResult?.registration) {
+      setInventoryLoading(true);
+      inventoryService.getInventory(currentEvent?.id).then(result => { if (active) setInventoryItems(result.items); }).catch(() => {}).finally(() => { if (active) setInventoryLoading(false); });
+    }
+    return () => { active = false; };
+  }, [isOpen, tshirtEnabled, currentEvent?.id, scanResult?.registration?.id]);
+  const sizeAvailable = Boolean(selectedTshirtSize && inventoryItems.some(item => item.isActive !== false && item.size === selectedTshirtSize && item.availableQuantity > 0));
+  const effectiveDelivery = Boolean(tshirtEnabled && deliverNow && sizeAvailable && !inventoryLoading);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -157,6 +172,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
       await cameraQueue.current;
       const result = await qrService.scan(trimmed, currentEvent?.id);
       if (generation !== scanGeneration.current) return;
+      setDeliverNow(true);
       setScanResult(result);
       setSelectedTshirtSize(result.registration?.tshirtSize || null);
     } catch (err: any) {
@@ -315,7 +331,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
 
     try {
       setIsCheckingIn(true);
-      await attendanceService.checkIn(scanResult.registration.id, finalSize || undefined, tshirtDelivered);
+      const confirmed = await attendanceService.checkIn(scanResult.registration.id, finalSize || undefined, tshirtDelivered);
       onAttendanceMarked?.();
       window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
       if (generation !== scanGeneration.current) return;
@@ -327,17 +343,11 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
         canCheckIn: false,
         status: 'ALREADY_CHECKED_IN',
         message: 'Asistencia registrada exitosamente',
-        registration: {
-          ...scanResult.registration,
-          attended: true,
-          attendedAt: new Date().toISOString(),
-          tshirtSize: finalSize || undefined,
-          tshirtDelivered: tshirtDelivered ?? false,
-        },
+        registration: { ...scanResult.registration, ...confirmed.registration },
       });
       setDeliverNow(false);
     } catch (err: any) {
-      alert(err?.response?.data?.message || 'Error al registrar asistencia');
+      alert(err?.response?.data?.message || err?.message || 'Error al registrar asistencia');
     } finally {
       checkInBusy.current = false;
       setIsCheckingIn(false);
@@ -656,9 +666,10 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                     </div>
                   )}
 
+                  {scanResult.canCheckIn && tshirtEnabled && selectedTshirtSize && !sizeAvailable && <p className="text-xs text-muted-foreground">{inventoryLoading ? 'Comprobando disponibilidad...' : 'Talla sin disponibilidad confirmada. Puede registrar la entrega pendiente.'}</p>}
                   {scanResult.canCheckIn && tshirtEnabled && <fieldset className="flex flex-wrap gap-4 text-xs p-3 rounded-xl bg-background border border-border">
-                    <label className="flex items-center gap-2"><input type="radio" name="qr-delivery" checked={!deliverNow} onChange={() => setDeliverNow(false)} disabled={isCheckingIn} />Entregar más tarde</label>
-                    <label className="flex items-center gap-2"><input type="radio" name="qr-delivery" checked={deliverNow} onChange={() => setDeliverNow(true)} disabled={isCheckingIn || !selectedTshirtSize} />Entregar ahora</label>
+                    <label className="flex items-center gap-2"><input type="radio" name="qr-delivery" checked={!effectiveDelivery} onChange={() => setDeliverNow(false)} disabled={isCheckingIn} />Registrar entrega pendiente</label>
+                    <label className="flex items-center gap-2"><input type="radio" name="qr-delivery" checked={effectiveDelivery} onChange={() => setDeliverNow(true)} disabled={isCheckingIn || !sizeAvailable || inventoryLoading} />Entregar ahora</label>
                   </fieldset>}
 
                   {/* Botón Principal: Confirmar Asistencia con salvaguarda anti doble clic */}
@@ -666,8 +677,8 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                     <div className="pt-1">
                       <button
                         type="button"
-                        onClick={() => handleConfirmCheckIn(selectedTshirtSize, deliverNow)}
-                        disabled={isCheckingIn}
+                        onClick={() => handleConfirmCheckIn(selectedTshirtSize, effectiveDelivery)}
+                        disabled={isCheckingIn || inventoryLoading}
                         className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm tracking-wide shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50"
                       >
                         <UserCheck className="w-5 h-5" />

@@ -341,7 +341,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
     } catch (err: any) {
       setFeedbackMsg({
         type: 'error',
-        text: err.response?.data?.message || 'Error al marcar asistencia',
+        text: err.response?.data?.message || err.message || 'Error al marcar asistencia',
       });
     } finally {
       setMarkingAttendance(false);

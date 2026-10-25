@@ -47,6 +47,8 @@ export interface RecipientStatsResult {
 }
 
 export interface EmailBatchJobInfo {
+  executionState?: string;
+  requiresAuthorization?: boolean;
   id: string;
   eventId: string;
   templateCode?: string;
@@ -82,6 +84,7 @@ export interface SmtpSummaryResult {
 }
 
 export const communicationsService = {
+  async reviewInterrupted(jobId: string) { return (await api.post('/communications/jobs/' + jobId + '/review-interrupted', { confirmed: true })).data.data; },
   async getStatus(eventId: string): Promise<{ isEnabled: boolean; isConfigured: boolean }> { return (await api.get('/communications/status', { params: { eventId } })).data.data; },
   async getConfig(eventId?: string | null): Promise<EmailConfig | null> {
     const res = await api.get<ApiResponse<EmailConfig | null>>('/communications/config', {
