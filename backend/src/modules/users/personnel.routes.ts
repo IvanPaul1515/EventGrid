@@ -1,3 +1,7 @@
+import crypto from 'crypto';
+import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
+import { InvitationsService } from './invitations.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../config/db.js';
@@ -19,9 +23,15 @@ personnelRoutes.get('/', async (req, res, next) => {
 async function save(req: any, res: any, next: any) {
   try {
     const data = input.parse(req.body);
+    const previous = req.params.id ? await prisma.staffMember.findFirst({ where: { id: req.params.id, eventId: req.eventId } }) : null;
+    if (data.phone && data.phone !== previous?.phone) {
+      const phone = parsePhoneNumberFromString(data.phone, 'DO');
+      if (!phone?.isValid()) throw new BadRequestError('Teléfono inválido. Incluya el prefijo internacional para números de otros países.');
+      data.phone = phone.number;
+    }
     if (data.userId) {
-      const account = await prisma.user.findUnique({ where: { id: data.userId }, select: { assignedEventId: true } });
-      if (!account || (account.assignedEventId && account.assignedEventId !== req.eventId)) throw new BadRequestError('Cuenta asociada no encontrada en esta edición.');
+      const account = await prisma.user.findUnique({ where: { id: data.userId }, select: { assignedEventId: true, email: true, fullName: true } });
+      if (!account || account.assignedEventId !== req.eventId || account.email.trim().toLowerCase() !== data.email || identity(account.fullName) !== identity(data.firstName + ' ' + data.lastName)) throw new BadRequestError('Cuenta asociada no encontrada en esta edición.');
     }
     if (req.params.id && !await prisma.staffMember.findFirst({ where: { id: req.params.id, eventId: req.eventId } })) throw new NotFoundError('Miembro de staff no encontrado.');
     const record = await prisma.$transaction(async tx => {
@@ -34,3 +44,42 @@ async function save(req: any, res: any, next: any) {
 }
 personnelRoutes.post('/', requireAdmin, save);
 personnelRoutes.put('/:id', requireAdmin, save);
+
+// Linking is explicit, edition-scoped and atomic. Creation never sends an invitation.
+const identity = (value: string) => value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+personnelRoutes.get('/:id/access', requireAdmin, async (req, res, next) => {
+  try {
+    const staff = await prisma.staffMember.findFirst({ where: { id: req.params.id, eventId: req.eventId! } });
+    if (!staff) throw new NotFoundError('Colaborador no encontrado');
+    const matches = await prisma.user.findMany({ where: { assignedEventId: req.eventId! }, select: { id: true, email: true, fullName: true, role: true, accountStatus: true } });
+    const account = matches.find(u => staff.userId ? u.id === staff.userId : u.email.trim().toLowerCase() === staff.email.trim().toLowerCase() && identity(u.fullName) === identity(staff.firstName + ' ' + staff.lastName));
+    res.json({ data: { linked: Boolean(staff.userId), account: account || null } });
+  } catch(error) { next(error); }
+});
+personnelRoutes.post('/:id/access', requireAdmin, async (req, res, next) => {
+  try {
+    const data = z.object({ role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER']).default('OPERATOR'), linkExisting: z.boolean().default(false) }).parse(req.body);
+    const account = await prisma.$transaction(async tx => {
+      const staff = await tx.staffMember.findFirst({ where: { id: req.params.id, eventId: req.eventId! } });
+      if (!staff) throw new NotFoundError('Colaborador no encontrado');
+      if (staff.userId) throw new BadRequestError('El colaborador ya tiene una cuenta vinculada.');
+      const email = staff.email.trim().toLowerCase();
+      const matches = (await tx.user.findMany({ select: { id: true, assignedEventId: true, email: true, fullName: true, role: true, accountStatus: true } })).filter(u => u.email.trim().toLowerCase() === email);
+      if (matches.length > 1) throw new BadRequestError('Existen cuentas ambiguas con este correo. Revise la relación antes de continuar.');
+      let user = matches[0];
+      if (user) {
+        if (user.assignedEventId !== req.eventId || identity(user.fullName) !== identity(staff.firstName + ' ' + staff.lastName)) throw new BadRequestError('No se puede vincular automáticamente este correo. Revise la identidad y la edición de la cuenta.');
+        if (!data.linkExisting) throw new BadRequestError('Confirme la vinculación con la cuenta existente.');
+        if (await tx.staffMember.findFirst({ where: { userId: user.id, eventId: req.eventId! } })) throw new BadRequestError('La cuenta ya está vinculada a otro colaborador.');
+      } else {
+        user = await tx.user.create({ data: { fullName: staff.firstName + ' ' + staff.lastName, email, role: data.role, assignedEventId: req.eventId!, isActive: false, accountStatus: 'PENDING', passwordHash: 'pending-activation:' + crypto.randomUUID() } });
+      }
+      await tx.staffMember.update({ where: { id: staff.id }, data: { userId: user.id } });
+      await tx.auditLog.create({ data: { userId: req.user!.id, action: 'USER_UPDATE', entity: 'USER', entityId: user.id, changes: JSON.stringify({ operation: 'STAFF_ACCESS_LINK', staffId: staff.id }) } });
+      return { id: user.id, fullName: user.fullName, email: user.email, role: user.role, accountStatus: user.accountStatus };
+    }, { isolationLevel: 'Serializable' });
+    if (account.accountStatus === 'PENDING') await InvitationsService.prepare(account.id);
+    RealtimeService.changed(req.eventId!, ['users', 'staff']);
+    res.json({ data: account, message: 'Cuenta vinculada. No se ha enviado ninguna invitación.' });
+  } catch(error: any) { next(['P2034', 'P2002'].includes(error.code) ? new BadRequestError('Otra operación modificó esta relación. Actualice antes de reintentar.') : error); }
+});

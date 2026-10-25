@@ -18,11 +18,13 @@ router.param('registrationId', async (req, _res, next) => {
   } catch (error) { next(error); }
 });
 
+router.get('/status', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.getStatus);
+
 // Configuración SMTP y prueba (solo ADMIN)
 router.get('/config', requireRole(['ADMIN']), CommunicationsController.getConfig);
 router.put('/config', requireRole(['ADMIN']), CommunicationsController.saveConfig);
 router.post('/test', requireRole(['ADMIN']), CommunicationsController.testConnection);
-router.get('/smtp-summary', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.getSmtpSummary);
+router.get('/smtp-summary', requireRole(['ADMIN']), CommunicationsController.getSmtpSummary);
 
 // Plantillas de correo (ADMIN y OPERATOR)
 router.get('/templates', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.getTemplates);
@@ -35,8 +37,8 @@ router.post('/preview', requireRole(['ADMIN', 'OPERATOR']), CommunicationsContro
 router.post('/send', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.sendSingleEmail);
 router.post('/send-bulk', requireRole(['ADMIN']), CommunicationsController.sendBulkEmail);
 
-// Prevalidación exacta de destinatarios (ADMIN y OPERATOR)
-router.post('/recipients/validate', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.validateRecipients);
+// Prevalidación de campañas masivas (solo ADMIN)
+router.post('/recipients/validate', requireRole(['ADMIN']), CommunicationsController.validateRecipients);
 
 // Lotes persistentes de correo masivo (ADMIN)
 router.get('/jobs', requireRole(['ADMIN']), CommunicationsController.getBatchJobs);

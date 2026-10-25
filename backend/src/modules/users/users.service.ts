@@ -59,8 +59,9 @@ export class UsersService {
       }),
     ]);
 
+    const staffMembers = await prisma.staffMember.findMany({ where: { userId: { in: users.map(user => user.id) }, ...(assignedScope ? { eventId: assignedScope } : {}) }, select: { id: true, userId: true, eventId: true, firstName: true, lastName: true } });
     return {
-      users: await InvitationsService.withStatus(users),
+      users: await InvitationsService.withStatus(users.map(user => ({ ...user, staffMembers: staffMembers.filter(member => member.userId === user.id).map(({ userId, ...member }) => member) }))),
       pagination: {
         total,
         page,

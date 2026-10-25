@@ -2890,7 +2890,7 @@ export class CommunicationsService {
    * Historial unificado de comunicaciones por participante/inscripción (Fase QA Integral)
    * Unifica EmailLog y EmailBatchItem sin duplicar operaciones.
    */
-  static async getUnifiedHistoryForRegistration(registrationId: string) {
+  static async getUnifiedHistoryForRegistration(registrationId: string, operatorUserId?: string) {
     const TEMPLATE_NAMES: Record<string, string> = {
       INSCRIPTION_CONFIRMATION: 'Confirmación de inscripción',
       DIGITAL_TICKET: 'Entrada digital',
@@ -2917,13 +2917,13 @@ export class CommunicationsService {
 
     const [logs, batchItems] = await Promise.all([
       prisma.emailLog.findMany({
-        where: { registrationId },
+        where: { registrationId, ...(operatorUserId ? { sentByUserId: operatorUserId, templateCode: 'DIGITAL_TICKET' } : {}) },
         include: {
           sentByUser: { select: { id: true, fullName: true, email: true } },
         },
         orderBy: { sentAt: 'desc' },
       }),
-      prisma.emailBatchItem.findMany({
+      operatorUserId ? Promise.resolve([]) : prisma.emailBatchItem.findMany({
         where: { registrationId },
         include: {
           job: {

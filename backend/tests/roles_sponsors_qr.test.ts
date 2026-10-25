@@ -270,7 +270,7 @@ describe('manual provider acceptance and duplicate protection', () => {
 
 describe('simplified personnel and selected access invitations', () => {
   it('retains hidden staff history, detects normalized duplicates per event, and does not create accounts', async () => {
-    const payload = { firstName: 'History', lastName: 'Preserved', email: 'history-staff@example.invalid', phone: '000', function: 'Historic function', area: 'Historic area', notes: 'Keep', status: 'INACTIVE' };
+    const payload = { firstName: 'History', lastName: 'Preserved', email: 'history-staff@example.invalid', phone: '8294616106', function: 'Historic function', area: 'Historic area', notes: 'Keep', status: 'INACTIVE' };
     const created = await request(app).post('/api/v1/staff').set(headers('ADMIN')).send(payload);
     expect(created.status).toBe(200);
     const updated = await request(app).put(`/api/v1/staff/${created.body.data.id}`).set(headers('ADMIN')).send({ firstName: 'Updated', lastName: 'Preserved', email: payload.email, phone: '' });
@@ -381,3 +381,89 @@ it.runIf(process.env.EVENTGRID_REALTIME_BROWSER === 'true')('synchronizes real o
     expect(factory).not.toHaveBeenCalled();
   } finally { factory.mockRestore(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 }, 180000);
+
+describe('personnel access beta and operator mail capabilities', () => {
+  it('formats and validates international phones, preserves legacy stored phones', async () => {
+    const { formatPhone, normalizedPhone } = await import('../../frontend/src/utils/phone');
+    expect(formatPhone('8294616106')).toBe('(829) 461-6106');
+    expect(formatPhone('+18294616106')).toBe('+1 (829) 461-6106');
+    expect(normalizedPhone('8095551234')).toBe('+18095551234');
+    expect(normalizedPhone('+12025550123')).toBe('+12025550123');
+    expect(normalizedPhone('+34612345678')).toBe('+34612345678');
+    expect(normalizedPhone('123')).toBeNull();
+    expect((await request(app).post('/api/v1/staff').set(headers('ADMIN')).send({ firstName:'Phone',lastName:'Invalid',email:'invalid-phone@example.invalid',phone:'123' })).status).toBe(400);
+    const legacy = await prisma.staffMember.create({data:{eventId:event.id, firstName:'Old',lastName:'Phone',email:'old-phone@example.invalid',phone:'000',function:'Keep'}});
+    const updated = await request(app).put('/api/v1/staff/'+legacy.id).set(headers('ADMIN')).send({firstName:'Old',lastName:'Phone',email:legacy.email,phone:'000'});
+    expect(updated.status).toBe(200); expect(updated.body.data).toMatchObject({phone:'000',function:'Keep'});
+  });
+  it('atomically creates a pending account linked to staff without mailing or credentials', async () => {
+    const transport = vi.spyOn(CommunicationsService, 'createTransporter').mockImplementation(() => { throw Error('No transport allowed'); });
+    try {
+      const staff = await prisma.staffMember.create({ data:{eventId:event.id,firstName:'Linked',lastName:'Person',email:'linked-person@example.invalid'} });
+      const result = await request(app).post('/api/v1/staff/'+staff.id+'/access').set(headers('ADMIN')).send({role:'VIEWER'});
+      expect(result.status).toBe(200); expect(result.body.data).toMatchObject({accountStatus:'PENDING',role:'VIEWER'});
+      expect(JSON.stringify(result.body)).not.toMatch(/password|token/i);
+      expect((await prisma.staffMember.findUniqueOrThrow({where:{id:staff.id}})).userId).toBe(result.body.data.id);
+      expect((await prisma.user.findUniqueOrThrow({where:{id:result.body.data.id}})).isActive).toBe(false);
+      expect((await request(app).post('/api/v1/staff/'+staff.id+'/access').set(headers('ADMIN')).send({role:'ADMIN'})).status).toBe(400);
+      const list = await request(app).get('/api/v1/users?limit=100').set(headers('ADMIN'));
+      expect(list.body.data.find((u:any)=>u.id===result.body.data.id).staffMembers[0].id).toBe(staff.id);
+      expect(transport).not.toHaveBeenCalled();
+    } finally { transport.mockRestore(); }
+  });
+  it('requires explicit matching-account links and rejects foreign identities, editions and roles', async () => {
+    const account=await prisma.user.create({data:{fullName:'Existing Person',email:'existing-link@example.invalid',role:'VIEWER',assignedEventId:event.id,passwordHash:'unusable'}});
+    const staff=await prisma.staffMember.create({data:{eventId:event.id,firstName:'Existing',lastName:'Person',email:account.email}});
+    const path='/api/v1/staff/'+staff.id+'/access';
+    expect((await request(app).get(path).set(headers('ADMIN'))).body.data.account.id).toBe(account.id);
+    expect((await request(app).post(path).set(headers('ADMIN')).send({role:'ADMIN'})).status).toBe(400);
+    expect((await request(app).post(path).set(headers('ADMIN')).send({role:'ADMIN',linkExisting:true})).status).toBe(200);
+    expect((await prisma.user.findUniqueOrThrow({where:{id:account.id}})).role).toBe('VIEWER');
+    const mismatch=await prisma.staffMember.create({data:{eventId:event.id,firstName:'Wrong',lastName:'Identity',email:account.email}});
+    expect((await request(app).post('/api/v1/staff/'+mismatch.id+'/access').set(headers('ADMIN')).send({linkExisting:true})).status).toBe(400);
+    const foreign=await prisma.staffMember.create({data:{eventId:other.id,firstName:'Existing',lastName:'Person',email:account.email}});
+    expect((await request(app).post('/api/v1/staff/'+foreign.id+'/access').set(headers('ADMIN',other.id)).send({linkExisting:true})).status).toBe(400);
+    for(const role of ['OPERATOR','VIEWER']) expect((await request(app).post(path).set(headers(role)).send({})).status).toBe(403);
+  });
+  it('confines operators to unmodified digital tickets and safe status, with no provider calls', async () => {
+    const send=vi.spyOn(CommunicationsService,'sendSingleEmail').mockResolvedValue({success:true, simulated:true, message:'Mock only',log:{id:'mock',status:'SIMULATED',recipientEmail:'test@example.invalid'}} as any);
+    const preview=vi.spyOn(CommunicationsService,'previewEmail').mockResolvedValue({subject:'Mock only'} as any);
+    try {
+      expect((await request(app).get('/api/v1/communications/status').set(headers('OPERATOR'))).status).toBe(200);
+      const templates=await request(app).get('/api/v1/communications/templates').set(headers('OPERATOR'));
+      expect(templates.status).toBe(200); expect(templates.body.data.every((t:any)=>t.code==='DIGITAL_TICKET')).toBe(true);
+      const payload={registrationId:registration.id,eventId:event.id,templateCode:'DIGITAL_TICKET'};
+      expect((await request(app).post('/api/v1/communications/send').set(headers('OPERATOR')).send(payload)).status).toBe(200);
+      for(const change of [{templateCode:'GENERAL_ANNOUNCEMENT'},{customSubject:'Override'},{customBodyHtml:'<p>Override</p>'},{customMessage:'Override'}]) {
+        for(const route of ['send','preview']) expect((await request(app).post('/api/v1/communications/'+route).set(headers('OPERATOR')).send({...payload,...change})).status).toBe(403);
+      }
+      expect(send).toHaveBeenCalledTimes(1); expect(preview).not.toHaveBeenCalled();
+      expect((await request(app).post('/api/v1/communications/preview').set(headers('OPERATOR')).send(payload)).status).toBe(200);
+      for(const route of ['config','smtp-summary','jobs']) expect((await request(app).get('/api/v1/communications/'+route).set(headers('OPERATOR'))).status).toBe(403);
+      expect((await request(app).post('/api/v1/communications/send-bulk').set(headers('OPERATOR')).send(payload)).status).toBe(403);
+      expect((await request(app).get('/api/v1/communications/status').set(headers('VIEWER'))).status).toBe(403);
+    } finally {send.mockRestore();preview.mockRestore();}
+  });
+  it('cannot override operator mail history ownership through filters', async () => {
+    const spy=vi.spyOn(CommunicationsService,'getLogs').mockResolvedValue({data:[],pagination:{total:0}} as any);
+    try {
+      expect((await request(app).get('/api/v1/communications/logs?sentByUserId=other&templateCode=CUSTOM').set(headers('OPERATOR'))).status).toBe(200);
+      expect(spy.mock.calls[0][1]).toMatchObject({sentByUserId:expect.any(String),templateCode:'DIGITAL_TICKET'});
+      expect(spy.mock.calls[0][1]?.sentByUserId).not.toBe('other');
+    } finally {spy.mockRestore();}
+    const operator = await prisma.user.findUniqueOrThrow({where:{email:'operador@barcamp.org.do'}});
+    const admin = await prisma.user.findUniqueOrThrow({where:{email:'admin@barcamp.org.do'}});
+    const base = {eventId:event.id,registrationId:registration.id,recipientEmail:'test@example.invalid',subject:'Mock history',status:'SIMULATED'};
+    const own = await prisma.emailLog.create({data:{...base,sentByUserId:operator.id,templateCode:'DIGITAL_TICKET'}});
+    const foreign = await prisma.emailLog.create({data:{...base,sentByUserId:admin.id,templateCode:'DIGITAL_TICKET'}});
+    const restricted = await prisma.emailLog.create({data:{...base,sentByUserId:operator.id,templateCode:'CUSTOM'}});
+    const logs = await request(app).get('/api/v1/communications/logs?sentByUserId='+admin.id+'&limit=100').set(headers('OPERATOR'));
+    expect(logs.body.data.map((row:any)=>row.id)).toContain(own.id);
+    expect(logs.body.data.map((row:any)=>row.id)).not.toContain(foreign.id);
+    expect(logs.body.data.map((row:any)=>row.id)).not.toContain(restricted.id);
+    const history = await request(app).get('/api/v1/communications/history/registration/'+registration.id).set(headers('OPERATOR'));
+    expect(history.body.data.map((row:any)=>row.id)).toContain(own.id);
+    expect(history.body.data.map((row:any)=>row.id)).not.toContain(foreign.id);
+    expect(history.body.data.map((row:any)=>row.id)).not.toContain(restricted.id);
+  });
+});
