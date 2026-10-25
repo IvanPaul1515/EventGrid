@@ -4,6 +4,8 @@ export interface UserItem {
   id: string;
   email: string;
   staffArea?: string | null;
+  invitationState?: string;
+  invitation?: { expiresAt?: string | null } | null;
   accountStatus?: string;
   assignedEventId?: string | null;
   fullName: string;
@@ -31,7 +33,6 @@ export interface CreateUserData {
   assignedEventId?: string | null;
   fullName: string;
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
-  password?: string;
   isActive?: boolean;
 }
 
@@ -64,11 +65,10 @@ export const usersService = {
     return res.data.data;
   },
 
-  async createUser(data: CreateUserData): Promise<{ user: UserItem; temporaryPassword?: string }> {
+  async createUser(data: CreateUserData): Promise<{ user: UserItem }> {
     const res = await api.post('/users', data);
     return {
       user: res.data.data,
-      temporaryPassword: res.data.temporaryPassword,
     };
   },
 
@@ -80,14 +80,6 @@ export const usersService = {
   async toggleStatus(id: string): Promise<UserItem> {
     const res = await api.patch(`/users/${id}/toggle-status`);
     return res.data.data;
-  },
-
-  async resetPassword(id: string, newPassword?: string): Promise<{ message: string; temporaryPassword?: string }> {
-    const res = await api.post(`/users/${id}/reset-password`, newPassword ? { password: newPassword } : {});
-    return {
-      message: res.data.message,
-      temporaryPassword: res.data.temporaryPassword,
-    };
   },
 
   async deleteUser(id: string): Promise<{ message: string }> {

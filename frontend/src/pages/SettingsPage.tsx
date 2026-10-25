@@ -1,6 +1,8 @@
+import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { resolveImageUrl } from '../utils/imageUrl';
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { useEdition } from '../context/EditionContext';
 import { useTheme } from '../context/ThemeContext';
 import { eventsService } from '../services/events.service';
@@ -45,6 +47,7 @@ import {
 
 export const SettingsPage: React.FC = () => {
   const { currentEvent, refreshEditions } = useEdition();
+  const { user } = useAuth();
   const { applyCustomPalette, resetDefaultTheme } = useTheme();
 
   // Pestaña activa
@@ -142,8 +145,15 @@ export const SettingsPage: React.FC = () => {
     setTimeout(() => setFeedback(null), 4000);
   };
 
+  const draftChanged = useRef(false);
+  const draftEdition = useRef<string>();
+  useRealtimeRefresh('settings', () => loadTickets());
+
   // Inicializar estados con el evento activo
   useEffect(() => {
+    if (draftEdition.current === currentEvent?.id && draftChanged.current) return;
+    if (draftEdition.current !== currentEvent?.id) draftChanged.current = false;
+    draftEdition.current = currentEvent?.id;
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
     if (tabParam && ['visual', 'edition', 'tickets', 'reception', 'email', 'demo'].includes(tabParam)) {
@@ -577,7 +587,7 @@ export const SettingsPage: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div onChangeCapture={() => { draftChanged.current = true; }} className="space-y-6 max-w-7xl mx-auto">
       {/* Notificación flotante */}
       {feedback && (
         <div
@@ -1354,6 +1364,7 @@ export const SettingsPage: React.FC = () => {
               </button>
               <button
                 type="button"
+                disabled={Boolean(user?.assignedEventId)}
                 onClick={() => setSmtpScope('global')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   smtpScope === 'global'

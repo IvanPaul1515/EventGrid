@@ -1,5 +1,6 @@
+import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { formatTimeDraft } from '../utils/timeDraft';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -151,10 +152,12 @@ export const SchedulePage: React.FC = () => {
   const [clearingDemo, setClearingDemo] = useState(false);
   const [showClearDemoConfirm, setShowClearDemoConfirm] = useState(false);
 
-  const loadSchedule = useCallback(async () => {
+  const readVersion = useRef(0);
+  const loadSchedule = useCallback(async (silent = false) => {
     if (!currentEvent?.id) return;
+    const version = ++readVersion.current;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await scheduleService.getSchedule(currentEvent.id, {
         day: selectedDay !== 'ALL' ? selectedDay : undefined,
         room: selectedRoom !== 'ALL' ? selectedRoom : undefined,
@@ -162,8 +165,9 @@ export const SchedulePage: React.FC = () => {
         status: selectedStatus !== 'ALL' ? selectedStatus : undefined,
         search: search.trim() || undefined,
       });
+      if (version !== readVersion.current) return;
       setData(res);
-      if (res.pdfUrl) {
+      if (res.pdfUrl && !showPdfModal) {
         setPdfUrlInput(res.pdfUrl);
       }
     } catch (err: any) {
@@ -173,9 +177,11 @@ export const SchedulePage: React.FC = () => {
         text: err.response?.data?.message || 'Error al obtener el cronograma de conferencias',
       });
     } finally {
-      setLoading(false);
+      if (version === readVersion.current) setLoading(false);
     }
   }, [currentEvent?.id, selectedDay, selectedRoom, selectedCategory, selectedStatus, search]);
+
+  useRealtimeRefresh('schedule', () => (async () => { await loadSchedule(true); if (showMobilePreview && currentEvent) setPublicData(await scheduleService.getPublicSchedule(currentEvent.id)); })());
 
   useEffect(() => {
     loadSchedule();

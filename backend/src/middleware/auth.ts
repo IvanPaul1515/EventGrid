@@ -10,6 +10,7 @@ export interface AuthUser {
   email: string;
   fullName: string;
   assignedEventId?: string | null;
+  expiresAt?: number;
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
 }
 
@@ -48,6 +49,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
     // Verificar firma del JWT
     const decoded = jwt.verify(token, ENV.JWT_SECRET) as {
       id: string;
+      exp?: number;
       email: string;
       role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
     };
@@ -55,10 +57,10 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
     // Verificar que el usuario continúe activo en la base de datos
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, email: true, fullName: true, role: true, assignedEventId: true, isActive: true },
+      select: { id: true, email: true, fullName: true, role: true, assignedEventId: true, isActive: true, accountStatus: true },
     });
 
-    if (!user || !user.isActive) {
+    if (!user || !user.isActive || user.accountStatus === 'PENDING') {
       return next(new UnauthorizedError('Usuario inactivo o no encontrado'));
     }
 
@@ -68,6 +70,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       fullName: user.fullName,
       role: user.role as any,
       assignedEventId: user.assignedEventId,
+      expiresAt: decoded.exp ? decoded.exp * 1000 : undefined,
     };
 
     await enforceEditionAccess(req, res, next);

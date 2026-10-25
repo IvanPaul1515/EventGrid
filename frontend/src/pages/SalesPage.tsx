@@ -1,5 +1,6 @@
+import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { MobileSearchInput } from '../components/common/MobileSearchInput';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
 import { eventsService } from '../services/events.service';
@@ -43,23 +44,28 @@ export const SalesPage: React.FC = () => {
 
   const currency = summary?.currencySymbol || currentEvent?.settings?.currencySymbol || 'RD$';
 
-  const loadFinancialData = useCallback(async () => {
+  const readVersion = useRef(0);
+  const loadFinancialData = useCallback(async (silent = false) => {
     if (!currentEvent) return;
+    const version = ++readVersion.current;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const [finSummary, eventDetails] = await Promise.all([
         eventsService.getFinancialSummary(currentEvent.id),
         api.get(`/events/${currentEvent.id}`).then((res) => res.data.data),
       ]);
+      if (version !== readVersion.current) return;
       setSummary(finSummary);
       setTicketTypes(eventDetails?.ticketTypes || []);
       setPaymentMethods(eventDetails?.paymentMethods || []);
     } catch (err: any) {
       console.error('Error cargando conciliación financiera:', err);
     } finally {
-      setLoading(false);
+      if (version === readVersion.current) setLoading(false);
     }
   }, [currentEvent]);
+
+  useRealtimeRefresh('sales', () => loadFinancialData(true));
 
   useEffect(() => {
     loadFinancialData();
@@ -127,7 +133,7 @@ export const SalesPage: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <button
             type="button"
-            onClick={loadFinancialData}
+            onClick={() => { void loadFinancialData(); }}
             disabled={loading}
             className="p-2.5 rounded-xl bg-card hover:bg-muted border border-border text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             title="Refrescar balance contable"

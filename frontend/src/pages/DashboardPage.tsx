@@ -3,7 +3,7 @@ import { ErrorPanel } from '../components/common/ErrorPanel';
 import { failureKind, FailureKind } from '../utils/appError';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
-import { useRealtimeEvent } from '../context/RealtimeContext';
+import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { useNavigate } from 'react-router-dom';
 import { participantsService } from '../services/participants.service';
 import { eventsService } from '../services/events.service';
@@ -151,48 +151,7 @@ export const DashboardPage: React.FC = () => {
     loadAllData();
   }, [loadAllData]);
 
-  // Sincronización reactiva en tiempo real sin recargar página
-  useRealtimeEvent('CHECK_IN_CONFIRMED', () => { loadAllData(); });
-
-  useRealtimeEvent('ATTENDANCE_REVERTED', (event) => {
-    const data = event.data;
-    setStats((prev: any) => {
-      if (!prev || !prev.participants) return prev;
-      const newAttended = Math.max(0, (prev.participants.attended || 0) - 1);
-      const notAttended = (prev.participants.notAttended || 0) + 1;
-      const activeTotal = Math.max(1, prev.participants.total - (prev.participants.cancelled || 0));
-      return {
-        ...prev,
-        participants: {
-          ...prev.participants,
-          attended: newAttended,
-          notAttended,
-          attendanceRate: Math.round((newAttended / activeTotal) * 100),
-        },
-      };
-    });
-
-    if (data?.registrationId) {
-      setRegistrations((prev) =>
-        prev.map((r) =>
-          r.id === data.registrationId
-            ? { ...r, attended: false, attendedAt: undefined }
-            : r
-        )
-      );
-    }
-  });
-
-  useRealtimeEvent('PARTICIPANT_REGISTERED', () => {
-    loadAllData(true);
-  });
-
-  useRealtimeEvent('PARTICIPANTS_DELETED', () => {
-    loadAllData(true);
-  });
-
-  useRealtimeEvent('PAYMENT_RECORDED', () => {
-    loadAllData(true);
+  useRealtimeRefresh('dashboard', async () => { await loadAllData(true);
   });
 
   // Escuchar evento de sincronización local
@@ -328,7 +287,7 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-mono font-black text-foreground tracking-tight">
+            <span data-testid="dashboard-registered" className="text-3xl font-mono font-black text-foreground tracking-tight">
               {loading ? '...' : totalCount}
             </span>
             <span className="text-xs text-muted-foreground">asistentes</span>
@@ -351,7 +310,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div className="mt-3 flex items-baseline gap-1.5">
             <span className="text-xs font-bold text-muted-foreground">{currency}</span>
-            <span className="text-3xl font-mono font-black text-foreground tracking-tight">
+            <span data-testid="dashboard-revenue" className="text-3xl font-mono font-black text-foreground tracking-tight">
               {loading ? '...' : totalRevenue.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
@@ -374,7 +333,7 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-emerald-400 tracking-tight">
+            <span data-testid="dashboard-attendance" className="text-3xl font-black text-emerald-400 tracking-tight">
               {loading ? '...' : attendedCount}
             </span>
             <span className="text-xs text-muted-foreground">

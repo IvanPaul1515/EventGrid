@@ -1,3 +1,5 @@
+import { useRealtimeRefresh } from '../../context/RealtimeContext';
+import { participantsService } from '../../services/participants.service';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
@@ -133,6 +135,12 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     cameraQueue.current = cameraQueue.current.then(releaseCamera).catch(() => {});
     await cameraQueue.current;
   }, [releaseCamera]);
+
+  useRealtimeRefresh('attendance', async () => {
+    if (!isOpen || !scanResult?.registration || checkInBusy.current) return;
+    const id = scanResult.registration.id; const fresh = await participantsService.getById(id);
+    if (fresh.attended) setScanResult(previous => previous?.registration?.id === id ? { ...previous, status: 'ALREADY_CHECKED_IN', canCheckIn: false, message: 'Asistencia registrada previamente', registration: { ...previous.registration!, ...fresh } } : previous);
+  });
 
   const processToken = useCallback(async (token: string) => {
     const trimmed = token.trim();

@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
-import { useRealtimeEvent } from '../context/RealtimeContext';
+import { useRealtimeRefresh } from '../context/RealtimeContext';
 import {
   attendanceService,
   AttendanceCounters,
@@ -145,11 +145,11 @@ export const AttendancePage: React.FC = () => {
 
   // Cargar datos y contadores
   const requestVersion = useRef(0);
-  const fetchAttendance = useCallback(async () => {
+  const fetchAttendance = useCallback(async (silent = false) => {
     if (!currentEvent) return;
     const version = ++requestVersion.current;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await attendanceService.searchAndList({
         search: search.trim() || undefined,
         status: statusFilter,
@@ -166,7 +166,7 @@ export const AttendancePage: React.FC = () => {
     } catch (err) {
       console.error('Error al cargar lista de asistencia:', err);
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
   }, [currentEvent, search, statusFilter, page]);
 
@@ -186,57 +186,9 @@ export const AttendancePage: React.FC = () => {
     fetchAttendance();
   }, [fetchAttendance]);
 
-  // Sincronización en tiempo real sin recargas de página completa ni pérdida de contexto
-  useRealtimeEvent('CHECK_IN_CONFIRMED', () => { fetchAttendance(); });
-
-  useRealtimeEvent('ATTENDANCE_REVERTED', (event) => {
-    const data = event.data;
-    if (!data?.registrationId) return;
-
-    setRegistrations((prev) =>
-      prev.map((reg) => {
-        if (reg.id === data.registrationId) {
-          return {
-            ...reg,
-            attended: false,
-            attendedAt: undefined,
-            attendedByUser: undefined,
-          };
-        }
-        return reg;
-      })
-    );
-
-    if (data.counters) {
-      setCounters(data.counters);
-    } else {
-      setCounters((prev) => ({
-        ...prev,
-        attendedCount: Math.max(0, prev.attendedCount - 1),
-        pendingCount: prev.pendingCount + 1,
-      }));
-    }
-
-    setSelectedRegistration((prev) => {
-      if (prev && prev.id === data.registrationId) {
-        return {
-          ...prev,
-          attended: false,
-          attendedAt: undefined,
-          attendedByUser: undefined,
-        };
-      }
-      return prev;
-    });
-  });
-
-  useRealtimeEvent('PARTICIPANTS_DELETED', () => {
-    setSelectedRegistration(null);
-    fetchAttendance();
-  });
-
-  useRealtimeEvent('PARTICIPANT_REGISTERED', () => {
-    attendanceService.getCounters().then(setCounters).catch(() => {});
+  useRealtimeRefresh('attendance', async () => { await fetchAttendance(true);
+    if (selectedRegistration?.id) { const id = selectedRegistration.id; const fresh = await participantsService.getById(id); setSelectedRegistration(previous => previous?.id === id ? fresh : previous); }
+    const sales = await attendanceService.getDailySales(); setDailySales(sales);
   });
 
   // Evento local entre componentes (compatibilidad)

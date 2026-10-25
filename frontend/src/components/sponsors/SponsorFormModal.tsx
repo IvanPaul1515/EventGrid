@@ -1,3 +1,4 @@
+import { useRealtimeRefresh } from '../../context/RealtimeContext';
 import { createPortal } from 'react-dom';
 import { CurrencyInput } from '../common/CurrencyInput';
 import React, { useState, useEffect } from 'react';
@@ -31,6 +32,7 @@ export const SponsorFormModal: React.FC<SponsorFormModalProps> = ({
     setCustomCategory(false);
     return () => { active = false; };
   }, [isOpen, currentEvent?.id]);
+  useRealtimeRefresh('sponsors', async () => { if (isOpen) setCategories(await sponsorsService.getCategories()); });
   const isEditing = Boolean(sponsorToEdit);
 
   const [name, setName] = useState('');

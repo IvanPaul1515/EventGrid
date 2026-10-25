@@ -86,3 +86,8 @@ export function requirePermission(permission: Permission) {
 export const requireAdmin = requireRole(['ADMIN']);
 export const requireOperatorOrAdmin = requireRole(['ADMIN', 'OPERATOR']);
 export const requireAnyRole = requireRole(['ADMIN', 'OPERATOR', 'VIEWER']);
+
+export const requireGlobalAdmin = (req: Request, _res: Response, next: NextFunction) => {
+  if (req.user?.role !== 'ADMIN' || req.user.assignedEventId) return next(new ForbiddenError('Esta operación requiere un administrador global.'));
+  next();
+};

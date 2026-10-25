@@ -18,6 +18,7 @@ const schedulesDir = path.join(uploadsDir, 'schedules');
 if (!fs.existsSync(logosDir)) fs.mkdirSync(logosDir, { recursive: true });
 if (!fs.existsSync(schedulesDir)) fs.mkdirSync(schedulesDir, { recursive: true });
 
+import { realtimeMutations } from './modules/realtime/realtime.mutations.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { checkDatabaseConnection } from './config/db.js';
 import authRoutes from './modules/auth/auth.routes.js';
@@ -102,6 +103,8 @@ app.get(`${ENV.API_PREFIX}/health`, async (req, res) => {
     database: isDbConnected ? 'connected' : 'disconnected',
   });
 });
+
+app.use(ENV.API_PREFIX, realtimeMutations);
 
 // Rutas de módulos
 app.use(`${ENV.API_PREFIX}/auth`, authRoutes);

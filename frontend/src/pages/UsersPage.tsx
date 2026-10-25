@@ -1,10 +1,13 @@
+import { createPortal } from 'react-dom';
+import { useRealtimeRefresh } from '../context/RealtimeContext';
+import { UserInvitationModal, InvitationHistory } from '../components/common/UserInvitationModal';
+import { invitationLabel } from '../utils/invitationStatus';
 import { PersonnelInvitations } from '../components/common/PersonnelInvitations';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   UserCog,
   Shield,
   Plus,
-  KeyRound,
   Search,
   Filter,
   Edit2,
@@ -12,11 +15,8 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  Copy,
-  Check,
   RefreshCw,
   Clock,
-  Lock,
   Mail,
   UserCheck,
   UserX,
@@ -27,7 +27,7 @@ import { useAuth } from '../context/AuthContext';
 import { usersService, UserItem } from '../services/users.service';
 
 export const UsersPage: React.FC = () => {
-  const { events } = useEdition();
+  const { events, currentEvent } = useEdition();
   const { user: currentUser } = useAuth();
 
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -48,19 +48,17 @@ export const UsersPage: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
 
-  // Modal de restablecimiento de contraseña
-  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
-  const [resetResult, setResetResult] = useState<{ temporaryPassword?: string; message: string } | null>(null);
-  const [copiedPass, setCopiedPass] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [invitationIds, setInvitationIds] = useState<string[] | null>(null);
+  const [historyUser, setHistoryUser] = useState<UserItem | null>(null);
+  const formLock = useRef(false);
+  const fetchVersion = useRef(0);
 
   // Formulario de creación
   const [createForm, setCreateForm] = useState({
     email: '',
     fullName: '',
     role: 'OPERATOR' as 'ADMIN' | 'OPERATOR' | 'VIEWER',
-    password: '',
-    staffArea: '',
-    assignedEventId: '',
   });
 
   // Formulario de edición
@@ -74,10 +72,11 @@ export const UsersPage: React.FC = () => {
 
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(async (silent = false) => {
+    const version = ++fetchVersion.current;
     try {
-      setLoading(true);
-      setError(null);
+      if (!silent) setLoading(true);
+      if (!silent) setError(null);
 
       const params: any = { page, limit: 15 };
       if (search.trim()) params.search = search.trim();
@@ -86,22 +85,30 @@ export const UsersPage: React.FC = () => {
       if (statusFilter === 'INACTIVE') params.isActive = false;
 
       const res = await usersService.listUsers(params);
+      if (version !== fetchVersion.current) return;
       setUsers(res.users);
       setTotalPages(res.pagination.totalPages);
       setTotalCount(res.pagination.total);
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Error al cargar listado de usuarios');
     } finally {
-      setLoading(false);
+      if (version === fetchVersion.current) setLoading(false);
     }
-  }, [page, search, roleFilter, statusFilter]);
+  }, [page, search, roleFilter, statusFilter, currentEvent?.id]);
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
 
+  useEffect(() => { setSelectedIds([]); setInvitationIds(null); setIsCreateModalOpen(false); setIsEditModalOpen(false); }, [page, search, roleFilter, statusFilter, currentEvent?.id]);
+  const toggleSelection = (id: string) => setSelectedIds(ids => ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id]);
+  const allVisibleSelected = users.length > 0 && users.every(user => selectedIds.includes(user.id));
+
+  useRealtimeRefresh('users', () => fetchUsers(true));
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formLock.current) return; formLock.current = true;
     try {
       setSubmitting(true);
       setError(null);
@@ -110,28 +117,19 @@ export const UsersPage: React.FC = () => {
         email: createForm.email.trim(),
         fullName: createForm.fullName.trim(),
         role: createForm.role,
-        assignedEventId: createForm.assignedEventId || null,
-        staffArea: createForm.staffArea || null,
       });
 
       setIsCreateModalOpen(false);
-      setCreateForm({ email: '', fullName: '', role: 'OPERATOR', password: '', assignedEventId: '', staffArea: '' });
+      setCreateForm({ email: '', fullName: '', role: 'OPERATOR' });
 
-      if (res.temporaryPassword) {
-        setResetResult({
-          message: `Usuario ${res.user.fullName} creado exitosamente con credencial provisional.`,
-          temporaryPassword: res.temporaryPassword,
-        });
-        setIsResetModalOpen(true);
-      } else {
-        setSuccessMsg(`Cuenta de ${res.user.fullName} preparada. Use Invitar personal para enviar su enlace.`);
-        setTimeout(() => setSuccessMsg(null), 4000);
-      }
+      setSuccessMsg(`Cuenta de ${res.user.fullName} creada, pendiente de activación. Selecciónela en la lista para autorizar su invitación.`);
+      setTimeout(() => setSuccessMsg(null), 5000);
 
       fetchUsers();
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Error al crear usuario.');
     } finally {
+      formLock.current = false;
       setSubmitting(false);
     }
   };
@@ -141,7 +139,7 @@ export const UsersPage: React.FC = () => {
     setEditForm({
       fullName: u.fullName,
       role: u.role,
-      isActive: u.isActive,
+      isActive: u.accountStatus === 'PENDING' ? false : u.isActive,
       staffArea: u.staffArea || '',
       assignedEventId: u.assignedEventId || '',
     });
@@ -150,7 +148,8 @@ export const UsersPage: React.FC = () => {
 
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUser) return;
+    if (!selectedUser || formLock.current) return;
+    formLock.current = true;
     try {
       setSubmitting(true);
       setError(null);
@@ -164,6 +163,7 @@ export const UsersPage: React.FC = () => {
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Error al actualizar usuario.');
     } finally {
+      formLock.current = false;
       setSubmitting(false);
     }
   };
@@ -180,20 +180,7 @@ export const UsersPage: React.FC = () => {
     }
   };
 
-  const handleResetPassword = async (u: UserItem) => {
-    try {
-      setError(null);
-      setSelectedUser(u);
-      const res = await usersService.resetPassword(u.id);
-      setResetResult({
-        message: `Se ha generado una nueva contraseña temporal de acceso para ${u.fullName}.`,
-        temporaryPassword: res.temporaryPassword,
-      });
-      setIsResetModalOpen(true);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Error al restablecer contraseña.');
-    }
-  };
+  const handlePrepareInvitation = (u: UserItem) => setInvitationIds([u.id]);
 
   const handleDeleteUser = async (u: UserItem) => {
     if (!window.confirm(`¿Estás seguro de que deseas eliminar la cuenta de ${u.fullName} (${u.email})?`)) {
@@ -208,12 +195,6 @@ export const UsersPage: React.FC = () => {
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Error al eliminar usuario.');
     }
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedPass(true);
-    setTimeout(() => setCopiedPass(false), 2000);
   };
 
   const formatDate = (dateStr?: string | null) => {
@@ -328,7 +309,7 @@ export const UsersPage: React.FC = () => {
               <option value="ALL">Todos los roles</option>
               <option value="ADMIN">Administradores</option>
               <option value="OPERATOR">Operadores</option>
-              <option value="VIEWER">Auditores (Lectura)</option>
+              <option value="VIEWER">Consulta</option>
             </select>
           </div>
 
@@ -351,6 +332,11 @@ export const UsersPage: React.FC = () => {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <label className="flex items-center gap-2 py-2"><input type="checkbox" className="w-5 h-5 accent-primary" disabled={loading || Boolean(invitationIds) || !users.length} checked={allVisibleSelected} onChange={() => setSelectedIds(allVisibleSelected ? [] : users.map(user => user.id))} />Seleccionar todos los usuarios de esta página ({users.length})</label>
+        <span>{selectedIds.length} seleccionados</span>
+        <button disabled={!selectedIds.length || loading || Boolean(invitationIds)} className="px-4 py-2 rounded-full bg-primary text-primary-foreground disabled:opacity-50" onClick={() => setInvitationIds([...selectedIds])}>Enviar invitaciones ({selectedIds.length})</button>
+      </div>
       {/* Contenedor de Usuarios (Desktop Table + Mobile Cards) */}
       <div className="rounded-2xl bg-card border border-border overflow-hidden shadow-sm">
         <div className="p-4 border-b border-border bg-muted/30 flex items-center justify-between text-xs text-muted-foreground font-semibold">
@@ -376,6 +362,7 @@ export const UsersPage: React.FC = () => {
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/20 text-muted-foreground font-semibold uppercase tracking-wider text-[10px]">
+                    <th className="py-3 px-2"><span className="sr-only">Selección</span></th>
                     <th className="py-3 px-4">Usuario</th>
                     <th className="py-3 px-4">Rol RBAC</th>
                     <th className="py-3 px-4">Estado</th>
@@ -389,6 +376,7 @@ export const UsersPage: React.FC = () => {
                     const isSelf = currentUser?.id === u.id;
                     return (
                       <tr key={u.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-2"><input aria-label={`Seleccionar ${u.fullName}`} className="w-5 h-5 accent-primary" type="checkbox" disabled={Boolean(invitationIds)} checked={selectedIds.includes(u.id)} onChange={() => toggleSelection(u.id)} /></td>
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0">
@@ -403,7 +391,7 @@ export const UsersPage: React.FC = () => {
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[11px] text-muted-foreground">{u.email}</span>
+                              <span className="text-[11px] text-muted-foreground break-all">{u.email}</span><p className="text-[10px] text-muted-foreground">{invitationLabel(u.invitationState)}</p>
                             </div>
                           </div>
                         </td>
@@ -418,13 +406,14 @@ export const UsersPage: React.FC = () => {
                                 : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
                             }`}
                           >
-                            {u.role === 'ADMIN' ? 'Administrador' : u.role === 'OPERATOR' ? 'Operador' : 'Auditor'}
+                            {u.role === 'ADMIN' ? 'Administrador' : u.role === 'OPERATOR' ? 'Operador' : 'Consulta'}
                           </span>
                         </td>
 
                         <td className="py-3.5 px-4">
                           <button
                             onClick={() => handleToggleStatus(u)}
+                            disabled={Boolean(invitationIds) || u.accountStatus === 'PENDING'}
                             className={`flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-md transition-colors ${
                               u.isActive
                                 ? 'text-emerald-400 hover:bg-emerald-500/10'
@@ -448,22 +437,22 @@ export const UsersPage: React.FC = () => {
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
-                              onClick={() => handleOpenEdit(u)}
+                              disabled={Boolean(invitationIds)} onClick={() => handleOpenEdit(u)}
                               className="p-1.5 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                               title="Editar usuario"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => handleResetPassword(u)}
+                              onClick={() => handlePrepareInvitation(u)}
                               className="p-1.5 rounded-lg border border-border hover:bg-muted text-amber-400 hover:text-amber-300 transition-colors"
                               title="Preparar invitación de acceso"
                             >
-                              <KeyRound className="w-3.5 h-3.5" />
-                            </button>
+                              <Mail className="w-3.5 h-3.5" />
+                            </button><button title="Historial de invitaciones" onClick={() => setHistoryUser(u)} className="p-1.5 rounded-lg border border-border"><Clock className="w-3.5 h-3.5" /></button>
                             <button
                               onClick={() => handleDeleteUser(u)}
-                              disabled={isSelf}
+                              disabled={isSelf || Boolean(invitationIds)}
                               className={`p-1.5 rounded-lg border border-border transition-colors ${
                                 isSelf
                                   ? 'opacity-30 cursor-not-allowed text-muted-foreground'
@@ -488,6 +477,7 @@ export const UsersPage: React.FC = () => {
                 const isSelf = currentUser?.id === u.id;
                 return (
                   <div key={u.id} className="p-4 space-y-3">
+                    <label className="flex items-center gap-2 text-xs"><input aria-label={`Seleccionar ${u.fullName}`} className="w-5 h-5 accent-primary" type="checkbox" disabled={Boolean(invitationIds)} checked={selectedIds.includes(u.id)} onChange={() => toggleSelection(u.id)} />Seleccionar</label>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary font-bold flex items-center justify-center text-xs">
@@ -502,7 +492,7 @@ export const UsersPage: React.FC = () => {
                               </span>
                             )}
                           </div>
-                          <span className="text-[11px] text-muted-foreground">{u.email}</span>
+                          <span className="text-[11px] text-muted-foreground break-all">{u.email}</span><p className="text-[10px] text-muted-foreground">{invitationLabel(u.invitationState)}</p>
                         </div>
                       </div>
 
@@ -533,22 +523,24 @@ export const UsersPage: React.FC = () => {
                     <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/50">
                       <button
                         onClick={() => handleToggleStatus(u)}
+                            disabled={Boolean(invitationIds) || u.accountStatus === 'PENDING'}
                         className="px-2.5 py-1 rounded-lg border border-border text-[11px] font-medium text-muted-foreground hover:bg-muted"
                       >
                         {u.isActive ? 'Desactivar' : 'Activar'}
                       </button>
                       <button
-                        onClick={() => handleOpenEdit(u)}
+                        disabled={Boolean(invitationIds)} onClick={() => handleOpenEdit(u)}
                         className="px-2.5 py-1 rounded-lg border border-border text-[11px] font-medium text-foreground hover:bg-muted"
                       >
                         Editar
                       </button>
                       <button
-                        onClick={() => handleResetPassword(u)}
+                        onClick={() => handlePrepareInvitation(u)}
                         className="px-2.5 py-1 rounded-lg border border-border text-[11px] font-medium text-amber-400 hover:bg-muted"
                       >
-                        Clave
+                        Invitar
                       </button>
+                      <button onClick={() => setHistoryUser(u)} className="px-2.5 py-1 rounded-lg border border-border text-[11px]">Historial</button>
                       {!isSelf && (
                         <button
                           onClick={() => handleDeleteUser(u)}
@@ -590,9 +582,9 @@ export const UsersPage: React.FC = () => {
       </div>
 
       {/* Modal: Crear Usuario */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
+      {isCreateModalOpen && createPortal((
+        <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div role="dialog" aria-modal="true" aria-label={isCreateModalOpen ? 'Crear usuario' : 'Editar usuario'} className="mobile-form-dialog w-full max-w-md max-h-[90dvh] overflow-y-auto bg-card border border-border rounded-2xl shadow-xl">
             <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
               <div className="flex items-center gap-2">
                 <UserCheck className="w-5 h-5 text-primary" />
@@ -606,12 +598,13 @@ export const UsersPage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateUser} className="p-5 space-y-4">
+            <form onSubmit={handleCreateUser} className="mobile-form-body p-5 space-y-4">
+              {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">Nombre Completo *</label>
                 <input
-                  type="text"
-                  required
+                  aria-label="Nombre completo" type="text"
+                  required minLength={2}
                   placeholder="Ej. Laura Gómez"
                   value={createForm.fullName}
                   onChange={(e) => setCreateForm({ ...createForm, fullName: e.target.value })}
@@ -622,7 +615,7 @@ export const UsersPage: React.FC = () => {
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">Correo Electrónico *</label>
                 <input
-                  type="email"
+                  aria-label="Correo electrónico" type="email"
                   required
                   placeholder="laura@eventgrid.io"
                   value={createForm.email}
@@ -633,27 +626,16 @@ export const UsersPage: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">Rol en la Plataforma *</label>
-                <select
+                <select aria-label="Rol"
                   value={createForm.role}
                   onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as any })}
                   className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary cursor-pointer font-medium"
                 >
                   <option value="OPERATOR">Operador (Check-in, Entregas y Registro)</option>
-                  <option value="ADMIN">Administrador Completo</option>
-                  <option value="VIEWER">Auditor (Consulta y Reportes)</option>
+                  <option value="ADMIN">Administrador</option>
+                  <option value="VIEWER">Consulta</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">Edición asignada (Operador / Consulta)</label>
-                <select aria-label="Edición asignada" value={createForm.assignedEventId} onChange={e => setCreateForm({ ...createForm, assignedEventId: e.target.value })} className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground">
-                  <option value="">Edición predeterminada</option>
-                  {events.map(event => <option key={event.id} value={event.id}>{event.name} · {event.year}</option>)}
-                </select>
-              </div>
-              <label className="block text-xs">Área del staff (opcional)<input value={createForm.staffArea} onChange={e => setCreateForm({ ...createForm, staffArea: e.target.value })} className="mt-1 w-full p-2 rounded-xl bg-background border border-border" /></label>
-
-
-
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-border">
                 <button
                   type="button"
@@ -673,12 +655,12 @@ export const UsersPage: React.FC = () => {
             </form>
           </div>
         </div>
-      )}
+      ), document.body)}
 
       {/* Modal: Editar Usuario */}
-      {isEditModalOpen && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
+      {isEditModalOpen && selectedUser && createPortal((
+        <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div role="dialog" aria-modal="true" aria-label={isCreateModalOpen ? 'Crear usuario' : 'Editar usuario'} className="mobile-form-dialog w-full max-w-md max-h-[90dvh] overflow-y-auto bg-card border border-border rounded-2xl shadow-xl">
             <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
               <div className="flex items-center gap-2">
                 <Edit2 className="w-5 h-5 text-primary" />
@@ -692,7 +674,7 @@ export const UsersPage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleUpdateUser} className="p-5 space-y-4">
+            <form onSubmit={handleUpdateUser} className="mobile-form-body p-5 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">Nombre Completo *</label>
                 <input
@@ -718,7 +700,7 @@ export const UsersPage: React.FC = () => {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">Edición asignada (Operador / Consulta)</label>
-                <select aria-label="Edición asignada" value={editForm.assignedEventId} onChange={e => setEditForm({ ...editForm, assignedEventId: e.target.value })} className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground">
+                <select disabled={Boolean(currentUser?.assignedEventId)} aria-label="Edición asignada" value={editForm.assignedEventId} onChange={e => setEditForm({ ...editForm, assignedEventId: e.target.value })} className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground">
                   <option value="">Edición predeterminada</option>
                   {events.map(event => <option key={event.id} value={event.id}>{event.name} · {event.year}</option>)}
                 </select>
@@ -732,7 +714,7 @@ export const UsersPage: React.FC = () => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setEditForm({ ...editForm, isActive: !editForm.isActive })}
+                  disabled={selectedUser?.accountStatus === 'PENDING'} onClick={() => setEditForm({ ...editForm, isActive: !editForm.isActive })}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
                     editForm.isActive
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
@@ -762,72 +744,10 @@ export const UsersPage: React.FC = () => {
             </form>
           </div>
         </div>
-      )}
+      ), document.body)}
 
-      {/* Modal: Contraseña Temporal Generada */}
-      {isResetModalOpen && resetResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
-            <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
-              <div className="flex items-center gap-2">
-                <Lock className="w-5 h-5 text-amber-400" />
-                <h3 className="text-sm font-bold text-foreground">Credencial Temporal Generada</h3>
-              </div>
-              <button
-                onClick={() => {
-                  setIsResetModalOpen(false);
-                  setResetResult(null);
-                }}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4">
-              <p className="text-xs text-muted-foreground">{resetResult.message}</p>
-
-              {resetResult.temporaryPassword && (
-                <div className="p-4 rounded-xl bg-muted/60 border border-border space-y-2">
-                  <span className="text-[10px] font-bold uppercase text-muted-foreground block">
-                    Contraseña Temporal (Un solo uso)
-                  </span>
-                  <div className="flex items-center justify-between gap-2 bg-card border border-border rounded-lg p-2.5">
-                    <code className="text-xs font-mono font-bold text-primary select-all">
-                      {resetResult.temporaryPassword}
-                    </code>
-                    <button
-                      onClick={() => copyToClipboard(resetResult.temporaryPassword!)}
-                      className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 text-xs"
-                      title="Copiar contraseña"
-                    >
-                      {copiedPass ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span className="text-[10px]">{copiedPass ? 'Copiado' : 'Copiar'}</span>
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-amber-400 flex items-center gap-1 mt-1">
-                    <AlertTriangle className="w-3 h-3 shrink-0" />
-                    Entrega esta clave al usuario de forma segura. Se le solicitará cambiarla en su próximo acceso.
-                  </p>
-                </div>
-              )}
-
-              <div className="pt-2 flex justify-end border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsResetModalOpen(false);
-                    setResetResult(null);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold shadow-md"
-                >
-                  Entendido y Cerrar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {invitationIds && <UserInvitationModal ids={invitationIds} onClose={() => setInvitationIds(null)} onSaved={fetchUsers} />}
+      {historyUser && <InvitationHistory user={historyUser} onClose={() => setHistoryUser(null)} />}
     </div>
   );
 };

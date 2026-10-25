@@ -1,9 +1,8 @@
 import { resolveImageUrl } from '../../utils/imageUrl';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useEdition } from '../../context/EditionContext';
 import { useTheme } from '../../context/ThemeContext';
-import { useRealtime } from '../../context/RealtimeContext';
 import {
   Calendar,
   ChevronDown,
@@ -23,7 +22,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
   const { user, logout } = useAuth();
   const { events, currentEvent, switchEdition } = useEdition();
   const { isDark, toggleTheme } = useTheme();
-  const { isConnected } = useRealtime();
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const timer = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(timer); }, []);
+  const time = new Intl.DateTimeFormat('es-DO', { timeZone: 'America/Santo_Domingo', hour: '2-digit', minute: '2-digit', hour12: true }).format(now).replace(/a\.\s*m\./i, 'AM').replace(/p\.\s*m\./i, 'PM');
   const [editionDropdownOpen, setEditionDropdownOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -158,29 +159,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
         </div>
       )}
 
-      {/* Indicador de Sincronización en Tiempo Real */}
-      <div className="flex items-center gap-2">
-        {isConnected ? (
-          <div
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-semibold shadow-sm"
-            title="Sincronizado en tiempo real (SSE)"
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="hidden sm:inline font-mono text-[11px]">En vivo</span>
-          </div>
-        ) : (
-          <div
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs font-semibold"
-            title="Reconectando sincronización en tiempo real..."
-          >
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <span className="hidden sm:inline font-mono text-[11px]">Sincronizando</span>
-          </div>
-        )}
-      </div>
+      <p title={`Santiago, República Dominicana · ${time}`} className="shrink-0 text-[10px] sm:text-xs text-muted-foreground font-mono text-center leading-tight mx-1">
+        <span className="hidden xl:inline">Santiago, República Dominicana · </span><span className="block sm:inline xl:hidden">Santiago<span className="hidden sm:inline"> · </span></span><time dateTime={now.toISOString()} aria-label={`Hora de Santiago, República Dominicana: ${time}`}>{time}</time>
+      </p>
 
       {/* Controles de la Derecha: Tema, Rol y Perfil */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         {/* Conmutador Modo Oscuro / Claro */}
         <button
           onClick={toggleTheme}

@@ -1,3 +1,4 @@
+import { useRealtimeRefresh } from '../context/RealtimeContext';
 import React, { useState, useEffect, useRef } from 'react';
 import { ErrorPanel } from '../components/common/ErrorPanel';
 import { FailureKind, failureKind } from '../utils/appError';
@@ -560,6 +561,8 @@ export const CommunicationsPage: React.FC = () => {
       setLoadingLogs(false);
     }
   };
+
+  useRealtimeRefresh('communications', async () => { await loadServiceStatus(); if (activeTab === 'logs') await Promise.all([loadLogs(), loadBatchJobs()]); });
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">

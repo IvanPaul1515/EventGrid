@@ -1,3 +1,4 @@
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { brevoTransport, usesBrevoHttps } from './brevo.transport.js';
 import { EmailQueueWorker } from './communications.queue.js';
 import { prisma } from '../../config/db.js';
@@ -3050,6 +3051,15 @@ export class CommunicationsService {
 
       if (!targetStatus) continue;
 
+      await prisma.userInvitation.updateMany({
+        where: { messageId, usedAt: null, status: { in: ['ACCEPTED_BY_PROVIDER', 'UNKNOWN_DELIVERY_STATUS', 'DEFERRED', 'PROCESSING'] } },
+        data: { status: targetStatus, ...(errorDesc ? { errorMessage: 'El proveedor informó un rechazo o aplazamiento de entrega.' } : {}) },
+      });
+      const invitationRecipients = await prisma.userInvitation.findMany({ where: { messageId }, select: { userId: true } });
+      if (invitationRecipients.length) {
+        const accounts = await prisma.user.findMany({ where: { id: { in: invitationRecipients.map(item => item.userId) } }, select: { assignedEventId: true } });
+        for (const id of new Set(accounts.map(account => account.assignedEventId).filter(Boolean))) RealtimeService.changed(id!, ['users']);
+      }
       // 1. Actualizar EmailBatchItem si existe coincidencia por messageId o recipientEmail
       if (messageId) {
         await prisma.emailBatchItem.updateMany({
