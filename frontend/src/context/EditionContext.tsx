@@ -10,7 +10,7 @@ interface EditionContextType {
   isLoading: boolean;
   error: FailureKind | null;
   switchEdition: (eventId: string) => void;
-  refreshEditions: () => Promise<void>;
+  refreshEditions: (silent?: boolean) => Promise<void>;
 }
 
 const EditionContext = createContext<EditionContextType | undefined>(undefined);
@@ -23,7 +23,7 @@ export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [error, setError] = useState<FailureKind | null>(null);
   const fetchVersion = React.useRef(0);
-  const fetchEditions = async () => {
+  const fetchEditions = async (silent = false) => {
     const version = ++fetchVersion.current;
     setError(null);
     if (!isAuthenticated) {
@@ -34,7 +34,7 @@ export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       const res = await api.get('/events');
       if (version !== fetchVersion.current) return;
       const rawEvents: EventEdition[] = res.data.data;
@@ -62,7 +62,7 @@ export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
       setEvents(loadedEvents);
 
-      setCurrentEvent(null);
+      if (!loadedEvents.length) setCurrentEvent(null);
       if (loadedEvents.length > 0) {
         const storedId = localStorage.getItem('barcamp_current_event_id');
         let selected = loadedEvents.find((e) => e.id === storedId);
@@ -80,7 +80,7 @@ export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       }
     } catch (error) {
-      if (version === fetchVersion.current) setError(failureKind(error));
+      if (!silent && version === fetchVersion.current) setError(failureKind(error));
     } finally {
       if (version === fetchVersion.current) setIsLoading(false);
     }
@@ -88,7 +88,7 @@ export const EditionProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     fetchEditions();
-  }, [isAuthenticated, user?.id]);
+  }, [isAuthenticated, user?.id, user?.role, user?.assignedEventId]);
 
   const switchEdition = (eventId: string) => {
     if (user?.role !== 'ADMIN') return;

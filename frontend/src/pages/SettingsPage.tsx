@@ -1,3 +1,4 @@
+import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { resolveImageUrl } from '../utils/imageUrl';
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
@@ -142,8 +143,15 @@ export const SettingsPage: React.FC = () => {
     setTimeout(() => setFeedback(null), 4000);
   };
 
+  const draftChanged = useRef(false);
+  const draftEdition = useRef<string>();
+  useRealtimeRefresh('settings', () => loadTickets());
+
   // Inicializar estados con el evento activo
   useEffect(() => {
+    if (draftEdition.current === currentEvent?.id && draftChanged.current) return;
+    if (draftEdition.current !== currentEvent?.id) draftChanged.current = false;
+    draftEdition.current = currentEvent?.id;
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
     if (tabParam && ['visual', 'edition', 'tickets', 'reception', 'email', 'demo'].includes(tabParam)) {
@@ -577,7 +585,7 @@ export const SettingsPage: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div onChangeCapture={() => { draftChanged.current = true; }} className="space-y-6 max-w-7xl mx-auto">
       {/* Notificación flotante */}
       {feedback && (
         <div

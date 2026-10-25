@@ -1,5 +1,6 @@
+import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { MobileSearchInput } from '../components/common/MobileSearchInput';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SponsorCategorySettings } from '../components/sponsors/SponsorCategorySettings';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
@@ -84,10 +85,12 @@ export const SponsorsPage: React.FC = () => {
       minimumFractionDigits: 2,
     }).format(val);
 
-  const loadData = useCallback(async () => {
+  const readVersion = useRef(0);
+  const loadData = useCallback(async (silent = false) => {
     if (!currentEvent) return;
+    const version = ++readVersion.current;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await sponsorsService.getSponsors({
         search: search.trim() || undefined,
         type: typeFilter,
@@ -99,6 +102,7 @@ export const SponsorsPage: React.FC = () => {
         limit: 25,
       });
 
+      if (version !== readVersion.current) return;
       setSponsors(res.items);
       setSummary(res.summary);
       setTotalPages(res.pagination.totalPages);
@@ -106,10 +110,9 @@ export const SponsorsPage: React.FC = () => {
 
       // Sincronizar patrocinador activo en el drawer si está abierto
       if (selectedSponsor) {
-        const updated = res.items.find((s) => s.id === selectedSponsor.id);
-        if (updated) {
-          sponsorsService.getSponsorById(updated.id).then((fresh) => {
-            setSelectedSponsor(fresh);
+        {
+          sponsorsService.getSponsorById(selectedSponsor.id).then((fresh) => {
+            setSelectedSponsor(previous => previous?.id === fresh.id && version === readVersion.current ? fresh : previous);
           }).catch(() => {});
         }
       }
@@ -117,9 +120,11 @@ export const SponsorsPage: React.FC = () => {
       console.error('Error cargando patrocinadores:', err);
       showNotification('error', err.response?.data?.message || 'Error al cargar patrocinadores');
     } finally {
-      setLoading(false);
+      if (version === readVersion.current) setLoading(false);
     }
   }, [currentEvent, search, categoryFilter, typeFilter, statusFilter, contributionFilter, includeArchived, page, selectedSponsor?.id]);
+
+  useRealtimeRefresh('sponsors', () => loadData(true));
 
   useEffect(() => {
     loadData();
@@ -479,7 +484,7 @@ export const SponsorsPage: React.FC = () => {
 
             <button
               type="button"
-              onClick={loadData}
+              onClick={() => { void loadData(); }}
               title="Refrescar datos"
               className="p-2 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
             >

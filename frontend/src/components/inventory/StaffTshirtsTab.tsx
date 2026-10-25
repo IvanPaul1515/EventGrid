@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useRealtimeRefresh } from '../../context/RealtimeContext';
+import React, { useState, useEffect, useRef } from 'react';
 import { useEdition } from '../../context/EditionContext';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -53,18 +54,21 @@ export const StaffTshirtsTab: React.FC = () => {
   const [releaseQuantity, setReleaseQuantity] = useState(1);
   const [submittingRelease, setSubmittingRelease] = useState(false);
 
-  const loadStaffInventory = async () => {
+  const readVersion = useRef(0);
+  const loadStaffInventory = async (silent = false) => {
     if (!currentEvent) return;
+    const version = ++readVersion.current;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await inventoryService.getStaffInventory(currentEvent.id);
+      if (version !== readVersion.current) return;
       setData(res);
       // Inicializar valores editables de reserva
       const edits: Record<string, number> = {};
       res.items.forEach((item) => {
         edits[item.size] = item.staffReserved;
       });
-      setReserveEdits(edits);
+      if (!silent) setReserveEdits(edits);
     } catch (err: any) {
       console.error(err);
       setFeedback({
@@ -72,13 +76,15 @@ export const StaffTshirtsTab: React.FC = () => {
         message: err?.response?.data?.message || 'Error al cargar inventario del staff',
       });
     } finally {
-      setLoading(false);
+      if (version === readVersion.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadStaffInventory();
   }, [currentEvent?.id]);
+
+  useRealtimeRefresh('inventory', () => loadStaffInventory(true));
 
   const showNotification = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
@@ -284,7 +290,7 @@ export const StaffTshirtsTab: React.FC = () => {
             </p>
           </div>
           <button
-            onClick={loadStaffInventory}
+            onClick={() => { void loadStaffInventory(); }}
             disabled={loading}
             className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted transition-colors cursor-pointer"
             title="Refrescar datos"

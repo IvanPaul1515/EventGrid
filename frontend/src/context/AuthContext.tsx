@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { FailureKind, failureKind } from '../utils/appError';
 import { User, Role } from '../types';
 import { api } from '../services/api';
@@ -10,6 +10,7 @@ interface AuthContextType {
   isLoading: boolean;
   authError: FailureKind | null;
   retryAuth: () => void;
+  refreshSession: () => Promise<void>;
   login: (token: string, user: User) => void;
   logout: () => Promise<void>;
   hasRole: (roles: Role[]) => boolean;
@@ -54,6 +55,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => { active = false; controller.abort(); window.removeEventListener('eventgrid:session-expired', expired); };
   }, [attempt]);
 
+  const refreshingSession = useRef<Promise<void> | null>(null);
+  const refreshSession = useCallback(() => {
+    if (refreshingSession.current) return refreshingSession.current;
+    if (!localStorage.getItem('barcamp_token')) return Promise.resolve();
+    const task = api.get('/auth/me').then(response => {
+      setUser(response.data.data); localStorage.setItem('barcamp_user', JSON.stringify(response.data.data));
+    }).catch(() => {}).finally(() => { refreshingSession.current = null; });
+    refreshingSession.current = task; return task;
+  }, []);
+
   const login = (newToken: string, newUser: User) => {
     localStorage.setItem('barcamp_token', newToken);
     localStorage.setItem('barcamp_user', JSON.stringify(newUser));
@@ -90,6 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         authError,
         retryAuth,
+        refreshSession,
         login,
         logout,
         hasRole,

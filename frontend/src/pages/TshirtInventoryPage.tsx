@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
-import { useRealtimeEvent } from '../context/RealtimeContext';
+import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { inventoryService, TshirtInventoryItem, InventoryStats } from '../services/inventory.service';
 import { TableSkeleton } from '../components/common/Skeleton';
 import { EmptyState } from '../components/common/EmptyState';
@@ -47,11 +47,14 @@ export const TshirtInventoryPage: React.FC = () => {
   const [editActive, setEditActive] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const readVersion = useRef(0);
+  const loadData = useCallback(async (silent = false) => {
     if (!currentEvent?.id) return;
+    const version = ++readVersion.current;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await inventoryService.getInventory(currentEvent.id);
+      if (version !== readVersion.current) return;
       setItems(res.items);
       setStats(res.stats);
     } catch (err: any) {
@@ -61,9 +64,11 @@ export const TshirtInventoryPage: React.FC = () => {
         text: err.response?.status === 403 ? 'Acceso denegado: No tiene permisos suficientes para consultar el inventario de T-shirts.' : (err.response?.data?.message || 'Error al consultar inventario de T-shirts'),
       });
     } finally {
-      setLoading(false);
+      if (version === readVersion.current) setLoading(false);
     }
   }, [currentEvent?.id]);
+
+  useRealtimeRefresh('inventory', () => loadData(true));
 
   useEffect(() => {
     loadData();
@@ -71,12 +76,6 @@ export const TshirtInventoryPage: React.FC = () => {
 
   // Escuchar refrescos globales de datos
   // Sincronización en tiempo real al entregar o modificar camisetas
-  useRealtimeEvent(['CHECK_IN_CONFIRMED', 'TSHIRT_DELIVERED', 'TSHIRT_UPDATED', 'PARTICIPANTS_DELETED'], (event) => {
-    if (event.data?.tshirtDelivered || event.type === 'TSHIRT_DELIVERED' || event.type === 'TSHIRT_UPDATED') {
-      loadData();
-    }
-  });
-
   useEffect(() => {
     const handleRefresh = () => loadData();
     window.addEventListener('eventgrid:data-refresh', handleRefresh);
@@ -211,7 +210,7 @@ export const TshirtInventoryPage: React.FC = () => {
 
           <button
             type="button"
-            onClick={loadData}
+            onClick={() => { void loadData(); }}
             disabled={loading}
             className="px-3.5 py-2 rounded-xl bg-card hover:bg-muted border border-border text-xs text-foreground font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
@@ -285,7 +284,7 @@ export const TshirtInventoryPage: React.FC = () => {
             <Package className="w-4 h-4" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black font-mono text-primary">
+            <span data-testid="inventory-available" className="text-2xl font-black font-mono text-primary">
               {stats?.totalAvailable ?? 0}
             </span>
             <span className="text-[10px] text-muted-foreground uppercase font-mono">en almacén</span>

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { failureKind, failureCopy } from '../utils/appError';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
-import { useRealtimeEvent } from '../context/RealtimeContext';
+import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { participantsService, DetailedRegistration } from '../services/participants.service';
 import { Registration, PaymentMethod, SalesResponsible, TicketType } from '../types';
 import { api } from '../services/api';
@@ -129,11 +129,11 @@ export const ParticipantsPage: React.FC = () => {
 
   // Cargar participantes
   const requestVersion = useRef(0);
-  const fetchParticipants = useCallback(async () => {
+  const fetchParticipants = useCallback(async (silent = false) => {
     if (!currentEvent) return;
     const version = ++requestVersion.current;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setFetchError(null);
       const isCourtesyParam =
         isCourtesyFilter === 'COURTESY' ? true : isCourtesyFilter === 'REGULAR' ? false : undefined;
@@ -181,121 +181,8 @@ export const ParticipantsPage: React.FC = () => {
     fetchParticipants();
   }, [fetchParticipants]);
 
-  // Sincronización en tiempo real sin recargar página completa ni perder contexto
-  useRealtimeEvent('CHECK_IN_CONFIRMED', () => { fetchParticipants(); });
-
-  useRealtimeEvent('ATTENDANCE_REVERTED', (event) => {
-    const data = event.data;
-    if (!data?.registrationId) return;
-
-    setRegistrations((prev) =>
-      prev.map((reg) => {
-        if (reg.id === data.registrationId) {
-          return {
-            ...reg,
-            attended: false,
-            attendedAt: undefined,
-            attendedByUser: undefined,
-          };
-        }
-        return reg;
-      })
-    );
-
-    setSelectedForDetail((prev) => {
-      if (prev && prev.id === data.registrationId) {
-        return {
-          ...prev,
-          attended: false,
-          attendedAt: undefined,
-          attendedByUser: undefined,
-        };
-      }
-      return prev;
-    });
-
-    setStats((prev: any) => {
-      if (!prev) return prev;
-      const newAttended = Math.max(0, (prev.attended || 0) - 1);
-      const total = prev.total || 1;
-      return {
-        ...prev,
-        attended: newAttended,
-        notAttended: (prev.notAttended || 0) + 1,
-        attendanceRate: Math.round((newAttended / total) * 100),
-      };
-    });
-  });
-
-  useRealtimeEvent('PAYMENT_RECORDED', (event) => {
-    const data = event.data;
-    if (!data?.registrationId) return;
-
-    setRegistrations((prev) =>
-      prev.map((reg) => {
-        if (reg.id === data.registrationId && data.registration) {
-          return {
-            ...reg,
-            amountPaid: data.registration.amountPaid,
-            balanceDue: data.registration.balanceDue,
-            paymentStatus: data.registration.paymentStatus,
-            status: data.registration.status,
-          };
-        }
-        return reg;
-      })
-    );
-
-    setSelectedForDetail((prev) => {
-      if (prev && prev.id === data.registrationId && data.registration) {
-        return {
-          ...prev,
-          amountPaid: data.registration.amountPaid,
-          balanceDue: data.registration.balanceDue,
-          paymentStatus: data.registration.paymentStatus,
-          status: data.registration.status,
-        };
-      }
-      return prev;
-    });
-  });
-
-  useRealtimeEvent('PARTICIPANT_REGISTERED', (event) => {
-    const data = event.data;
-    if (data?.registration) {
-      setTotal((t) => t + 1);
-      if (page === 1 && !search.trim() && !paymentMethodId && !status) {
-        setRegistrations((prev) => {
-          if (prev.some((r) => r.id === data.registration.id)) return prev;
-          return [data.registration, ...prev.slice(0, limit - 1)];
-        });
-      }
-    }
-  });
-
-  useRealtimeEvent('TSHIRT_DELIVERED', (event) => {
-    const data = event.data;
-    if (!data?.registrationId) return;
-
-    setRegistrations((prev) =>
-      prev.map((reg) => {
-        if (reg.id === data.registrationId) {
-          return {
-            ...reg,
-            tshirtDelivered: true,
-            tshirtSize: data.tshirtSize || reg.tshirtSize,
-          };
-        }
-        return reg;
-      })
-    );
-  });
-
-  useRealtimeEvent('PARTICIPANTS_DELETED', () => {
-    setIsDetailOpen(false);
-    setSelectedForDetail(null);
-    fetchParticipants();
-    showNotification('success', 'Participantes actualizados tras eliminación administrativa.');
+  useRealtimeRefresh('participants', async () => { await fetchParticipants(true);
+    if (selectedForDetail?.id) { const id = selectedForDetail.id; const fresh = await participantsService.getById(id); setSelectedForDetail(previous => previous?.id === id ? fresh : previous); }
   });
 
   // Compatibilidad con eventos locales

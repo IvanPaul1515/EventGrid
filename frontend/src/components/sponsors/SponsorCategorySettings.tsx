@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useRealtimeRefresh } from '../../context/RealtimeContext';
+import { useEdition } from '../../context/EditionContext';
+import React, { useEffect, useState, useRef } from 'react';
 import { sponsorsService, SponsorCategory } from '../../services/sponsors.service';
 import { CurrencyInput } from '../common/CurrencyInput';
 import { SponsorSummary } from '../../types';
@@ -6,6 +8,9 @@ import { SponsorSummary } from '../../types';
 export function SponsorCategorySettings({ isAdmin, breakdown, onSaved }: {
   isAdmin: boolean; breakdown: SponsorSummary['byCategory']; onSaved: () => Promise<void>;
 }) {
+  const { currentEvent } = useEdition();
+  const dirty = useRef(false);
+  useRealtimeRefresh('sponsors', async () => { const data = await sponsorsService.getCategories(); if (!dirty.current) setCategories(data); });
   const [categories, setCategories] = useState<SponsorCategory[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -13,8 +18,8 @@ export function SponsorCategorySettings({ isAdmin, breakdown, onSaved }: {
     let active = true;
     sponsorsService.getCategories().then(data => { if (active) setCategories(data); }).catch(() => {});
     return () => { active = false; };
-  }, []);
-  return <details className="bg-card border border-border rounded-2xl p-4">
+  }, [currentEvent?.id]);
+  return <details onChangeCapture={() => { dirty.current = true; }} className="bg-card border border-border rounded-2xl p-4">
     <summary className="text-sm font-bold cursor-pointer">Categorías de patrocinio · valores y desglose</summary>
     <p className="text-xs text-muted-foreground my-3">Valores de referencia de esta edición. No generan compromisos ni pagos automáticamente.</p>
     <div className="space-y-3">
