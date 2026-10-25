@@ -112,4 +112,18 @@ Auditoría de check-in, pagos, registros/cortesías, cambios de rol, invitacione
 
 Backend: auth/rateLimiter/audit; participants DTO/servicio; import; attendance/inventory; QR; comunicaciones/cola/invitaciones; utils writeTransaction y mailFailure. Frontend: AuthContext, ErrorPanel/appError, ParticipantFormModal, confirmación manual/QR, attendance.service, estados y lotes de correo. Pruebas: roles_sponsors_qr, branding-errors, functional y reception-audit-regression.
 
-Pendiente: completar QA final, commits/PR, sincronización main y verificación de los dos despliegues existentes. No se han activado proveedores ni modificado variables o secretos.
+PR #9 fusionado: https://github.com/IvanPaul1515/EventGrid/pull/9. Commit de código integrado y desplegado: 80db9fb7fa41ec649f7b1e57f869a4c5ff8a248e.
+
+- Backend eventgrid-demo-api: deploy dep-dbf94qtg1s2s73eu7mlg, estado live, commit 80db9fb.
+- Frontend eventgrid-preview: deploy dep-dbf95qnavr4c73d96bk0, estado live, commit 80db9fb.
+- Aplicación: https://eventgrid-preview.onrender.com.
+- Verificación publicada: login y tres accesos demo, 403/404, recuperación de conectividad, formularios sin pago predeterminado, cortesía a cero, eliminación de ATTENDED administrativo, sesión finalizada mediante 401 simulado sin número visible y nuevo login seguro, Personal/accesos y permisos de comunicaciones a 390/1440 px.
+- QR con cámara Chrome simulada: viewport cuadrado, modos separados y tracks liberados. PWA con 74 recursos públicos, shell offline y API/uploads fuera de caché. Backend healthy y base conectada; SSE operativo.
+- Logs recientes de backend sin errores. SMTP deshabilitado en las tres ediciones, sin trabajos ni historial de envío. No se activan proveedores ni se modifican variables o secretos.
+- Contadores de participantes/asistencia/patrocinadores permanecen en cero. Se conservan seis cuentas iniciales, paletas e inventario inicial; sin cuentas adicionales, colaboradores o cronogramas.
+- Las tres ediciones publicadas tienen ticketTypes vacío: no se inventan ni se crean precios oficiales. Para registrar entradas pagadas se necesita configurar una tarifa de la edición. La tarifa efectiva y pagos exacto/parcial/superior se prueban en datos aislados, no escribiendo catálogos en Render.
+- El directorio local y origin/main contienen el código integrado. La modificación previa de package-lock sigue pendiente y conservada. Esta actualización de cierre modifica solo el informe; no se reinician servicios por documentación, y el código ejecutable coincide con 80db9fb.
+
+Antes de próximos despliegues con información que deba conservarse, capturar también todos los catálogos y configuraciones de cada edición (tarifas, métodos, responsables y campos personalizados), además de participantes, pagos, existencias y comunicaciones. No basta comprobar conteos operativos.
+
+Como revisión adicional pendiente, verificar round-trip de fechas de compra entre UTC y hora local al editar formularios; no se ha demostrado ni corregido ese escenario en esta ejecución.
