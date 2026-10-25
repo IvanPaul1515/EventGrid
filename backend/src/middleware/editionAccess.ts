@@ -5,8 +5,8 @@ import { ForbiddenError } from '../utils/errors.js';
 // Legacy accounts remain bound to the default edition until an administrator
 // explicitly assigns one. Never trust a JWT or a client header for assignment.
 export async function assignedEdition(user: { role: string; assignedEventId?: string | null }) {
-  if (user.role === 'ADMIN') return null;
   if (user.assignedEventId) return user.assignedEventId;
+  if (user.role === 'ADMIN') return null;
   const event = await prisma.event.findFirst({
     orderBy: [{ isDefault: 'desc' }, { year: 'desc' }, { id: 'asc' }],
     select: { id: true },
@@ -17,7 +17,7 @@ export async function assignedEdition(user: { role: string; assignedEventId?: st
 
 export async function enforceEditionAccess(req: Request, _res: Response, next: NextFunction) {
   try {
-    if (!req.user || req.user.role === 'ADMIN') return next();
+    if (!req.user || (req.user.role === 'ADMIN' && !req.user.assignedEventId)) return next();
     const allowed = await assignedEdition(req.user);
     // Session recovery and edition discovery must not depend on stale browser storage.
     const discovering = req.baseUrl.endsWith('/auth') || (req.baseUrl.endsWith('/events') && req.path === '/');

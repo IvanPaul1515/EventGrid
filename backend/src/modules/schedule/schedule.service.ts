@@ -38,10 +38,7 @@ export class ScheduleService {
 
     if (!isDemoMode) {
       where.isDemo = false;
-      where.NOT = [
-        { category: 'Demostración' },
-        { category: 'Demostracion' },
-      ];
+      where.AND = [{ OR: [{ category: null }, { category: { notIn: ['Demostración', 'Demostracion'] } }] }];
     }
 
     if (query?.day && query.day !== 'ALL') {
@@ -442,10 +439,7 @@ export class ScheduleService {
 
     if (!isDemoMode) {
       where.isDemo = false;
-      where.NOT = [
-        { category: 'Demostración' },
-        { category: 'Demostracion' },
-      ];
+      where.AND = [{ OR: [{ category: null }, { category: { notIn: ['Demostración', 'Demostracion'] } }] }];
     }
 
     const items = await prisma.scheduleItem.findMany({

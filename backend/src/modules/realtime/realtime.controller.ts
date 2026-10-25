@@ -27,7 +27,7 @@ export class RealtimeController {
 
       res.flushHeaders?.();
 
-      RealtimeService.addClient(eventId, res);
+      RealtimeService.addClient(eventId, res, { userId: req.user!.id, role: req.user!.role, assignedEventId: req.user!.assignedEventId, expiresAt: req.user!.expiresAt });
 
       req.on('close', () => {
         RealtimeService.removeClient(eventId, res);

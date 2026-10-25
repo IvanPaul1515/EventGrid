@@ -1,12 +1,11 @@
 import { z } from 'zod';
 
 export const CreateUserSchema = z.object({
-  email: z.string().email('Correo electrónico inválido').toLowerCase().trim(),
+  email: z.string().trim().email('Correo electrónico inválido').toLowerCase(),
   staffArea: z.string().trim().max(100).nullable().optional(),
   assignedEventId: z.string().uuid().nullable().optional(),
   fullName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').trim(),
   role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER']).default('OPERATOR'),
-  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').optional(),
   isActive: z.boolean().default(true),
 });
 
@@ -19,13 +18,12 @@ export const UpdateUserSchema = z.object({
 });
 
 export const ResetPasswordSchema = z.object({
-  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').optional(),
 });
 
 export const QueryUsersSchema = z.object({
   search: z.string().optional(),
   role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER', 'ALL']).default('ALL'),
-  isActive: z.coerce.boolean().optional(),
+  isActive: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });

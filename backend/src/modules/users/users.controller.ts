@@ -6,7 +6,7 @@ export class UsersController {
   static async listUsers(req: Request, res: Response, next: NextFunction) {
     try {
       const parsed = QueryUsersSchema.parse(req.query);
-      const result = await UsersService.listUsers(parsed);
+      const result = await UsersService.listUsers(parsed, req.user?.assignedEventId);
 
       return res.status(200).json({
         status: 'success',
@@ -33,7 +33,7 @@ export class UsersController {
 
   static async createUser(req: Request, res: Response, next: NextFunction) {
     try {
-      const parsed = CreateUserSchema.parse(req.body);
+      const parsed = CreateUserSchema.parse({ ...req.body, assignedEventId: req.eventId });
       const actorUserId = req.user?.id;
       const result = await UsersService.createUser(parsed, actorUserId);
 
@@ -41,7 +41,6 @@ export class UsersController {
         status: 'success',
         message: 'Usuario creado exitosamente',
         data: result.user,
-        temporaryPassword: result.temporaryPassword,
       });
     } catch (error) {
       next(error);
@@ -88,7 +87,6 @@ export class UsersController {
       return res.status(200).json({
         status: 'success',
         message: result.message,
-        temporaryPassword: result.temporaryPassword,
       });
     } catch (error) {
       next(error);

@@ -1,8 +1,7 @@
 import { InvitationsService } from './invitations.service.js';
 import crypto from 'crypto';
-import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/db.js';
-import { BadRequestError, NotFoundError } from '../../utils/errors.js';
+import { BadRequestError, NotFoundError, ForbiddenError } from '../../utils/errors.js';
 import { CreateUserInput, UpdateUserInput, QueryUsersInput, ResetPasswordInput } from './users.dto.js';
 
 export class UsersService {
@@ -14,12 +13,12 @@ export class UsersService {
   /**
    * Listar usuarios con búsqueda, filtros por rol y estado, y paginación
    */
-  static async listUsers(query: QueryUsersInput) {
+  static async listUsers(query: QueryUsersInput, assignedScope?: string | null) {
     const page = Math.max(1, query.page || 1);
     const limit = Math.min(100, Math.max(1, query.limit || 20));
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: any = assignedScope ? { assignedEventId: assignedScope } : {};
 
     if (query.role && query.role !== 'ALL') {
       where.role = query.role;
@@ -61,7 +60,7 @@ export class UsersService {
     ]);
 
     return {
-      users,
+      users: await InvitationsService.withStatus(users),
       pagination: {
         total,
         page,
@@ -104,17 +103,14 @@ export class UsersService {
    */
   static async createUser(input: CreateUserInput, actorUserId?: string) {
     await this.validateAssignment(input.assignedEventId);
-    const existing = await prisma.user.findUnique({
-      where: { email: input.email },
-    });
+    const existing = (await prisma.user.findMany({ select: { email: true } })).some(user => user.email.trim().toLowerCase() === input.email);
 
     if (existing) {
       throw new BadRequestError('Ya existe un usuario registrado con este correo electrónico.');
     }
 
-    // Si no se suministra contraseña, generar contraseña temporal segura de un solo uso
-    const temporaryPassword = crypto.randomBytes(32).toString('base64url');
-    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+    // An unusable marker is not a password or credential. Only token activation sets a bcrypt hash.
+    const passwordHash = 'pending-activation:' + crypto.randomUUID();
 
     const user = await prisma.user.create({
       data: {
@@ -154,13 +150,13 @@ export class UsersService {
           fullName: user.fullName,
           role: user.role,
           isActive: user.isActive,
-          temporaryPasswordGenerated: !input.password,
+          accountStatus: 'PENDING',
         }),
       },
     }).catch(() => {});
 
     await InvitationsService.prepare(user.id);
-    return { user, temporaryPassword: undefined };
+    return { user };
   }
 
   /**
@@ -187,6 +183,10 @@ export class UsersService {
     }
 
     await this.validateAssignment(input.assignedEventId);
+    const finalRole = input.role || user.role;
+    const finalAssignment = input.assignedEventId !== undefined ? input.assignedEventId : user.assignedEventId;
+    if (finalRole === 'ADMIN' && !finalAssignment && !(user.role === 'ADMIN' && !user.assignedEventId)) throw new BadRequestError('Los nuevos administradores necesitan una edición asignada.');
+    if (input.isActive === true && user.accountStatus === 'PENDING') throw new BadRequestError('La cuenta pendiente requiere activación mediante su enlace privado.');
     const data: any = {};
     if (input.assignedEventId !== undefined) data.assignedEventId = input.assignedEventId;
     if (input.staffArea !== undefined) data.staffArea = input.staffArea;
@@ -239,6 +239,7 @@ export class UsersService {
     }
 
     const targetStatus = !user.isActive;
+    if (targetStatus && user.accountStatus === 'PENDING') throw new BadRequestError('La cuenta se activa únicamente cuando el destinatario establece su contraseña mediante la invitación.');
 
     // Si se va a desactivar un administrador, verificar que no sea el último activo
     if (!targetStatus && user.role === 'ADMIN') {
@@ -284,13 +285,13 @@ export class UsersService {
   }
 
   /**
-   * Restablecer acceso mediante contraseña temporal de un solo uso
+   * Preparar acceso por invitación, sin modificar credenciales
    */
   static async resetPassword(id: string, input?: ResetPasswordInput, actorUserId?: string) {
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundError('Usuario no encontrado');
     await InvitationsService.prepare(id);
-    return { message: 'Invitación preparada. Utilice Enviar invitaciones para autorizar su envío.', temporaryPassword: undefined };
+    return { message: 'Invitación preparada. Seleccione la cuenta y confirme Enviar invitaciones para autorizar su envío.' };
 
   }
 

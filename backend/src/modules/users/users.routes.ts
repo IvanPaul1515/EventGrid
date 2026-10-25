@@ -1,3 +1,5 @@
+import { editionContext } from '../../middleware/editionContext.js';
+import { ForbiddenError } from '../../utils/errors.js';
 import { z } from 'zod';
 import { InvitationsService } from './invitations.service.js';
 import { prisma } from '../../config/db.js';
@@ -11,9 +13,31 @@ const router = Router();
 // Todas las rutas de administración de usuarios requieren autenticación y rol ADMIN
 router.use(authenticateToken, requireAdmin);
 
+async function ensureScope(ids: string[], scope?: string | null) {
+  if (!scope) return;
+  const count = await prisma.user.count({ where: { id: { in: [...new Set(ids)] }, assignedEventId: scope } });
+  if (count !== new Set(ids).size) throw new ForbiddenError('Cuenta fuera de su edición autorizada.');
+}
+router.post('/invitations/selection', async (req, res, next) => {
+  try {
+    const ids = z.array(z.string().uuid()).min(1).max(100).parse(req.body.userIds);
+    await ensureScope(ids, req.user!.assignedEventId);
+    const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true, email: true, role: true, accountStatus: true, isActive: true, assignedEventId: true } });
+    res.json({ data: await InvitationsService.withStatus(users) });
+  } catch (error) { next(error); }
+});
+router.get('/:id/invitations', async (req, res, next) => {
+  try {
+    await ensureScope([req.params.id], req.user!.assignedEventId);
+    const items = await prisma.userInvitation.findMany({ where: { userId: req.params.id }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, createdAt: true, expiresAt: true, sentAt: true, usedAt: true, revokedAt: true, errorMessage: true } });
+    res.json({ data: items });
+  } catch (error) { next(error); }
+});
+
 router.post('/invitations/preview', async (req, res, next) => {
   try {
     const rows = z.array(z.object({ fullName: z.string().trim().min(2), email: z.string().email().toLowerCase(), role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER']), assignedEventId: z.string().uuid(), userId: z.string().uuid().optional() })).min(1).max(100).parse(req.body.rows);
+    if (req.user!.assignedEventId && rows.some(row => row.assignedEventId !== req.user!.assignedEventId)) throw new ForbiddenError('Edición fuera de su alcance.');
     const accounts = await prisma.user.findMany({ where: { email: { in: rows.map(row => row.email) } }, select: { id: true, email: true } });
     const editions = await prisma.event.findMany({ where: { id: { in: rows.map(row => row.assignedEventId) } }, select: { id: true } });
     const issues: string[] = [];
@@ -30,13 +54,21 @@ router.post('/invitations/preview', async (req, res, next) => {
 
 router.post('/invitations/send', async (req, res, next) => {
   try {
-    const data = z.object({ userIds: z.array(z.string().uuid()).min(1).max(100), requestKey: z.string().uuid(), confirmed: z.literal(true) }).parse(req.body);
-    res.json({ data: await InvitationsService.send(data.userIds, data.requestKey, req.user!.id) });
+    const data = z.object({ userIds: z.array(z.string().uuid()).min(1).max(100), requestKey: z.string().uuid(), confirmed: z.literal(true), reinvite: z.boolean().default(false) }).parse(req.body);
+    await ensureScope(data.userIds, req.user!.assignedEventId);
+    res.json({ data: await InvitationsService.send(data.userIds, data.requestKey, req.user!.id, data.reinvite) });
   } catch (error) { next(error); }
 });
 
 router.get('/', UsersController.listUsers);
-router.post('/', UsersController.createUser);
+router.post('/', editionContext, UsersController.createUser);
+router.use('/:id', async (req, _res, next) => {
+  try {
+    await ensureScope([req.params.id], req.user!.assignedEventId);
+    if (req.user!.assignedEventId && req.body?.assignedEventId !== undefined && req.body.assignedEventId !== req.user!.assignedEventId) throw new ForbiddenError('No puede reasignar usuarios fuera de su edición.');
+    next();
+  } catch (error) { next(error); }
+});
 router.get('/:id', UsersController.getUserById);
 router.put('/:id', UsersController.updateUser);
 router.patch('/:id/toggle-status', UsersController.toggleStatus);
