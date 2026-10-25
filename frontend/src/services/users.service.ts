@@ -1,6 +1,7 @@
 import { api } from './api';
 
 export interface UserItem {
+  staffMembers?: { id: string; eventId: string; firstName: string; lastName: string }[];
   id: string;
   email: string;
   staffArea?: string | null;

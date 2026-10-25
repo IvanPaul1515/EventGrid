@@ -116,7 +116,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
   const [previewViewport, setPreviewViewport] = useState<'desktop' | 'mobile'>('desktop');
 
   // En pantallas móviles: alternar entre pestaña de edición y vista previa
-  const [mobileTab, setMobileTab] = useState<'edit' | 'preview'>('edit');
+  const [mobileTab, setMobileTab] = useState<'edit' | 'preview'>(readOnly ? 'preview' : 'edit');
 
   // Asunto y contenido HTML interno
   const [subject, setSubject] = useState(initialSubject);
