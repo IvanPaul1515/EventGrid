@@ -28,21 +28,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
   const [editionDropdownOpen, setEditionDropdownOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'ACTIVE':
-        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">Activo</span>;
-      case 'PLANNING':
-        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">Planificación</span>;
-      case 'COMPLETED':
-        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">Finalizado</span>;
-      case 'ARCHIVED':
-        return <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-muted text-muted-foreground border border-border">Archivado</span>;
-      default:
-        return null;
-    }
-  };
-
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'ADMIN':
@@ -93,11 +78,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
             className="flex items-center gap-1.5 sm:gap-2.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-background hover:bg-muted/70 border border-border text-foreground transition-all duration-150 group shadow-sm cursor-pointer max-w-full sm:max-w-none"
             title={user?.role === 'ADMIN' ? 'Cambiar edición del evento' : 'Edición asignada'}
           >
-            <div className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+
             <span className="font-display font-bold text-xs sm:text-sm tracking-tight whitespace-normal text-left break-words sm:whitespace-nowrap">
               {currentEvent ? `${currentEvent.name}${currentEvent.name.includes(String(currentEvent.year)) ? '' : ` · ${currentEvent.year}`}` : 'Seleccionar Edición'}
             </span>
-            {currentEvent && <span className="hidden sm:inline-flex">{getStatusBadge(currentEvent.status)}</span>}
+
             {user?.role === 'ADMIN' && <ChevronDown className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-transform shrink-0" />}
           </button>
 
@@ -135,7 +120,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
                           {ev.venue}
                         </span>
                       </div>
-                      {getStatusBadge(ev.status)}
+
                     </button>
                   ))}
                 </div>

@@ -1,3 +1,4 @@
+import { authorizeOperatorEmail, OPERATOR_EMAIL_CODES } from './operator-policy.js';
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/db.js';
 import { CommunicationsService } from './communications.service.js';
@@ -16,6 +17,9 @@ import { recordAuditLog } from '../../middleware/audit.js';
 import { BadRequestError, ForbiddenError } from '../../utils/errors.js';
 
 export class CommunicationsController {
+  static async getStatus(req: Request, res: Response, next: NextFunction) {
+    try { const config = await CommunicationsService.getConfig(req.eventId || req.query.eventId as string || null); res.json({ data: { isEnabled: Boolean(config?.isEnabled), isConfigured: Boolean(config?.host) } }); } catch (error) { next(error); }
+  }
   static async getConfig(req: Request, res: Response, next: NextFunction) {
     try {
       const eventId = ((req.user?.role !== 'ADMIN' || Boolean(req.user?.assignedEventId)) ? req.eventId : req.query.eventId as string) || null;
@@ -87,7 +91,7 @@ export class CommunicationsController {
     try {
       const eventId = ((req.user?.role !== 'ADMIN' || Boolean(req.user?.assignedEventId)) ? req.eventId : req.query.eventId as string) || null;
       const templates = await CommunicationsService.getTemplates(eventId);
-      return res.status(200).json({ status: 'success', data: templates });
+      return res.status(200).json({ status: 'success', data: req.user?.role === 'OPERATOR' ? templates.filter(t => OPERATOR_EMAIL_CODES.includes(t.code)) : templates });
     } catch (error) {
       next(error);
     }
@@ -120,6 +124,7 @@ export class CommunicationsController {
   static async previewEmail(req: Request, res: Response, next: NextFunction) {
     try {
       const validated = EmailPreviewSchema.parse(req.body);
+      authorizeOperatorEmail(req, validated);
       const result = await CommunicationsService.previewEmail(validated);
       return res.status(200).json({ status: 'success', data: result });
     } catch (error) {
@@ -130,6 +135,7 @@ export class CommunicationsController {
   static async sendSingleEmail(req: Request, res: Response, next: NextFunction) {
     try {
       const validated = SendEmailSchema.parse(req.body);
+      authorizeOperatorEmail(req, validated);
       const result = await CommunicationsService.sendSingleEmail(validated, req.user?.id);
 
       await recordAuditLog({
@@ -200,6 +206,7 @@ export class CommunicationsController {
   static async getLogs(req: Request, res: Response, next: NextFunction) {
     try {
       const parsed = QueryLogsSchema.parse(req.query);
+      if (req.user?.role === 'OPERATOR') { parsed.sentByUserId = req.user.id; parsed.templateCode = 'DIGITAL_TICKET'; }
       const eventId = req.eventId || parsed.eventId || ((req.user?.role !== 'ADMIN' || Boolean(req.user?.assignedEventId)) ? req.eventId : req.query.eventId as string) || null;
       const result = await CommunicationsService.getLogs(eventId, parsed);
       return res.status(200).json({
@@ -304,7 +311,7 @@ export class CommunicationsController {
   static async getRegistrationHistory(req: Request, res: Response, next: NextFunction) {
     try {
       const { registrationId } = req.params;
-      const history = await CommunicationsService.getUnifiedHistoryForRegistration(registrationId);
+      const history = await CommunicationsService.getUnifiedHistoryForRegistration(registrationId, req.user?.role === 'OPERATOR' ? req.user.id : undefined);
       return res.status(200).json({ status: 'success', data: history });
     } catch (error) {
       next(error);

@@ -49,12 +49,15 @@ export const CommunicationsPage: React.FC = () => {
   const { currentEvent } = useEdition();
   const { user, hasRole } = useAuth();
   const isAdmin = hasRole(['ADMIN']);
+  const scopeKey = currentEvent?.id + ':' + user?.role;
+  const scope = useRef(scopeKey); scope.current = scopeKey;
+  const templateScope = useRef<string | null>(null);
 
   // Pestañas: 1. Redactar y enviar, 2. Plantillas, 3. Envíos masivos, 4. Historial y seguimiento
   const [activeTab, setActiveTab] = useState<'compose' | 'templates' | 'bulk' | 'batches' | 'logs'>('compose');
 
   // Estado del servicio SMTP (para banner informativo en cabecera)
-  const [serviceConfig, setServiceConfig] = useState<EmailConfig | null>(null);
+  const [serviceConfig, setServiceConfig] = useState<Pick<EmailConfig, 'isEnabled' | 'host'> | null>(null);
 
   // ==========================================
   // ESTADO 5: COLA Y LOTES PERSISTENTES (Fase 4)
@@ -190,6 +193,13 @@ export const CommunicationsPage: React.FC = () => {
   const [logsDateTo, setLogsDateTo] = useState('');
 
 
+  useEffect(() => {
+    setStatusError(null); setTemplates([]); setSelectedTemplate(null); setLogs([]);
+    setSelectedRegistration(null); setSearchResults([]); setComposeTemplateCode('DIGITAL_TICKET');
+    setComposeSubject(''); setComposeBodyHtml(''); setComposeCustomMessage('');
+    if (!isAdmin) setActiveTab('compose');
+  }, [currentEvent?.id, user?.role]);
+
   // Cargar estado inicial
   useEffect(() => {
     if (currentEvent) {
@@ -199,7 +209,7 @@ export const CommunicationsPage: React.FC = () => {
         loadLogs();
       }
     }
-  }, [currentEvent, activeTab]);
+  }, [currentEvent?.id, activeTab, isAdmin]);
 
   const loadBatchJobs = async () => {
     if (!currentEvent) return;
@@ -290,33 +300,40 @@ export const CommunicationsPage: React.FC = () => {
   const [statusError, setStatusError] = useState<FailureKind | null>(null);
   const loadServiceStatus = async () => {
     if (!currentEvent) return;
+    const requestedScope = scopeKey;
     try {
-      const config = await communicationsService.getConfig(currentEvent.id);
+      const config = isAdmin ? await communicationsService.getConfig(currentEvent.id) : { ...await communicationsService.getStatus(currentEvent.id), host: '' };
+      if (requestedScope !== scope.current) return;
       setServiceConfig(config);
-      setStatusError(null);
+      setStatusError(previous => previous === '403' ? previous : null);
     } catch (err) {
-      setStatusError(failureKind(err));
+      if (requestedScope === scope.current) setStatusError(failureKind(err));
     }
   };
 
   const loadTemplates = async () => {
     if (!currentEvent) return;
+    const requestedScope = scopeKey;
     try {
       const data = await communicationsService.getTemplates(currentEvent.id);
+      if (requestedScope !== scope.current) return;
       setTemplates(data);
-      if (data.length > 0 && !selectedTemplate) {
+      const newScope = templateScope.current !== requestedScope;
+      if (data.length > 0 && (newScope || !selectedTemplate)) {
         setSelectedTemplate(data[0]);
         setTemplateSubject(data[0].subject);
         setTemplateBody(data[0].bodyHtml);
       }
-      if (data.length > 0 && !composeSubject) {
+      if (data.length > 0 && (newScope || !composeSubject)) {
         const defaultTmpl = data.find((t) => t.code === 'DIGITAL_TICKET') || data.find((t) => t.code === 'INSCRIPTION_CONFIRMATION') || data[0];
         setComposeTemplateCode(defaultTmpl.code);
         setComposeSubject(defaultTmpl.subject);
         setComposeBodyHtml(defaultTmpl.bodyHtml);
       }
+      templateScope.current = requestedScope;
     } catch (err: any) {
-      console.error(err);
+      if (requestedScope !== scope.current) return;
+      if (failureKind(err) === '403') setStatusError('403'); else console.error(err);
     }
   };
 
@@ -332,7 +349,7 @@ export const CommunicationsPage: React.FC = () => {
           });
           setSearchResults(res.data);
         } catch (err) {
-          console.error(err);
+          if (failureKind(err) === '403') setStatusError('403'); else console.error(err);
         } finally {
           setSearchingParticipants(false);
         }
@@ -363,9 +380,9 @@ export const CommunicationsPage: React.FC = () => {
         eventId: currentEvent?.id,
         registrationId: selectedRegistration?.id || null,
         templateCode,
-        customSubject: customSub || null,
-        customBodyHtml: customBody || null,
-        customMessage: customMsg || null,
+        customSubject: isAdmin ? customSub || null : null,
+        customBodyHtml: isAdmin ? customBody || null : null,
+        customMessage: isAdmin ? customMsg || null : null,
       });
       setPreviewData(res);
     } catch (err: any) {
@@ -386,9 +403,9 @@ export const CommunicationsPage: React.FC = () => {
         eventId: currentEvent.id,
         registrationId: selectedRegistration.id,
         templateCode: composeTemplateCode,
-        customSubject: composeSubject || undefined,
-        customBodyHtml: composeBodyHtml || undefined,
-        customMessage: composeCustomMessage || undefined,
+        customSubject: isAdmin ? composeSubject || undefined : undefined,
+        customBodyHtml: isAdmin ? composeBodyHtml || undefined : undefined,
+        customMessage: isAdmin ? composeCustomMessage || undefined : undefined,
         forceResend: force,
         confirmedResend: force,
         resendReason: force ? singleResendReason : undefined,
@@ -472,7 +489,7 @@ export const CommunicationsPage: React.FC = () => {
 
   // Cargar estadísticas y muestra para envíos masivos
   useEffect(() => {
-    if (activeTab === 'bulk' && currentEvent) {
+    if (isAdmin && activeTab === 'bulk' && currentEvent) {
       loadBulkRecipients();
     }
   }, [bulkTargetGroup, bulkTicketTypeId, bulkDateFrom, bulkDateTo, currentEvent, activeTab]);
@@ -538,6 +555,7 @@ export const CommunicationsPage: React.FC = () => {
   // Cargar Historial
   const loadLogs = async (page = logsPage) => {
     if (!currentEvent) return;
+    const requestedScope = scopeKey;
     try {
       setLoadingLogs(true);
       const res = await communicationsService.getLogs({
@@ -551,18 +569,21 @@ export const CommunicationsPage: React.FC = () => {
         page,
         limit: 15,
       });
+      if (requestedScope !== scope.current) return;
       setLogs(res.logs || []);
       setLogsTotal(res.total || 0);
       setLogsPage(res.page || 1);
       setLogsTotalPages(res.totalPages || 1);
     } catch (err) {
-      console.error(err);
+      if (failureKind(err) === '403') setStatusError('403'); else console.error(err);
     } finally {
       setLoadingLogs(false);
     }
   };
 
-  useRealtimeRefresh('communications', async () => { await loadServiceStatus(); if (activeTab === 'logs') await Promise.all([loadLogs(), loadBatchJobs()]); });
+  useRealtimeRefresh('communications', async () => { await loadServiceStatus(); if (activeTab === 'logs') { await loadLogs(); if (isAdmin) await loadBatchJobs(); } });
+
+  if (statusError === '403' || !hasRole(['ADMIN', 'OPERATOR'])) return <ErrorPanel kind="403" />;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -581,7 +602,7 @@ export const CommunicationsPage: React.FC = () => {
             <span>Comunicaciones y Mensajería</span>
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Gestione el envío de entradas digitales, recordatorios con QR oficial y comunicados masivos auditados.
+            {isAdmin ? 'Gestione el envío de entradas digitales, recordatorios y comunicados masivos auditados.' : 'Entrada digital individual autorizada. Puede consultar únicamente el historial de sus propios envíos.'}
           </p>
         </div>
 
@@ -655,7 +676,7 @@ export const CommunicationsPage: React.FC = () => {
           <span>Plantillas Oficiales</span>
         </button>
 
-        <button
+        {isAdmin && <button
           onClick={() => setActiveTab('bulk')}
           className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
             activeTab === 'bulk'
@@ -665,9 +686,9 @@ export const CommunicationsPage: React.FC = () => {
         >
           <Users className="w-3.5 h-3.5" />
           <span>Envíos Masivos</span>
-        </button>
+        </button>}
 
-        <button
+        {isAdmin && <button
           onClick={() => {
             setActiveTab('batches');
             loadBatchJobs();
@@ -680,7 +701,7 @@ export const CommunicationsPage: React.FC = () => {
         >
           <Layers className="w-3.5 h-3.5" />
           <span>Cola de Lotes</span>
-        </button>
+        </button>}
 
         <button
           onClick={() => {
@@ -694,7 +715,7 @@ export const CommunicationsPage: React.FC = () => {
           }`}
         >
           <History className="w-3.5 h-3.5" />
-          <span>Historial y Seguimiento</span>
+          <span>{isAdmin ? 'Historial y Seguimiento' : 'Mis envíos'}</span>
         </button>
       </div>
 
@@ -773,15 +794,16 @@ export const CommunicationsPage: React.FC = () => {
               </div>
 
               {/* Botones de Envío y Prueba */}
-              <div className="flex items-center gap-2 shrink-0">
-                <button
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button type="button" className="text-primary px-3 py-2 text-xs" onClick={() => handleOpenPreview(composeTemplateCode, composeSubject, composeBodyHtml, composeCustomMessage)}>Previsualizar correo</button>
+                {isAdmin && <button
                   type="button"
                   onClick={() => setShowTestSendModal(true)}
                   className="px-3.5 py-2 rounded-xl bg-secondary/80 hover:bg-secondary text-foreground text-xs font-bold border border-border transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>Probar envío</span>
-                </button>
+                </button>}
 
                 <button
                   type="button"
@@ -830,7 +852,8 @@ export const CommunicationsPage: React.FC = () => {
           </div>
 
           {/* EDITOR VISUAL INTEGRADO CON VISTA PREVIA PERMANENTE A LA DERECHA */}
-          <VisualEmailEditor
+          <fieldset disabled={!isAdmin} className="min-w-0"><VisualEmailEditor
+            readOnly={!isAdmin}
             initialSubject={composeSubject}
             initialHtml={composeBodyHtml}
             templateCode={composeTemplateCode}
@@ -851,14 +874,15 @@ export const CommunicationsPage: React.FC = () => {
                   }
                 : null
             }
-          />
+          /></fieldset>
         </div>
       )}
 
       {/* ========================================================
           PESTAÑA 2: PLANTILLAS OFICIALES
       ======================================================== */}
-      {activeTab === 'templates' && (
+      {!isAdmin && activeTab === 'templates' && <fieldset disabled className="min-w-0"><VisualEmailEditor readOnly initialSubject={composeSubject} initialHtml={composeBodyHtml} templateCode={composeTemplateCode} templates={templates} /></fieldset>}
+      {isAdmin && activeTab === 'templates' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Lista de Plantillas */}
           <div className="space-y-3">
@@ -1020,7 +1044,7 @@ export const CommunicationsPage: React.FC = () => {
       {/* ========================================================
           PESTAÑA 3: ENVÍOS MASIVOS (WIZARD GUIADO 4 PASOS)
       ======================================================== */}
-      {activeTab === 'bulk' && (
+      {isAdmin && activeTab === 'bulk' && (
         <div className="max-w-4xl space-y-6">
           {/* Indicador de Pasos */}
           <div className="p-4 rounded-2xl bg-card border border-border flex items-center justify-between">
@@ -1536,7 +1560,7 @@ export const CommunicationsPage: React.FC = () => {
       {/* ========================================================
           PESTAÑA: COLA DE LOTES PERSISTENTES (Fase 4 / QA-31)
       ======================================================== */}
-      {activeTab === 'batches' && (
+      {isAdmin && activeTab === 'batches' && (
         <div className="space-y-4">
           <div className="p-4 rounded-2xl bg-card border border-border flex items-center justify-between">
             <div>

@@ -1,3 +1,5 @@
+import { PersonnelNavigation } from '../components/common/PersonnelNavigation';
+import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { UserInvitationModal, InvitationHistory } from '../components/common/UserInvitationModal';
@@ -27,7 +29,7 @@ import { useAuth } from '../context/AuthContext';
 import { usersService, UserItem } from '../services/users.service';
 
 export const UsersPage: React.FC = () => {
-  const { events, currentEvent } = useEdition();
+  const { events, currentEvent, switchEdition } = useEdition();
   const { user: currentUser } = useAuth();
 
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -215,6 +217,7 @@ export const UsersPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <PersonnelNavigation />
       <PersonnelInvitations users={users} onSaved={fetchUsers} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -384,7 +387,7 @@ export const UsersPage: React.FC = () => {
                             </div>
                             <div>
                               <div className="flex items-center gap-1.5">
-                                <span className="font-bold text-foreground">{u.fullName}</span>
+                                <span className="font-bold text-foreground">{u.fullName}</span>{u.staffMembers?.map(member => <Link key={member.id} to="/staff" onClick={() => { if (member.eventId !== currentEvent?.id) switchEdition(member.eventId); }} className="block text-xs text-primary">Colaborador: {member.firstName} {member.lastName}</Link>)}
                                 {isSelf && (
                                   <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-primary/20 text-primary">
                                     Tú
@@ -484,8 +487,8 @@ export const UsersPage: React.FC = () => {
                           {u.fullName.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-bold text-foreground">{u.fullName}</span>
+                          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-bold text-foreground break-words">{u.fullName}</span>{u.staffMembers?.map(member => <Link key={member.id} to="/staff" onClick={() => { if (member.eventId !== currentEvent?.id) switchEdition(member.eventId); }} className="block text-xs text-primary">Colaborador: {member.firstName} {member.lastName}</Link>)}
                             {isSelf && (
                               <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-primary/20 text-primary">
                                 Tú

@@ -14,7 +14,7 @@ export function ErrorPanel({ kind, onRetry, home = '/', fullScreen = false }: Pr
       <p className="text-sm text-muted-foreground">{copy.message}</p>
       <div className="flex flex-wrap justify-center gap-3 pt-2">
         {kind === '404' && <button className={button} onClick={() => window.history.length > 1 ? window.history.back() : window.location.assign(home)}>Volver atrás</button>}
-        {onRetry && kind !== '401' && <button className={`${button} bg-primary text-primary-foreground hover:opacity-90`} onClick={onRetry}>{['network', '503', 'timeout'].includes(kind) ? 'Reintentar conexión' : 'Reintentar'}</button>}
+        {onRetry && kind !== '401' && kind !== '403' && <button className={`${button} bg-primary text-primary-foreground hover:opacity-90`} onClick={onRetry}>{['network', '503', 'timeout'].includes(kind) ? 'Reintentar conexión' : 'Reintentar'}</button>}
         <a className={`${button} ${kind === '401' ? 'bg-primary text-primary-foreground' : 'bg-card'}`} href={kind === '401' ? '/login' : home}>{kind === '401' ? 'Iniciar sesión' : home === '/login' ? 'Ir al inicio' : 'Volver al panel'}</a>
       </div>
     </div>

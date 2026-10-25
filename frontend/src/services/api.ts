@@ -37,7 +37,7 @@ api.interceptors.response.use(response => response, error => {
   if (error.response?.status === 401 && !authentication && localStorage.getItem('barcamp_token')) {
     localStorage.removeItem('barcamp_token'); localStorage.removeItem('barcamp_user');
     window.dispatchEvent(new Event('eventgrid:session-expired'));
-  } else if (!authentication && (!error.response || error.response.status >= 500 || error.response.status === 403)) {
+  } else if (!authentication && (!error.response || error.response.status >= 500)) {
     window.dispatchEvent(new CustomEvent('eventgrid:request-error', { detail: { kind } }));
   }
   if (error.response?.status >= 500) error.response.data = { message: failureCopy[kind].message };

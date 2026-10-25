@@ -94,7 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       badge: 'Aportes',
       roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
     },
-    { to: '/staff', label: 'Staff / Colaboradores', icon: Users, roles: ['ADMIN', 'OPERATOR', 'VIEWER'] },
+    { to: '/staff', label: 'Personal y accesos', icon: Users, roles: ['ADMIN', 'OPERATOR', 'VIEWER'] },
     {
       to: '/inventory',
       label: 'Inventario T-shirts',
@@ -126,12 +126,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       to: '/settings',
       label: 'Administración',
       icon: Settings,
-      roles: ['ADMIN'],
-    },
-    {
-      to: '/users',
-      label: 'Usuarios',
-      icon: UserCog,
       roles: ['ADMIN'],
     },
     {
@@ -190,7 +184,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
               {(!collapsed || mobileOpen) && (
                 <div className="flex flex-col">
                   <span className="font-display font-black text-sm tracking-tight text-foreground flex items-center gap-1">
-                    {currentEvent?.name || 'BarCamp RD 2026'}
+                    EventGrid
                   </span>
                   <span className="text-[10px] text-muted-foreground font-mono uppercase">
                     EventGrid · {user?.role === 'ADMIN' ? 'Administrador' : user?.role === 'OPERATOR' ? 'Operador' : 'Consulta'}
@@ -261,27 +255,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
           </nav>
         </div>
 
-        {/* Pie del Sidebar: Tarjeta de Edición Activa con estética BarCamp adaptada */}
-        {(!collapsed || mobileOpen) && currentEvent && (
-          <div className="p-3 m-2.5 sm:p-3.5 sm:m-3 rounded-2xl bg-muted/40 border border-border shadow-sm shrink-0">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-primary font-bold">
-                Edición en Gestión
-              </span>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            </div>
-            <p className="text-xs font-bold font-display text-foreground leading-snug break-words">
-              {currentEvent.name}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight break-words">
-              {currentEvent.venue}
-            </p>
-            <div className="mt-2.5 pt-2 border-t border-border/70 flex items-center justify-between text-[10px] font-mono text-muted-foreground">
-              <span>Prefijo: <strong className="text-foreground">{currentEvent.settings?.registrationPrefix || 'BC-'}</strong></span>
-              <span>Moneda: <strong className="text-foreground">{currentEvent.settings?.currencyCode || 'DOP'}</strong></span>
-            </div>
-          </div>
-        )}
+        <div className="p-3 text-center text-[10px] text-muted-foreground border-t border-border shrink-0">EventGrid</div>
       </aside>
     </>
   );

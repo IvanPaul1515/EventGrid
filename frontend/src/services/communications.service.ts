@@ -82,6 +82,7 @@ export interface SmtpSummaryResult {
 }
 
 export const communicationsService = {
+  async getStatus(eventId: string): Promise<{ isEnabled: boolean; isConfigured: boolean }> { return (await api.get('/communications/status', { params: { eventId } })).data.data; },
   async getConfig(eventId?: string | null): Promise<EmailConfig | null> {
     const res = await api.get<ApiResponse<EmailConfig | null>>('/communications/config', {
       params: { eventId },
