@@ -467,3 +467,146 @@ describe('personnel access beta and operator mail capabilities', () => {
     expect(history.body.data.map((row:any)=>row.id)).not.toContain(restricted.id);
   });
 });
+
+describe('reception audit guards and financial history', () => {
+  it('blocks administrative and imported attendance, without altering previous check-in evidence', async () => {
+    const before = await prisma.registration.findUniqueOrThrow({where:{id:registration.id}});
+    expect((await request(app).put('/api/v1/participants/'+registration.id).set(headers('ADMIN')).send({status:'ATTENDED'})).status).toBe(400);
+    await request(app).put('/api/v1/participants/'+registration.id).set(headers('ADMIN')).send({attended:false,attendedAt:null});
+    const after = await prisma.registration.findUniqueOrThrow({where:{id:registration.id}});
+    expect(after.attended).toBe(before.attended); expect(after.attendedAt).toEqual(before.attendedAt); expect(after.attendedByUserId).toBe(before.attendedByUserId);
+    await expect(ParticipantsService.update(event.id,registration.id,{status:'ATTENDED'} as any)).rejects.toThrow(/check-in/);
+    const {ImportService} = await import('../src/modules/import/import.service.js');
+    const input={fileName:'mock.csv',sheetName:'QA',rows:[{first:'No',last:'Bypass',email:'bypass-import@example.invalid',attended:'SI'}],columnMapping:{first:'firstName',last:'lastName',email:'email',attended:'attended'}};
+    const validation=await ImportService.validateRows(event.id,input.rows,input.columnMapping);
+    expect(JSON.stringify(validation)).toContain('check-in');
+    expect((await request(app).delete('/api/v1/participants/'+registration.id).set(headers('ADMIN'))).status).toBe(400);
+    await expect(ParticipantsService.purgeEdition(event.id,'ELIMINAR PARTICIPANTES')).rejects.toThrow(/asistencia/);
+  });
+  it('uses configured prices, separates courtesy, preserves ledger and rejects foreign tariffs', async () => {
+    const ticket=await prisma.ticketType.create({data:{eventId:event.id,name:'Audit tariff',price:315}});
+    const method=await prisma.paymentMethod.create({data:{eventId:event.id,name:'Audit payment'}});
+    const operator=await prisma.user.findUniqueOrThrow({where:{email:'operador@barcamp.org.do'}});
+    for(const [i,paid,status] of [[0,315,'PAID'],[1,100,'PARTIAL'],[2,400,'PAID']] as const) {
+      const record=await ParticipantsService.create(event.id,{firstName:'Audit',lastName:'Financial'+i,email:'audit-finance'+i+'@example.invalid',ticketTypeId:ticket.id,amountPaid:paid,totalAmount:paid,isCourtesy:false,isVerified:true,isDemo:false,status:'CONFIRMED',paymentMethodId:method.id});
+      expect(Number(record.ticketPrice)).toBe(315);expect(Number(record.amountPaid)).toBe(paid);expect(record.paymentStatus).toBe(status);
+      await expect(ParticipantsService.update(event.id,record.id,{amountPaid:1})).rejects.toThrow(/históricos/);
+    }
+    const courtesy=await ParticipantsService.create(event.id,{firstName:'Audit',lastName:'Courtesy',email:'audit-courtesy@example.invalid',isCourtesy:true,isVerified:true,isDemo:false,status:'CONFIRMED',amountPaid:999,totalAmount:999,paymentMethodId:method.id});
+    expect(Number(courtesy.ticketPrice)).toBe(0);expect(Number(courtesy.amountPaid)).toBe(0);expect(courtesy.paymentMethodId).toBeNull();expect(courtesy.paymentStatus).toBe('COURTESY');
+    await expect(ParticipantsService.update(other.id, 'missing', {ticketTypeId:ticket.id})).rejects.toThrow();
+    const base=await prisma.registration.create({data:{eventId:event.id,participantId:(await prisma.participant.create({data:{firstName:'Atomic',lastName:'Payments',fullName:'Atomic Payments',email:'atomic-payments@example.invalid'}})).id,registrationNumber:'ATOMIC-PAY',ticketPrice:1000,amountPaid:0,totalAmount:0,balanceDue:1000}});
+    const outcomes=await Promise.allSettled([30,40].map(amount=>ParticipantsService.recordPayment(event.id,base.id,{amount,paymentMethodId:method.id},operator.id)));
+    expect(outcomes.some(o=>o.status==='fulfilled')).toBe(true);
+    const ledger=await prisma.payment.aggregate({where:{registrationId:base.id},_sum:{amount:true}});
+    expect(Number((await prisma.registration.findUniqueOrThrow({where:{id:base.id}})).amountPaid)).toBe(Number(ledger._sum.amount));
+  });
+  it('keeps valid credentials on database failure and isolates all SSE diagnostics', async () => {
+    const originalFind = prisma.user.findUnique; const silence=vi.spyOn(console,'error').mockImplementation(()=>{});
+    const spy=vi.spyOn(prisma.user,'findUnique').mockRejectedValueOnce(new Error('mock database outage'));
+    try { expect((await request(app).get('/api/v1/auth/me').set(headers('OPERATOR'))).status).toBe(500); } finally {spy.mockRestore(); prisma.user.findUnique = originalFind; silence.mockRestore();}
+    for(const path of ['/status','/realtime/status','/stream','/realtime/stream']) {
+      expect((await request(app).get('/api/v1/events/'+other.id+path).set(headers('OPERATOR'))).status).toBe(403);
+      const expired=jwt.sign({id:'expired'},'isolated-functional-test-secret',{expiresIn:-1});
+      expect((await request(app).get('/api/v1/events/'+event.id+path).set('Authorization','Bearer '+expired)).status).toBe(401);
+    }
+    for(const role of ['ADMIN','OPERATOR','VIEWER']) expect((await request(app).get('/api/v1/events/'+event.id+'/status').set(headers(role))).status).toBe(200);
+    expect((await request(app).get('/api/v1/events/'+other.id+'/status').set(headers('ADMIN'))).status).toBe(200);
+    const scoped=await prisma.user.findUniqueOrThrow({where:{email:'scoped-admin@example.invalid'}});
+    const scopedHeaders={Authorization:'Bearer '+jwt.sign({id:scoped.id},'isolated-functional-test-secret'),'X-Event-Id':event.id};
+    const foreignParticipant=await prisma.participant.create({data:{firstName:'Foreign',lastName:'QR',fullName:'Foreign QR',email:'foreign-qr-audit@example.invalid'}});
+    const foreignReg=await prisma.registration.create({data:{eventId:other.id,participantId:foreignParticipant.id,registrationNumber:'FOREIGN-QR-AUDIT',qrCode:'eg_qr_foreign_audit'}});
+    expect((await request(app).get('/api/v1/qr/'+foreignReg.id).set(scopedHeaders)).status).toBe(403);
+    const scanned=await request(app).post('/api/v1/qr/scan').set(scopedHeaders).send({codeOrToken:foreignReg.qrCode});
+    expect(scanned.body.data.registration).toBeNull();
+    const foreignTemplate=await prisma.emailTemplate.create({data:{eventId:other.id,code:'AUDIT_FOREIGN',name:'Foreign QA',subject:'Mock only',bodyHtml:'<p>Mock</p>'}});
+    expect((await request(app).put('/api/v1/communications/templates/'+foreignTemplate.id).set(scopedHeaders).send({subject:'Forbidden',bodyHtml:'Forbidden'})).status).toBe(403);
+    const inactive=await prisma.user.create({data:{fullName:'Inactive SSE',email:'inactive-sse@example.invalid',role:'VIEWER',assignedEventId:event.id,isActive:false,passwordHash:'unusable'}});
+    const inactiveToken=jwt.sign({id:inactive.id},'isolated-functional-test-secret');
+    expect((await request(app).get('/api/v1/events/'+event.id+'/status').set('Authorization','Bearer '+inactiveToken)).status).toBe(401);
+  });
+  it('reports interrupted mail without changing jobs or invoking a provider', async () => {
+    const {EmailQueueWorker}=await import('../src/modules/communications/communications.queue.js');
+    expect(EmailQueueWorker.executionState({id:'historical',status:'PROCESSING'})).toEqual({executionState:'INTERRUPTED',requiresAuthorization:true});
+    expect(EmailQueueWorker.executionState({id:'pending',status:'PENDING'}).requiresAuthorization).toBe(true);
+    expect(EmailQueueWorker.executionState({id:'done',status:'COMPLETED'}).requiresAuthorization).toBe(false);
+  });
+});
+
+it('measures controlled 5, 10 and 20 operator reception waves without production data', async () => {
+  const fs=await import('node:fs/promises'); const path=await import('node:path');
+  const loadEvent=await prisma.event.create({data:{slug:'audit-load',name:'Isolated Load QA',year:2026,startDate:new Date(),endDate:new Date(),settings:{create:{tshirtSizesEnabled:true,tshirtSizes:JSON.stringify(['LOAD'])}}}});
+  const method=await prisma.paymentMethod.create({data:{eventId:loadEvent.id,name:'Mock load payment'}});
+  const ticket=await prisma.ticketType.create({data:{eventId:loadEvent.id,name:'Load tariff',price:100}});
+  await prisma.tshirtInventory.create({data:{eventId:loadEvent.id,size:'LOAD',initialQuantity:100}});
+  const server=await new Promise<any>(resolve=>{const instance=app.listen(0,'127.0.0.1',()=>resolve(instance));});
+  const url='http://127.0.0.1:'+server.address().port+'/api/v1';
+  const waves:any[]=[];
+  try {
+    for(const size of [5,10,20]){
+      const operators=await Promise.all(Array.from({length:size},(_,i)=>prisma.user.create({data:{fullName:'QA Operator '+size+' '+i,email:'load-'+size+'-'+i+'@example.invalid',role:'OPERATOR',assignedEventId:loadEvent.id,passwordHash:'unusable'}})));
+      const rows=await Promise.all(operators.map(async(_,i)=>{
+        const participant=await prisma.participant.create({data:{firstName:'Load',lastName:size+'-'+i,fullName:'Load '+size+'-'+i,email:'load-participant-'+size+'-'+i+'@example.invalid'}});
+        return prisma.registration.create({data:{eventId:loadEvent.id,participantId:participant.id,ticketTypeId:ticket.id,ticketPrice:100,amountPaid:0,totalAmount:0,balanceDue:100,registrationNumber:'LOAD-'+size+'-'+i,qrCode:'load-token-'+size+'-'+i}});
+      }));
+      const latencies:number[]=[];const failures:any[]=[];const rssBefore=process.memoryUsage().rss;const began=performance.now();
+      await Promise.all(operators.map(async(operator,i)=>{
+        const token=jwt.sign({id:operator.id},'isolated-functional-test-secret');
+        const call=async(endpoint:string,method='GET',body?:any)=>{
+          const start=performance.now();
+          const res=await fetch(url+endpoint,{method,headers:{Authorization:'Bearer '+token,'X-Event-Id':loadEvent.id,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+          latencies.push(performance.now()-start);await res.text();
+          if(!res.ok) failures.push({endpoint,status:res.status});return res.ok;
+        };
+        await call('/participants?search=Load');
+        await call('/participants/'+rows[i].id);
+        await call('/qr/scan','POST',{codeOrToken:rows[i].qrCode,eventId:loadEvent.id});
+        const paid=await call('/participants/'+rows[i].id+'/payments','POST',{amount:100,paymentMethodId:method.id});
+        if(paid) await call('/attendance/check-in','POST',{registrationId:rows[i].id,confirmed:true,tshirtSize:'LOAD',tshirtDelivered:true});
+        await call('/attendance/counters');
+        await call('/events/'+loadEvent.id+'/stats');
+      }));
+      latencies.sort((a,b)=>a-b);
+      const ledger=await prisma.payment.aggregate({where:{registration:{eventId:loadEvent.id}},_sum:{amount:true}});
+      const registrations=await prisma.registration.findMany({where:{eventId:loadEvent.id}});
+      expect(registrations.reduce((sum,r)=>sum+Number(r.amountPaid),0)).toBe(Number(ledger._sum.amount||0));
+      const inventory=await prisma.tshirtInventory.findFirstOrThrow({where:{eventId:loadEvent.id,size:'LOAD'}});
+      expect(inventory.deliveredQuantity).toBe(registrations.filter(r=>r.tshirtDelivered).length);
+      waves.push({operators:size,requests:latencies.length,durationMs:Math.round(performance.now()-began),p50Ms:Math.round(latencies[Math.floor(latencies.length*.5)]),p95Ms:Math.round(latencies[Math.floor(latencies.length*.95)]),maxMs:Math.round(latencies.at(-1)!),errorCount:failures.length,errorRate:Number((failures.length/latencies.length).toFixed(4)),failures,rssDeltaMiB:Number(((process.memoryUsage().rss-rssBefore)/1048576).toFixed(1))});
+    }
+    console.log(JSON.stringify({isolatedReceptionLoad:waves},null,2));
+    await fs.writeFile(path.resolve('docs/RECEPTION_LOAD_RESULTS.json'),JSON.stringify({environment:'Local Windows, Node '+process.version+', SQLite temporary database, real loopback HTTP, one wave per concurrency level. Not a Render or PostgreSQL capacity certification.',waves},null,2)+'\n');
+  } finally {await new Promise<void>(resolve=>server.close(()=>resolve()));}
+},120000);
+
+it('serializes physical shirt size changes and concurrent returns without duplicate inventory movements', async () => {
+  const owner=await prisma.user.findUniqueOrThrow({where:{email:'admin@barcamp.org.do'}});
+  const e=await prisma.event.create({data:{slug:'audit-shirts',name:'Isolated Shirt QA',year:2026,startDate:new Date(),endDate:new Date(),settings:{create:{tshirtSizesEnabled:true,tshirtSizes:JSON.stringify(['M','L'])}}}});
+  const participant=await prisma.participant.create({data:{firstName:'Shirt',lastName:'Audit',fullName:'Shirt Audit',email:'shirt-audit@example.invalid'}});
+  const reg=await prisma.registration.create({data:{eventId:e.id,participantId:participant.id,registrationNumber:'SHIRT-AUDIT',attended:true,attendedAt:new Date(),attendedByUserId:owner.id,tshirtSize:'M',tshirtDelivered:true}});
+  await prisma.tshirtInventory.create({data:{eventId:e.id,size:'M',initialQuantity:5,deliveredQuantity:1}});
+  await prisma.tshirtInventory.create({data:{eventId:e.id,size:'L',initialQuantity:5,deliveredQuantity:0}});
+  await Promise.all([1,2].map(()=>ParticipantsService.updateTshirtSize(e.id,reg.id,'L',owner.id)));
+  expect((await prisma.tshirtInventory.findUniqueOrThrow({where:{eventId_size:{eventId:e.id,size:'M'}}})).deliveredQuantity).toBe(0);
+  expect((await prisma.tshirtInventory.findUniqueOrThrow({where:{eventId_size:{eventId:e.id,size:'L'}}})).deliveredQuantity).toBe(1);
+  const returns=await Promise.allSettled([1,2].map(()=>ParticipantsService.returnTshirt(e.id,reg.id,owner.id,'Mock return')));
+  expect(returns.filter(r=>r.status==='fulfilled')).toHaveLength(1);
+  expect((await prisma.tshirtInventory.findUniqueOrThrow({where:{eventId_size:{eventId:e.id,size:'L'}}})).deliveredQuantity).toBe(0);
+  expect((await prisma.registration.findUniqueOrThrow({where:{id:reg.id}})).attended).toBe(true);
+});
+
+it('only explicitly reviews an interrupted batch and never dispatches mail', async () => {
+  const {EmailQueueWorker}=await import('../src/modules/communications/communications.queue.js');
+  const owner=await prisma.user.findUniqueOrThrow({where:{email:'admin@barcamp.org.do'}});
+  const job=await prisma.emailBatchJob.create({data:{eventId:event.id,subject:'Mock interruption',status:'PROCESSING',items:{create:[{recipientEmail:'uncertain@example.invalid',status:'PROCESSING',attempts:1},{recipientEmail:'pending@example.invalid',status:'PENDING',attempts:0}]}}});
+  const spy=vi.spyOn(CommunicationsService,'createTransporter').mockImplementation(()=>{throw Error('No provider allowed');});
+  try {
+    expect((await request(app).post('/api/v1/communications/jobs/'+job.id+'/review-interrupted').set(headers('OPERATOR')).send({confirmed:true})).status).toBe(403);
+    expect((await request(app).post('/api/v1/communications/jobs/'+job.id+'/review-interrupted').set(headers('ADMIN')).send({})).status).toBe(400);
+    await EmailQueueWorker.reviewInterrupted(job.id,event.id,owner.id);
+    const items=await prisma.emailBatchItem.findMany({where:{jobId:job.id}});
+    expect(items.map(item=>item.status).sort()).toEqual(['PENDING','UNKNOWN_DELIVERY_STATUS']);
+    expect(spy).not.toHaveBeenCalled();
+    expect(await prisma.emailBatchJob.count({where:{id:job.id}})).toBe(1);
+  } finally {spy.mockRestore();}
+});

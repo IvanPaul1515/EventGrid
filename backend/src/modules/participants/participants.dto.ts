@@ -10,10 +10,10 @@ export const CreateRegistrationSchema = z.object({
   institution: z.string().optional().nullable(),
   registrationNumber: z.string().optional().nullable(),
   ticketTypeId: z.string().optional().nullable(),
-  ticketPrice: z.number().min(0).optional().nullable(),
-  amountPaid: z.number().min(0).optional().nullable(),
-  balanceDue: z.number().min(0).optional().nullable(),
-  totalAmount: z.number().min(0, 'El monto no puede ser negativo').default(0),
+  ticketPrice: z.number().finite().min(0).optional().nullable(),
+  amountPaid: z.number().finite().min(0).optional().nullable(),
+  balanceDue: z.number().finite().min(0).optional().nullable(),
+  totalAmount: z.number().finite().min(0, 'El monto no puede ser negativo').default(0),
   isVerified: z.boolean().default(false),
   isCourtesy: z.boolean().default(false),
   courtesyAuthorizedBy: z.string().optional().nullable(),
@@ -22,7 +22,7 @@ export const CreateRegistrationSchema = z.object({
   paymentMethodId: z.string().optional().nullable(),
   salesResponsibleId: z.string().optional().nullable(),
   saleTimestamp: z.string().or(z.date()).optional(),
-  status: z.enum(['PENDING', 'CONFIRMED', 'CANCELLED', 'ATTENDED']).default('PENDING'),
+  status: z.enum(['PENDING', 'CONFIRMED', 'CANCELLED']).default('PENDING'),
   customFields: z.record(z.any()).optional().nullable(),
   notes: z.string().optional().nullable(),
 });
@@ -54,15 +54,15 @@ export const OnsiteSaleSchema = z.object({
   institution: z.string().optional().nullable(),
   ticketTypeId: z.string().min(1, 'Debe seleccionar un tipo de entrada'),
   paymentMethodId: z.string().optional().nullable(),
-  amountReceived: z.number().min(0, 'El monto recibido no puede ser negativo').default(0),
-  amountPaid: z.number().min(0, 'El monto a abonar no puede ser negativo').optional(),
+  amountReceived: z.number().finite().min(0, 'El monto recibido no puede ser negativo').default(0),
+  amountPaid: z.number().finite().min(0, 'El monto a abonar no puede ser negativo').optional(),
   notes: z.string().optional().nullable(),
   courtesyAuthorizedBy: z.string().optional().nullable(),
   courtesyReason: z.string().optional().nullable(),
 });
 
 export const RecordPaymentSchema = z.object({
-  amount: z.number().positive('El monto del abono debe ser mayor a 0'),
+  amount: z.number().finite().positive('El monto del abono debe ser mayor a 0'),
   paymentMethodId: z.string().min(1, 'Debe seleccionar el método de pago'),
   notes: z.string().optional().nullable(),
 });

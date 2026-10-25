@@ -1,3 +1,4 @@
+import { uncertainMailFailure } from '../../utils/mailFailure.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
@@ -76,7 +77,7 @@ export class InvitationsService {
         await prisma.userInvitation.update({ where: { id: invitationId }, data: { status, messageId: sent.messageId || null, sentAt: now } });
         results.push({ userId, status });
       } catch (error: any) {
-        const status = error.code === 'P2034' ? 'PROCESSING' : error.code === 'ETIMEDOUT' && error.command === 'DATA' ? 'UNKNOWN_DELIVERY_STATUS' : 'FAILED';
+        const status = error.code === 'P2034' ? 'PROCESSING' : uncertainMailFailure(error) ? 'UNKNOWN_DELIVERY_STATUS' : 'FAILED';
         const reason = status === 'PROCESSING' ? 'Otra operación está preparando esta cuenta. Consulte su estado.' : 'No se confirmó el envío. Revise el proveedor antes de autorizar otro intento.';
         if (invitationId) await prisma.userInvitation.update({ where: { id: invitationId }, data: { status, errorMessage: reason } });
         results.push({ userId, status, reason });

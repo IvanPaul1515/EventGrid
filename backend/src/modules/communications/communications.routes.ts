@@ -1,3 +1,4 @@
+import { actionRateLimiter } from '../../middleware/rateLimiter.js';
 import { prisma } from '../../config/db.js';
 import { ForbiddenError } from '../../utils/errors.js';
 import { Router } from 'express';
@@ -6,6 +7,7 @@ import { authenticateToken } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/rbac.js';
 
 const router = Router();
+const explicitActionLimit = actionRateLimiter();
 
 // Webhook transaccional de Brevo (Ruta pública entrante protegida con validación de secreto)
 router.post('/webhooks/brevo', CommunicationsController.handleBrevoWebhook);
@@ -34,8 +36,8 @@ router.put('/templates/:templateId', requireRole(['ADMIN']), CommunicationsContr
 router.post('/preview', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.previewEmail);
 
 // Envíos de correo (ADMIN y OPERATOR para individual; solo ADMIN para masivo)
-router.post('/send', requireRole(['ADMIN', 'OPERATOR']), CommunicationsController.sendSingleEmail);
-router.post('/send-bulk', requireRole(['ADMIN']), CommunicationsController.sendBulkEmail);
+router.post('/send', requireRole(['ADMIN', 'OPERATOR']), explicitActionLimit, CommunicationsController.sendSingleEmail);
+router.post('/send-bulk', requireRole(['ADMIN']), explicitActionLimit, CommunicationsController.sendBulkEmail);
 
 // Prevalidación de campañas masivas (solo ADMIN)
 router.post('/recipients/validate', requireRole(['ADMIN']), CommunicationsController.validateRecipients);
@@ -43,6 +45,7 @@ router.post('/recipients/validate', requireRole(['ADMIN']), CommunicationsContro
 // Lotes persistentes de correo masivo (ADMIN)
 router.get('/jobs', requireRole(['ADMIN']), CommunicationsController.getBatchJobs);
 router.get('/jobs/:id', requireRole(['ADMIN']), CommunicationsController.getBatchJob);
+router.post('/jobs/:id/review-interrupted', requireRole(['ADMIN']), CommunicationsController.reviewInterrupted);
 router.post('/jobs/:id/cancel', requireRole(['ADMIN']), CommunicationsController.cancelBatchJob);
 router.post('/jobs/:id/retry', requireRole(['ADMIN']), CommunicationsController.retryBatchJob);
 router.post('/jobs/:id/retry-failed', requireRole(['ADMIN']), CommunicationsController.retryFailedBatchJob);

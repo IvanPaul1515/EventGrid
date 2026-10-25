@@ -1,3 +1,4 @@
+import { writeTransaction } from '../../utils/writeTransaction.js';
 import { CommunicationsService } from '../communications/communications.service.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { prisma } from '../../config/db.js';
@@ -329,6 +330,11 @@ export class ParticipantsService {
    * Crear nueva inscripción en la edición activa
    */
   static async create(eventId: string, input: CreateRegistrationInput) {
+    if ((input.status as string) === 'ATTENDED') throw new BadRequestError('La asistencia solo puede confirmarse mediante check-in autorizado.');
+    const reservedNumber = input.registrationNumber?.trim() || await ParticipantsService.getNextRegistrationNumber(eventId);
+    return writeTransaction(async tx => {
+    const prisma = tx;
+    if ((input.status as string) === 'ATTENDED' || ['attended', 'attendedAt', 'attendedByUserId'].some(key => Object.prototype.hasOwnProperty.call(input, key))) throw new BadRequestError('La asistencia solo puede confirmarse mediante check-in autorizado.');
     const event = await prisma.event.findUnique({
       where: { id: eventId },
       include: { settings: true, paymentMethods: true, ticketTypes: true },
@@ -344,6 +350,7 @@ export class ParticipantsService {
     let ticketType = null;
     if (input.ticketTypeId) {
       ticketType = event.ticketTypes.find((t) => t.id === input.ticketTypeId);
+      if (!ticketType) throw new BadRequestError('Tarifa fuera de la edición activa.');
     }
 
     let isCourtesy = input.isCourtesy || false;
@@ -355,6 +362,7 @@ export class ParticipantsService {
 
     if (paymentMethodId) {
       const pm = event.paymentMethods.find((m) => m.id === paymentMethodId);
+      if (!pm) throw new BadRequestError('Método de pago fuera de la edición activa.');
       if (pm && pm.name.toLowerCase().includes('cortes')) {
         isCourtesy = true;
       }
@@ -441,11 +449,7 @@ export class ParticipantsService {
     // 4. Generar número de registro único si no fue suministrado
     let regNumber = input.registrationNumber?.trim();
     if (!regNumber) {
-      regNumber = await ParticipantsService.getNextRegistrationNumber(
-        eventId,
-        event.year,
-        event.settings?.registrationPrefix
-      );
+      regNumber = reservedNumber;
     } else {
       const conflict = await prisma.registration.findUnique({
         where: {
@@ -495,7 +499,7 @@ export class ParticipantsService {
         paymentStatus: initialPaymentStatus,
         salesResponsibleId: isCourtesy ? null : (input.salesResponsibleId || null),
         saleTimestamp: input.saleTimestamp ? new Date(input.saleTimestamp) : new Date(),
-        status: input.status ? (input.status === 'ATTENDED' ? 'CONFIRMED' : (input.status as any)) : (balanceDue === 0 || isCourtesy ? 'CONFIRMED' : 'PENDING'),
+        status: input.status ? input.status : (balanceDue === 0 || isCourtesy ? 'CONFIRMED' : 'PENDING'),
         qrCode: `eg_qr_${crypto.randomBytes(16).toString('hex')}`,
         qrGeneratedAt: new Date(),
         notes: input.notes || null,
@@ -521,21 +525,19 @@ export class ParticipantsService {
       });
     }
 
-    RealtimeService.emit(eventId, {
-      type: 'PARTICIPANT_REGISTERED',
-      data: {
-        registrationId: registration.id,
-        registration,
-      },
-    });
 
     return registration;
+
+    }, { isolationLevel: 'Serializable', timeout: 15000 });
   }
 
   /**
    * Actualizar registro existente
    */
   static async update(eventId: string, registrationId: string, input: UpdateRegistrationInput, userId?: string) {
+    return writeTransaction(async tx => {
+    const prisma = tx;
+    if ((input.status as string) === 'ATTENDED' || ['attended', 'attendedAt', 'attendedByUserId'].some(key => Object.prototype.hasOwnProperty.call(input, key))) throw new BadRequestError('La asistencia solo puede confirmarse mediante check-in autorizado.');
     const existing = await prisma.registration.findFirst({
       where: { id: registrationId, eventId },
       include: {
@@ -570,6 +572,14 @@ export class ParticipantsService {
       notes: existing.notes,
     };
 
+    if ((input.isCourtesy && Number(existing.amountPaid) > 0) ||
+        (await prisma.payment.count({ where: { registrationId } }) > 0 &&
+        ((input.amountPaid != null && Number(input.amountPaid) !== Number(existing.amountPaid)) ||
+         (input.totalAmount != null && Number(input.totalAmount) !== Number(existing.amountPaid))))) {
+      throw new BadRequestError('Los pagos históricos se conservan. Utilice las operaciones financieras autorizadas para corregirlos.');
+    }
+    if (input.ticketTypeId && !existing.event.ticketTypes.some(t => t.id === input.ticketTypeId)) throw new BadRequestError('Tarifa fuera de la edición activa.');
+    if (input.paymentMethodId && !existing.event.paymentMethods.some(m => m.id === input.paymentMethodId)) throw new BadRequestError('Método de pago fuera de la edición activa.');
     // Si se enviaron datos de la persona física
     if (
       input.firstName ||
@@ -607,6 +617,7 @@ export class ParticipantsService {
     let ticketType = null;
     if (ticketTypeId) {
       ticketType = existing.event.ticketTypes.find((t) => t.id === ticketTypeId);
+      if (!ticketType) throw new BadRequestError('Tarifa fuera de la edición activa.');
       if (ticketType && (Number(ticketType.price) === 0 || ticketType.name.toLowerCase().includes('cortes'))) {
         isCourtesy = true;
       }
@@ -614,6 +625,7 @@ export class ParticipantsService {
 
     if (paymentMethodId) {
       const pm = existing.event.paymentMethods.find((m) => m.id === paymentMethodId);
+      if (!pm) throw new BadRequestError('Método de pago fuera de la edición activa.');
       if (pm && pm.name.toLowerCase().includes('cortes')) {
         isCourtesy = true;
       }
@@ -690,9 +702,8 @@ export class ParticipantsService {
         paymentStatus,
         salesResponsibleId: isCourtesy ? null : (input.salesResponsibleId !== undefined ? input.salesResponsibleId : existing.salesResponsibleId),
         saleTimestamp: input.saleTimestamp ? new Date(input.saleTimestamp) : undefined,
-        attended: input.status === 'ATTENDED' ? true : undefined,
-        attendedAt: input.status === 'ATTENDED' ? new Date() : undefined,
-        status: input.status !== undefined ? (input.status === 'ATTENDED' ? 'CONFIRMED' : (input.status as any)) : undefined,
+
+        status: input.status !== undefined ? input.status : undefined,
         notes: input.notes !== undefined ? input.notes : undefined,
         customFields: customFieldsData as any,
         updatedByUserId: userId || undefined,
@@ -712,15 +723,21 @@ export class ParticipantsService {
 
     return {
       ...updated,
-      status: input.status === 'ATTENDED' ? 'ATTENDED' : updated.status,
+      status: updated.status,
       previousValues,
     };
+
+    }, { isolationLevel: 'Serializable', timeout: 15000 });
   }
 
   /**
    * Venta presencial en recepción ("Nueva venta")
    */
   static async onsiteSale(eventId: string, input: OnsiteSaleInput, operatorUserId: string) {
+    if (input.paymentMethodId && !await prisma.paymentMethod.findFirst({ where: { id: input.paymentMethodId, eventId } })) throw new BadRequestError('Método de pago fuera de la edición activa.');
+    const reservedNumber = await ParticipantsService.getNextRegistrationNumber(eventId);
+    return writeTransaction(async tx => {
+    const prisma = tx;
     const event = await prisma.event.findUnique({
       where: { id: eventId },
       include: { settings: true, ticketTypes: true, paymentMethods: true },
@@ -823,11 +840,7 @@ export class ParticipantsService {
     }
 
     // 3. Generar número de registro único atómico (QA-16)
-    const regNumber = await ParticipantsService.getNextRegistrationNumber(
-      eventId,
-      event.year,
-      event.settings?.registrationPrefix
-    );
+    const regNumber = reservedNumber;
 
     const now = new Date();
 
@@ -887,14 +900,6 @@ export class ParticipantsService {
       });
     }
 
-    RealtimeService.emit(eventId, {
-      type: 'PARTICIPANT_REGISTERED',
-      data: {
-        registrationId: registration.id,
-        registration,
-        payment: recordedPayment,
-      },
-    });
 
     return {
       registration,
@@ -907,12 +912,16 @@ export class ParticipantsService {
         changeDue,
       },
     };
+
+    });
   }
 
   /**
    * Registrar abono o pago adicional
    */
   static async recordPayment(eventId: string, registrationId: string, input: RecordPaymentInput, userId: string) {
+    return writeTransaction(async tx => {
+    const prisma = tx;
     const registration = await prisma.registration.findFirst({
       where: { id: registrationId, eventId },
       include: { participant: true, ticketType: true },
@@ -930,6 +939,7 @@ export class ParticipantsService {
       throw new BadRequestError('Las cortesías no admiten cobros ni abonos');
     }
 
+    if (!await prisma.paymentMethod.findFirst({ where: { id: input.paymentMethodId, eventId } })) throw new BadRequestError('Método de pago fuera de la edición activa.');
     const paymentAmount = Number(input.amount);
     const currentPaid = Number(registration.amountPaid ?? registration.totalAmount ?? 0);
     const ticketPrice = Number(registration.ticketPrice ?? registration.totalAmount ?? 0);
@@ -944,7 +954,7 @@ export class ParticipantsService {
       ? 'PARTIAL'
       : 'PENDING';
 
-    const [payment, updatedRegistration] = await prisma.$transaction([
+    const [payment, updatedRegistration] = await Promise.all([
       prisma.payment.create({
         data: {
           registrationId,
@@ -981,19 +991,13 @@ export class ParticipantsService {
       }),
     ]);
 
-    RealtimeService.emit(eventId, {
-      type: 'PAYMENT_RECORDED',
-      data: {
-        registrationId,
-        payment,
-        registration: updatedRegistration,
-      },
-    });
 
     return {
       payment,
       registration: updatedRegistration,
     };
+
+    }, { isolationLevel: 'Serializable', timeout: 15000 });
   }
 
   /**
@@ -1213,9 +1217,8 @@ export class ParticipantsService {
       notes: existing.notes,
     };
 
-    await prisma.registration.delete({
-      where: { id: registrationId },
-    });
+    const removed = await prisma.registration.deleteMany({ where: { id: registrationId, eventId, attended: false } });
+    if (!removed.count) throw new BadRequestError('Una asistencia confirmada es definitiva y su historial no puede eliminarse.');
 
     return {
       message: `Registro ${existing.registrationNumber} de ${existing.participant.fullName} eliminado exitosamente`,
@@ -1482,6 +1485,8 @@ export class ParticipantsService {
     tshirtSize: string | null,
     userId: string
   ) {
+    return writeTransaction(async tx => {
+    const prisma = tx;
     const registration = await prisma.registration.findFirst({
       where: { id: registrationId, eventId },
       include: { participant: true },
@@ -1496,6 +1501,7 @@ export class ParticipantsService {
     }
     const oldSize = registration.tshirtSize;
     const isDelivered = registration.tshirtDelivered;
+    if (isDelivered && !tshirtSize) throw new BadRequestError('Registre primero la devolución física antes de quitar la talla entregada.');
 
     // Si ya fue entregada y cambia de talla, ajustar inventario
     let oldInv: any = null;
@@ -1506,6 +1512,7 @@ export class ParticipantsService {
         newInv = await prisma.tshirtInventory.findUnique({
           where: { eventId_size: { eventId, size: tshirtSize } },
         });
+        if (!newInv || !newInv.isActive) throw new BadRequestError('No existe inventario activo para esa talla.');
         if (newInv && (newInv.initialQuantity - newInv.deliveredQuantity - newInv.staffReservedQuantity) <= 0) {
           throw new BadRequestError(`TALLA AGOTADA: No quedan unidades disponibles de la talla "${tshirtSize}".`);
         }
@@ -1554,21 +1561,15 @@ export class ParticipantsService {
       }
     }
 
-    const [updated] = await prisma.$transaction(txOps);
+    const [updated] = await Promise.all(txOps);
 
-    RealtimeService.emit(eventId, {
-      type: 'TSHIRT_UPDATED',
-      data: {
-        registrationId,
-        tshirtSize: updated.tshirtSize,
-        registration: updated,
-      },
-    });
 
     return {
       ...updated,
       previousTshirtSize: oldSize || null,
     };
+
+    });
   }
 
   /**
@@ -1615,7 +1616,7 @@ export class ParticipantsService {
 
     const now = new Date();
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await writeTransaction(async (tx) => {
       const inv = await tx.tshirtInventory.findUnique({
         where: { id: inventoryItem.id },
       });
@@ -1707,6 +1708,8 @@ export class ParticipantsService {
   }
 
   static async returnTshirt(eventId: string, registrationId: string, userId: string, reason: string) {
+    return writeTransaction(async tx => {
+    const prisma = tx;
     if (!reason || !reason.trim()) {
       throw new BadRequestError('Debe especificar un motivo justificado para la devolución de la camiseta.');
     }
@@ -1778,8 +1781,10 @@ export class ParticipantsService {
       );
     }
 
-    const [updated] = await prisma.$transaction(txOps);
+    const [updated] = await Promise.all(txOps);
     return updated;
+
+    });
   }
   /**
    * Generar número de registro secuencial y único de forma atómica (QA-16)
@@ -1805,7 +1810,7 @@ export class ParticipantsService {
     const MAX_RETRIES = 5;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        return await prisma.$transaction(async (tx) => {
+        return await writeTransaction(async (tx) => {
           let seq = await tx.registrationSequence.findUnique({
             where: { eventId },
           });
@@ -2022,6 +2027,10 @@ export class ParticipantsService {
    * Eliminar participantes importados desde Excel (un lote específico o todos los de la edición)
    */
   static async deleteImported(eventId: string, batchId?: string, operatorUserId?: string) {
+    return writeTransaction(async tx => {
+    const prisma = tx;
+    if (await prisma.registration.count({ where: { eventId, attended: true, ...(batchId ? { importBatchId: batchId } : { OR: [{ source: 'EXCEL_IMPORT' }, { importBatchId: { not: null } }] }) } })) throw new BadRequestError('No puede eliminar inscripciones con asistencia confirmada.');
+
     const event = await prisma.event.findUnique({ where: { id: eventId } });
     if (!event) throw new NotFoundError('Edición no encontrada');
 
@@ -2138,6 +2147,8 @@ export class ParticipantsService {
         ? `Lote '${targetBatch?.fileName}' y sus ${deletedRegistrationsCount} participantes importados fueron eliminados.`
         : `Se eliminaron ${deletedRegistrationsCount} participantes importados desde Excel de la edición.`,
     };
+
+    }, { isolationLevel: 'Serializable', timeout: 30000 });
   }
 
   /**
@@ -2145,6 +2156,10 @@ export class ParticipantsService {
    * Requiere autorización explícita con frase de confirmación y crea un respaldo previo.
    */
   static async purgeEdition(eventId: string, confirmationPhrase: string, operatorUserId?: string) {
+    return writeTransaction(async tx => {
+    const prisma = tx;
+    if (await prisma.registration.count({ where: { eventId, attended: true } })) throw new BadRequestError('No puede eliminar inscripciones con asistencia confirmada.');
+
     if (!confirmationPhrase || confirmationPhrase.trim().toUpperCase() !== 'ELIMINAR PARTICIPANTES') {
       throw new BadRequestError('Frase de confirmación incorrecta. Debe escribir exactamente: ELIMINAR PARTICIPANTES');
     }
@@ -2252,6 +2267,8 @@ export class ParticipantsService {
       deletedAttendanceCount,
       message: `Se vaciaron exitosamente todos los participantes (${deletedRegistrationsCount}) de la edición '${event.name}'. Respaldo guardado en ${backupResult.fileName}.`,
     };
+
+    }, { isolationLevel: 'Serializable', timeout: 30000 });
   }
 
 }

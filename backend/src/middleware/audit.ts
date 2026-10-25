@@ -1,5 +1,6 @@
 import { Request } from 'express';
-import { prisma } from '../config/db.js';
+import { writeTransaction } from '../utils/writeTransaction.js';
+import { ENV } from '../config/env.js';
 
 export interface AuditParams {
   req: Request;
@@ -17,11 +18,11 @@ export async function recordAuditLog({ req, action, entity, entityId, changes }:
     // Determinar si el campo changes debe ser serializado como string JSON (para SQLite) o objeto (PostgreSQL)
     let processedChanges: any = undefined;
     if (changes) {
-      const isSqlite = process.env.DATABASE_URL?.startsWith('file:');
+      const isSqlite = ENV.DATABASE_URL?.startsWith('file:');
       processedChanges = isSqlite ? JSON.stringify(changes) : changes;
     }
 
-    await prisma.auditLog.create({
+    await writeTransaction(tx => tx.auditLog.create({
       data: {
         userId: req.user?.id || null,
         action: action as any,
@@ -31,7 +32,7 @@ export async function recordAuditLog({ req, action, entity, entityId, changes }:
         ipAddress,
         userAgent,
       },
-    });
+    }));
   } catch (error) {
     // La auditoría no debe bloquear la transacción principal si falla el log
     console.error('⚠️ Error al registrar log de auditoría:', error);

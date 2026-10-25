@@ -1,3 +1,5 @@
+import { writeTransaction } from '../../utils/writeTransaction.js';
+import { mailFailureMessage, uncertainMailFailure } from '../../utils/mailFailure.js';
 import { usesBrevoHttps } from './brevo.transport.js';
 import nodemailer, { type Transporter } from 'nodemailer';
 import { prisma } from '../../config/db.js';
@@ -32,6 +34,25 @@ export class EmailQueueWorker {
   /**
    * Inicializa el worker en segundo plano
    */
+  static executionState(job: { id: string; status: string }) {
+    const active = this.activeJobs.has(job.id);
+    return { executionState: active ? 'RUNNING' : ['PROCESSING','CANCELLATION_REQUESTED'].includes(job.status) ? 'INTERRUPTED' : job.status, requiresAuthorization: !active && ['PENDING', 'PROCESSING', 'CANCELLATION_REQUESTED'].includes(job.status) };
+  }
+
+  static async reviewInterrupted(jobId: string, eventId: string | undefined, actorId: string) {
+    if (this.activeJobs.has(jobId)) throw new BadRequestError('El lote sigue ejecutándose. No se puede clasificar como interrumpido.');
+    return writeTransaction(async tx => {
+      const job = await tx.emailBatchJob.findUnique({ where: { id: jobId } });
+      if (!job || (eventId && job.eventId !== eventId)) throw new BadRequestError('Lote no encontrado en esta edición.');
+      if (!['PROCESSING','CANCELLATION_REQUESTED'].includes(job.status)) throw new BadRequestError('El lote no requiere revisión de interrupción.');
+      await tx.emailBatchItem.updateMany({ where: { jobId, status: 'PROCESSING', attempts: { gte: 1 } }, data: { status: 'UNKNOWN_DELIVERY_STATUS', leaseUntil: null, errorMessage: 'Revisión explícita: intento previo sin confirmación. Reenvío automático bloqueado.' } });
+      await tx.emailBatchItem.updateMany({ where: { jobId, status: 'PROCESSING', attempts: 0 }, data: { status: 'PENDING', leaseUntil: null } });
+      const updated = await tx.emailBatchJob.update({ where: { id: jobId }, data: { status: 'FAILED', errorMessage: 'Lote interrumpido revisado sin enviar. Los intentos inciertos requieren autorización específica de riesgo.' } });
+      await tx.auditLog.create({ data: { userId: actorId, action: 'USER_UPDATE', entity: 'EMAIL_LOG', entityId: jobId, changes: JSON.stringify({ operation: 'REVIEW_INTERRUPTED_BATCH', sent: false }) } });
+      return updated;
+    });
+  }
+
   static start() {
     // No startup recovery or polling: persisted jobs require a new user action.
   }
@@ -521,7 +542,7 @@ export class EmailQueueWorker {
               } catch (err: any) {
                 // QA-28: Distinguir errores con resultado confirmado de errores con resultado incierto
                 const currentAttempts = item.attempts;
-                const errMsg = err?.message || String(err);
+                const errMsg = mailFailureMessage(err);
                 const errCode = err?.code || '';
                 const responseCode = err?.responseCode || (err?.response ? parseInt(String(err.response).slice(0, 3), 10) : null);
 
@@ -623,14 +644,7 @@ export class EmailQueueWorker {
                 }
 
                 // 5. Resultado INCIERTO (Incertidumbre SMTP: desconexión o timeout DURANTE o TRAS comando DATA)
-                const isUncertain =
-                  errCode === 'ECONNRESET' ||
-                  errCode === 'ETIMEDOUT' ||
-                  errCode === 'EPIPE' ||
-                  err?.command === 'DATA' ||
-                  err?.stage === 'DATA' ||
-                  errMsg.toLowerCase().includes('timeout') ||
-                  errMsg.toLowerCase().includes('reset');
+                const isUncertain = uncertainMailFailure(err);
 
                 if (isUncertain) {
                   await prisma.emailBatchItem.update({
@@ -650,7 +664,7 @@ export class EmailQueueWorker {
                       recipientName: item.recipientName || email,
                       templateCode: job.templateCode || 'CUSTOM',
                       subject: job.subject,
-                      status: 'FAILED',
+                      status: 'UNKNOWN_DELIVERY_STATUS',
                       errorMessage: `Resultado incierto: ${errMsg}`,
                       batchId: job.id,
                       sentByUserId: job.createdById || null,

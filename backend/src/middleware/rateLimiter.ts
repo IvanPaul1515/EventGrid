@@ -192,3 +192,22 @@ export async function resetRateLimitStore() {
     await prisma.loginAttempt.deleteMany({});
   } catch {}
 }
+
+// Process-local safety bound for expensive explicit actions. No mail is queued by this limiter.
+export function actionRateLimiter(max = 30, windowMs = 60000) {
+  const windows = new Map<string, { start: number; count: number }>();
+  return (req: Request, res: Response, next: NextFunction) => {
+    const now = Date.now(); const key = req.user?.id || getClientIp(req);
+    let current = windows.get(key);
+    if (!current || now - current.start >= windowMs) {
+      if (windows.size >= 10000) for (const [id, value] of windows) if (now - value.start >= windowMs) windows.delete(id);
+      if (windows.size >= 10000 && !windows.has(key)) { res.setHeader('Retry-After', '60'); return res.status(429).json({message:'Demasiadas solicitudes. Intente más tarde.'}); }
+      current = { start: now, count: 0 }; windows.set(key, current);
+    }
+    if (++current.count > max) {
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil((windowMs - now + current.start) / 1000))));
+      return res.status(429).json({ message: 'Demasiadas operaciones consecutivas. Espere antes de volver a confirmar.' });
+    }
+    next();
+  };
+}
