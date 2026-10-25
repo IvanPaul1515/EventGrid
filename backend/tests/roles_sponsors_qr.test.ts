@@ -303,6 +303,8 @@ describe('simplified personnel and selected access invitations', () => {
     for (const endpoint of [`/api/v1/users/${foreign.id}`, `/api/v1/users/${foreign.id}/invitations`]) expect((await request(app).get(endpoint).set(h)).status).toBe(403);
     expect((await request(app).post('/api/v1/users/invitations/send').set(h).send({ userIds: [foreign.id], requestKey: crypto.randomUUID(), confirmed: true })).status).toBe(403);
     expect((await request(app).put(`/api/v1/users/${created.body.data.id}`).set(h).send({ assignedEventId: null })).status).toBe(403);
+    expect((await request(app).put('/api/v1/communications/config').set(h).send({ eventId: null })).status).toBe(403);
+    expect((await request(app).get('/api/v1/communications/history/registration/foreign-registration').set(h)).status).toBe(403);
     const list = await request(app).get('/api/v1/users').set(h); expect(list.body.data.every((item: any) => item.assignedEventId === event.id)).toBe(true);
     expect((await request(app).get('/api/v1/events').set(headers('ADMIN'))).body.data).toHaveLength(2);
   });

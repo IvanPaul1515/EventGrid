@@ -13,7 +13,7 @@ router.post('/webhooks/brevo', CommunicationsController.handleBrevoWebhook);
 router.use(authenticateToken);
 router.param('registrationId', async (req, _res, next) => {
   try {
-    if (req.user?.role !== 'ADMIN' && !await prisma.registration.findFirst({ where: { id: req.params.registrationId, eventId: req.eventId } })) throw new ForbiddenError('Inscripción fuera de su edición');
+    if ((req.user?.role !== 'ADMIN' || Boolean(req.user?.assignedEventId)) && !await prisma.registration.findFirst({ where: { id: req.params.registrationId, eventId: req.eventId } })) throw new ForbiddenError('Inscripción fuera de su edición');
     next();
   } catch (error) { next(error); }
 });

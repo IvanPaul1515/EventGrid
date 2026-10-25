@@ -2,6 +2,7 @@ import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { resolveImageUrl } from '../utils/imageUrl';
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { useEdition } from '../context/EditionContext';
 import { useTheme } from '../context/ThemeContext';
 import { eventsService } from '../services/events.service';
@@ -46,6 +47,7 @@ import {
 
 export const SettingsPage: React.FC = () => {
   const { currentEvent, refreshEditions } = useEdition();
+  const { user } = useAuth();
   const { applyCustomPalette, resetDefaultTheme } = useTheme();
 
   // Pestaña activa
@@ -1362,6 +1364,7 @@ export const SettingsPage: React.FC = () => {
               </button>
               <button
                 type="button"
+                disabled={Boolean(user?.assignedEventId)}
                 onClick={() => setSmtpScope('global')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   smtpScope === 'global'

@@ -13,12 +13,12 @@ import {
   RetryUncertainBatchSchema,
 } from './communications.dto.js';
 import { recordAuditLog } from '../../middleware/audit.js';
-import { BadRequestError } from '../../utils/errors.js';
+import { BadRequestError, ForbiddenError } from '../../utils/errors.js';
 
 export class CommunicationsController {
   static async getConfig(req: Request, res: Response, next: NextFunction) {
     try {
-      const eventId = (req.user?.role !== 'ADMIN' ? req.eventId : req.query.eventId as string) || null;
+      const eventId = ((req.user?.role !== 'ADMIN' || Boolean(req.user?.assignedEventId)) ? req.eventId : req.query.eventId as string) || null;
       const config = await CommunicationsService.getConfig(eventId);
       return res.status(200).json({ status: 'success', data: config });
     } catch (error) {
@@ -28,6 +28,7 @@ export class CommunicationsController {
 
   static async saveConfig(req: Request, res: Response, next: NextFunction) {
     try {
+      if (req.user?.assignedEventId && req.body.eventId !== req.user.assignedEventId) throw new ForbiddenError('Configuración fuera de su edición');
       const validated = UpdateSmtpConfigSchema.parse(req.body);
       const existing = validated.eventId
         ? await prisma.emailConfig.findFirst({ where: { eventId: validated.eventId } })
@@ -84,7 +85,7 @@ export class CommunicationsController {
 
   static async getTemplates(req: Request, res: Response, next: NextFunction) {
     try {
-      const eventId = (req.user?.role !== 'ADMIN' ? req.eventId : req.query.eventId as string) || null;
+      const eventId = ((req.user?.role !== 'ADMIN' || Boolean(req.user?.assignedEventId)) ? req.eventId : req.query.eventId as string) || null;
       const templates = await CommunicationsService.getTemplates(eventId);
       return res.status(200).json({ status: 'success', data: templates });
     } catch (error) {
@@ -199,7 +200,7 @@ export class CommunicationsController {
   static async getLogs(req: Request, res: Response, next: NextFunction) {
     try {
       const parsed = QueryLogsSchema.parse(req.query);
-      const eventId = req.eventId || parsed.eventId || (req.user?.role !== 'ADMIN' ? req.eventId : req.query.eventId as string) || null;
+      const eventId = req.eventId || parsed.eventId || ((req.user?.role !== 'ADMIN' || Boolean(req.user?.assignedEventId)) ? req.eventId : req.query.eventId as string) || null;
       const result = await CommunicationsService.getLogs(eventId, parsed);
       return res.status(200).json({
         status: 'success',
@@ -322,7 +323,7 @@ export class CommunicationsController {
 
   static async getSmtpSummary(req: Request, res: Response, next: NextFunction) {
     try {
-      const eventId = (req.user?.role !== 'ADMIN' ? req.eventId : req.query.eventId as string) || null;
+      const eventId = ((req.user?.role !== 'ADMIN' || Boolean(req.user?.assignedEventId)) ? req.eventId : req.query.eventId as string) || null;
       const summary = await CommunicationsService.getSmtpSummary(eventId);
       return res.status(200).json({ status: 'success', data: summary });
     } catch (error) {
