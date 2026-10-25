@@ -1,0 +1,41 @@
+{
+  "environment": "Local Windows, Node v24.14.0, SQLite temporary database, real loopback HTTP, one wave per concurrency level. Not a Render or PostgreSQL capacity certification.",
+  "waves": [
+    {
+      "operators": 5,
+      "requests": 35,
+      "durationMs": 335,
+      "p50Ms": 30,
+      "p95Ms": 130,
+      "maxMs": 199,
+      "errorCount": 0,
+      "errorRate": 0,
+      "failures": [],
+      "rssDeltaMiB": 16.8
+    },
+    {
+      "operators": 10,
+      "requests": 70,
+      "durationMs": 515,
+      "p50Ms": 56,
+      "p95Ms": 162,
+      "maxMs": 182,
+      "errorCount": 0,
+      "errorRate": 0,
+      "failures": [],
+      "rssDeltaMiB": 5.3
+    },
+    {
+      "operators": 20,
+      "requests": 140,
+      "durationMs": 1178,
+      "p50Ms": 84,
+      "p95Ms": 389,
+      "maxMs": 552,
+      "errorCount": 0,
+      "errorRate": 0,
+      "failures": [],
+      "rssDeltaMiB": 12.2
+    }
+  ]
+}
