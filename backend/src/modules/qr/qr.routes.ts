@@ -10,7 +10,7 @@ const router = Router();
 router.use(authenticateToken);
 router.param('registrationId', async (req, _res, next) => {
   try {
-    if (req.user?.role !== 'ADMIN' && req.params.registrationId) {
+    if ((req.user?.role !== 'ADMIN' || Boolean(req.user?.assignedEventId)) && req.params.registrationId) {
       const registration = await prisma.registration.findFirst({ where: { id: req.params.registrationId, eventId: req.eventId } });
       if (!registration) throw new ForbiddenError('Entrada fuera de su edición');
     }

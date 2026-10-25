@@ -1629,10 +1629,11 @@ export const CommunicationsPage: React.FC = () => {
                               job.status === 'CANCELLATION_REQUESTED' ? 'bg-amber-500/20 text-amber-400' :
                               'bg-primary/20 text-primary'
                             }`}>
-                              {job.status}
-                            </span>
+                              {job.executionState === 'INTERRUPTED' ? 'Interrumpido · revisar estado' : job.status}
+                            </span>{job.requiresAuthorization && <p className="text-[10px] text-muted-foreground mt-1">No se reanudará automáticamente. Revise el detalle antes de autorizar otra acción.</p>}
                           </td>
                           <td className="py-3 text-right pr-2 space-x-1">
+                            {job.executionState === 'INTERRUPTED' && <button className="text-primary text-xs px-2 py-1" onClick={async () => { if (!confirm('Revisar este lote sin enviar correos y clasificar los intentos previos como inciertos?')) return; try { await communicationsService.reviewInterrupted(job.id); await loadBatchJobs(); } catch { alert('No fue posible revisar el lote. Consulte su estado.'); } }}>Revisar interrupción</button>}
                             {(job.status === 'PENDING' || job.status === 'PROCESSING') && (
                               <button
                                 type="button"

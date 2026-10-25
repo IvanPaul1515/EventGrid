@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import { EmailQueueWorker } from './communications.queue.js';
 import { authorizeOperatorEmail, OPERATOR_EMAIL_CODES } from './operator-policy.js';
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/db.js';
@@ -17,6 +19,10 @@ import { recordAuditLog } from '../../middleware/audit.js';
 import { BadRequestError, ForbiddenError } from '../../utils/errors.js';
 
 export class CommunicationsController {
+  static async reviewInterrupted(req: Request, res: Response, next: NextFunction) {
+    try { z.object({ confirmed: z.literal(true) }).parse(req.body); res.json({ data: await EmailQueueWorker.reviewInterrupted(req.params.id, req.eventId || req.query.eventId as string, req.user!.id) }); }
+    catch (error) { next(error); }
+  }
   static async getStatus(req: Request, res: Response, next: NextFunction) {
     try { const config = await CommunicationsService.getConfig(req.eventId || req.query.eventId as string || null); res.json({ data: { isEnabled: Boolean(config?.isEnabled), isConfigured: Boolean(config?.host) } }); } catch (error) { next(error); }
   }
@@ -100,6 +106,7 @@ export class CommunicationsController {
   static async updateTemplate(req: Request, res: Response, next: NextFunction) {
     try {
       const { templateId } = req.params;
+      if (req.user?.assignedEventId && !await prisma.emailTemplate.findFirst({ where: { id: templateId, eventId: req.user.assignedEventId } })) throw new ForbiddenError('Plantilla fuera de su edición autorizada.');
       const validated = UpdateTemplateSchema.parse(req.body);
       const updated = await CommunicationsService.updateTemplate(templateId, validated);
 

@@ -1,3 +1,4 @@
+import { uncertainMailFailure, mailFailureMessage } from '../../utils/mailFailure.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { brevoTransport, usesBrevoHttps } from './brevo.transport.js';
 import { EmailQueueWorker } from './communications.queue.js';
@@ -2146,12 +2147,12 @@ export class CommunicationsService {
       const log = await prisma.emailLog.update({
         where: { id: preLog.id },
         data: {
-          status: err.code === 'ETIMEDOUT' && err.command !== 'CONN' ? 'UNKNOWN_DELIVERY_STATUS' : 'FAILED',
-          errorMessage: err.message || 'Error de envío',
+          status: uncertainMailFailure(err) ? 'UNKNOWN_DELIVERY_STATUS' : 'FAILED',
+          errorMessage: mailFailureMessage(err),
         },
       });
 
-      throw new BadRequestError(`Fallo al enviar correo: ${err.message}`);
+      throw new BadRequestError(mailFailureMessage(err));
     } finally {
       await prisma.emailLog.update({ where: { id: preLog.id }, data: { dispatchKey: null } }).catch(() => {});
     }
@@ -2771,7 +2772,7 @@ export class CommunicationsService {
 
 
   static async getBatchJobs(eventId: string) {
-    return await prisma.emailBatchJob.findMany({
+    const jobs = await prisma.emailBatchJob.findMany({
       where: { eventId },
       orderBy: { createdAt: 'desc' },
       take: 25,
@@ -2781,6 +2782,7 @@ export class CommunicationsService {
         },
       },
     });
+    return jobs.map(job => ({ ...job, ...EmailQueueWorker.executionState(job) }));
   }
 
   /**
@@ -2804,7 +2806,7 @@ export class CommunicationsService {
     if (eventId && job.eventId !== eventId) {
       throw new NotFoundError('Lote de correo no encontrado en esta edición');
     }
-    return job;
+    return { ...job, ...EmailQueueWorker.executionState(job) };
   }
 
   /**

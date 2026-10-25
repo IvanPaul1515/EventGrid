@@ -1,3 +1,4 @@
+import { writeTransaction } from '../../utils/writeTransaction.js';
 import { prisma } from '../../config/db.js';
 import { NotFoundError, BadRequestError } from '../../utils/errors.js';
 
@@ -569,7 +570,7 @@ export class InventoryService {
       throw new BadRequestError('La cantidad a reservar no puede ser negativa');
     }
 
-    return await prisma.$transaction(async (tx) => {
+    return await writeTransaction(async (tx) => {
       const item = await tx.tshirtInventory.findUnique({
         where: { eventId_size: { eventId, size: trimmedSize } },
       });
@@ -655,7 +656,7 @@ export class InventoryService {
     const trimmedSize = data.size.trim();
     const quantity = Math.max(1, data.quantity || 1);
 
-    return await prisma.$transaction(async (tx) => {
+    return await writeTransaction(async (tx) => {
       const item = await tx.tshirtInventory.findUnique({
         where: { eventId_size: { eventId, size: trimmedSize } },
       });
@@ -768,7 +769,7 @@ export class InventoryService {
       throw new BadRequestError('La cantidad a liberar debe ser mayor a 0');
     }
 
-    return await prisma.$transaction(async (tx) => {
+    return await writeTransaction(async (tx) => {
       const item = await tx.tshirtInventory.findUnique({
         where: { eventId_size: { eventId, size: trimmedSize } },
       });

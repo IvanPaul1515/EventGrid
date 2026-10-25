@@ -1,5 +1,5 @@
 import { CurrencyInput } from '../common/CurrencyInput';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Registration, PaymentMethod, SalesResponsible, TicketType } from '../../types';
 import { useEdition } from '../../context/EditionContext';
@@ -46,17 +46,17 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
 
   // Tarifas y estado financiero
   const [ticketTypeId, setTicketTypeId] = useState<string>('');
-  const [ticketPrice, setTicketPrice] = useState<number>(1750);
-  const [amountPaid, setAmountPaid] = useState<number>(1750);
+  const [ticketPrice, setTicketPrice] = useState<number>(0);
+  const [amountPaid, setAmountPaid] = useState<number>(0);
   const [saleTimestamp, setSaleTimestamp] = useState<string>('');
 
-  const [isVerified, setIsVerified] = useState(true);
+  const [isVerified, setIsVerified] = useState(false);
   const [isCourtesy, setIsCourtesy] = useState(false);
   const [courtesyAuthorizedBy, setCourtesyAuthorizedBy] = useState('');
   const [courtesyReason, setCourtesyReason] = useState('');
   const [paymentMethodId, setPaymentMethodId] = useState<string>('');
   const [salesResponsibleId, setSalesResponsibleId] = useState<string>('');
-  const [status, setStatus] = useState<string>('CONFIRMED');
+  const [status, setStatus] = useState<string>('PENDING');
   const [notes, setNotes] = useState('');
 
   // Catálogos de la edición
@@ -64,18 +64,22 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   const [salesResponsibles, setSalesResponsibles] = useState<SalesResponsible[]>([]);
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
   const [loading, setLoading] = useState(false);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const saving = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   // Cargar catálogos de métodos de pago, responsables y tipos de entrada para la edición activa
   useEffect(() => {
+    let active = true;
     if (currentEvent && isOpen) {
+      setCatalogLoading(true);
       api
         .get(`/events/${currentEvent.id}`)
         .then((res) => {
-          if (res.data.data) {
+          if (active && res.data.data) {
             setPaymentMethods(res.data.data.paymentMethods || []);
             setSalesResponsibles(res.data.data.salesResponsibles || []);
-            const tts: TicketType[] = res.data.data.ticketTypes || [];
+            const tts: TicketType[] = (res.data.data.ticketTypes || []).filter((tt: TicketType) => tt.isActive !== false || tt.id === registrationToEdit?.ticketTypeId);
             setTicketTypes(tts);
 
             // Si es un registro nuevo y aún no hay tipo seleccionado, inicializar con el primer tipo activo
@@ -86,14 +90,15 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
               if (defT) {
                 setTicketTypeId(defT.id);
                 setTicketPrice(Number(defT.price));
-                setAmountPaid(Number(defT.price));
+                setAmountPaid(0);
               }
             }
           }
         })
-        .catch(console.error);
+        .catch(() => { if (active) setError('No se pudieron cargar las tarifas. Reabra el formulario para reintentar.'); }).finally(() => { if (active) setCatalogLoading(false); });
     }
-  }, [currentEvent, isOpen]);
+    return () => { active = false; };
+  }, [currentEvent?.id, isOpen]);
 
   // Inicializar campos según creación o edición
   useEffect(() => {
@@ -130,7 +135,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       setCourtesyReason(registrationToEdit.courtesyReason || '');
       setPaymentMethodId(registrationToEdit.paymentMethodId || '');
       setSalesResponsibleId(registrationToEdit.salesResponsibleId || '');
-      setStatus(registrationToEdit.status || 'CONFIRMED');
+      setStatus(String(registrationToEdit.status) === 'ATTENDED' ? 'CONFIRMED' : registrationToEdit.status || 'PENDING');
       setNotes(registrationToEdit.notes || '');
     } else {
       setFirstName('');
@@ -142,16 +147,16 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       setAlternatePhone('');
       setRegistrationNumber('');
       setTicketTypeId('');
-      setTicketPrice(1750);
-      setAmountPaid(1750);
+      setTicketPrice(0);
+      setAmountPaid(0);
       setSaleTimestamp(new Date().toISOString().slice(0, 16));
-      setIsVerified(true);
+      setIsVerified(false);
       setIsCourtesy(false);
       setCourtesyAuthorizedBy('');
       setCourtesyReason('');
       setPaymentMethodId('');
       setSalesResponsibleId('');
-      setStatus('CONFIRMED');
+      setStatus('PENDING');
       setNotes('');
     }
     setError(null);
@@ -200,6 +205,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
 
   // Manejo de cambio en el selector de tipo de entrada
   const handleTicketTypeChange = (newTicketId: string) => {
+    if (newTicketId === '__courtesy__') { setTicketTypeId(''); setTicketPrice(0); setAmountPaid(0); setIsCourtesy(true); setPaymentMethodId(''); setSalesResponsibleId(''); return; }
     setTicketTypeId(newTicketId);
     const selected = ticketTypes.find((t) => t.id === newTicketId);
     if (selected) {
@@ -210,10 +216,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
         setAmountPaid(0);
       } else {
         setIsCourtesy(false);
-        // Si el monto pagado coincidía con la tarifa previa o estaba en 0, sincronizar con la nueva tarifa
-        if (amountPaid === 0 || amountPaid === ticketPrice) {
-          setAmountPaid(price);
-        }
+        // Tariff selection never invents a payment or replaces historical payments.
       }
     }
   };
@@ -223,10 +226,13 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving.current || catalogLoading) return;
+    if (!isCourtesy && !ticketTypeId && !registrationToEdit) { setError('Seleccione una tarifa válida o Cortesía.'); return; }
+    saving.current = true;
     setLoading(true);
     setError(null);
 
-    const payload = {
+    const payload: any = {
       firstName,
       lastName,
       documentId: documentId.trim() || null,
@@ -251,6 +257,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       notes: notes.trim() || null,
     };
 
+    if (registrationToEdit) { delete payload.amountPaid; delete payload.totalAmount; delete payload.balanceDue; }
     try {
       let res;
       if (registrationToEdit) {
@@ -264,6 +271,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       const msg = err.response?.data?.message || 'Error al guardar el participante';
       setError(msg);
     } finally {
+      saving.current = false;
       setLoading(false);
     }
   };
@@ -408,15 +416,18 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
             <div>
               <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                 <Tag className="w-3.5 h-3.5 text-primary" />
-                <span>Tipo de Entrada</span>
+                <span>Tarifa</span>
               </label>
               <select
-                value={ticketTypeId}
+                aria-label="Tarifa"
+                disabled={catalogLoading}
+                value={isCourtesy ? '__courtesy__' : ticketTypeId}
                 onChange={(e) => handleTicketTypeChange(e.target.value)}
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">-- Seleccionar Tarifa --</option>
-                {ticketTypes.map((tt) => (
+                <option value="__courtesy__" disabled={Boolean(registrationToEdit && Number(registrationToEdit.amountPaid || registrationToEdit.totalAmount) > 0)}>Cortesía — RD$ 0.00</option>
+                {ticketTypes.filter(tt => Number(tt.price) > 0 || tt.id === ticketTypeId).map((tt) => (
                   <option key={tt.id} value={tt.id}>
                     {tt.name} — RD$ {Number(tt.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </option>
@@ -428,16 +439,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
               <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">
                 Tarifa del Boleto (RD$)
               </label>
-              <CurrencyInput
-                step="0.01"
-                min="0"
-                disabled={isCourtesy}
-                value={isCourtesy ? 0 : ticketPrice}
-                onValueChange={setTicketPrice}
-                className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
-                  isCourtesy ? 'opacity-50 cursor-not-allowed bg-muted' : ''
-                }`}
-              />
+              <output className="block w-full px-3 py-2 bg-muted border border-border rounded-xl text-xs font-mono" aria-label="Precio de la tarifa">{(isCourtesy ? 0 : ticketPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</output>
               <span className="text-[10px] text-muted-foreground mt-0.5 block">
                 Precio oficial del boleto
               </span>
@@ -451,7 +453,8 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
               <CurrencyInput
                 step="0.01"
                 min="0"
-                disabled={isCourtesy}
+                aria-label="Monto pagado"
+                disabled={isCourtesy || Boolean(registrationToEdit)}
                 value={isCourtesy ? 0 : amountPaid}
                 onValueChange={setAmountPaid}
                 className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
@@ -459,13 +462,13 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                 }`}
               />
               <span className="text-[10px] text-muted-foreground mt-0.5 block">
-                Total efectivamente abonado
+                {registrationToEdit ? 'Historial conservado. Registre nuevos abonos desde Ventas o la ficha.' : 'Total efectivamente abonado'}
               </span>
             </div>
           </div>
 
           {/* Panel Dinámico Financiero (Saldo a Favor o Balance Pendiente) */}
-          {!isCourtesy && (
+          {!isCourtesy && (ticketTypeId || registrationToEdit) && (
             <div>
               {overpaidAmount > 0 ? (
                 <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -478,6 +481,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                   </div>
                   <button
                     type="button"
+                    disabled={Boolean(registrationToEdit)}
                     onClick={() => setAmountPaid(ticketPrice)}
                     className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[11px] transition-colors cursor-pointer"
                   >
@@ -495,6 +499,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                   </div>
                   <button
                     type="button"
+                    disabled={Boolean(registrationToEdit)}
                     onClick={() => setAmountPaid(ticketPrice)}
                     className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-[11px] transition-colors cursor-pointer"
                   >
@@ -555,7 +560,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
               >
                 <option value="CONFIRMED">Confirmado</option>
                 <option value="PENDING">Pendiente</option>
-                <option value="ATTENDED">Asistió al Evento</option>
+
                 <option value="CANCELLED">Cancelado</option>
               </select>
             </div>
@@ -563,37 +568,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
 
           {/* Toggle de Cortesía */}
           <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isCourtesy}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setIsCourtesy(checked);
-                    if (checked) {
-                      setAmountPaid(0);
-                      setPaymentMethodId('');
-                      setSalesResponsibleId('');
-                      setIsVerified(true);
-                    } else {
-                      const baseTicket = ticketTypes.find((t) => t.id === ticketTypeId);
-                      const restoredPrice = baseTicket ? Number(baseTicket.price) : 1750;
-                      setTicketPrice(restoredPrice);
-                      setAmountPaid(restoredPrice);
-                    }
-                  }}
-                  className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 bg-background border-border"
-                />
-                <span className="text-xs font-bold text-amber-300">
-                  Registrar como Entrada de Cortesía (RD$ 0.00)
-                </span>
-              </label>
-              <span className="text-[10px] text-amber-400/80 font-mono">
-                Excluido de la recaudación neta
-              </span>
-            </div>
-
+            <p className="text-xs text-muted-foreground">La opción Cortesía se selecciona directamente en Tarifa. No registra un pago ni una entrega de efectivo.</p>
             {isCourtesy && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-amber-500/20">
                 <div>

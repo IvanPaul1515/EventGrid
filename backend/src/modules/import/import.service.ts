@@ -402,6 +402,7 @@ export class ImportService {
         normalized.status = 'PENDING';
       }
       normalized.attended = isAttendedFromFile;
+      if (isAttendedFromFile) errors.push('La asistencia no puede importarse: confirme el ingreso mediante check-in.');
 
       // 5. Detección de duplicados internos dentro de este mismo Excel
       if (normalized.email) {
@@ -544,6 +545,7 @@ export class ImportService {
       }
 
       const n = item.normalized;
+      if (n.attended || n.status === 'ATTENDED') { errorCount++; errorsToRecord.push({ rowNumber: item.rowNumber, fieldName: 'attended', errorMessage: 'La asistencia solo puede confirmarse mediante check-in.', rawRowData: item.raw }); continue; }
 
       // Si es un duplicado en base de datos
       if (item.isDuplicateInDb) {
@@ -756,7 +758,8 @@ export class ImportService {
           ? 'PARTIAL'
           : 'PENDING';
 
-        const isAttended = Boolean(n.attended || n.status === 'ATTENDED');
+        if (n.attended || n.status === 'ATTENDED') throw new BadRequestError('La asistencia debe confirmarse mediante check-in, no desde Excel.');
+        const isAttended = false;
         const qrCode = `eg_qr_${crypto.randomBytes(16).toString('hex')}`;
 
         // Crear inscripción vinculada al lote

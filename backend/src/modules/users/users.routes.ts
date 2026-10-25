@@ -1,3 +1,4 @@
+import { actionRateLimiter } from '../../middleware/rateLimiter.js';
 import { editionContext } from '../../middleware/editionContext.js';
 import { ForbiddenError } from '../../utils/errors.js';
 import { z } from 'zod';
@@ -9,6 +10,7 @@ import { authenticateToken } from '../../middleware/auth.js';
 import { requireAdmin } from '../../middleware/rbac.js';
 
 const router = Router();
+const explicitActionLimit = actionRateLimiter();
 
 // Todas las rutas de administración de usuarios requieren autenticación y rol ADMIN
 router.use(authenticateToken, requireAdmin);
@@ -52,7 +54,7 @@ router.post('/invitations/preview', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post('/invitations/send', async (req, res, next) => {
+router.post('/invitations/send', explicitActionLimit, async (req, res, next) => {
   try {
     const data = z.object({ userIds: z.array(z.string().uuid()).min(1).max(100), requestKey: z.string().uuid(), confirmed: z.literal(true), reinvite: z.boolean().default(false) }).parse(req.body);
     await ensureScope(data.userIds, req.user!.assignedEventId);

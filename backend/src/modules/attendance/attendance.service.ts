@@ -1,3 +1,4 @@
+import { writeTransaction } from '../../utils/writeTransaction.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { prisma } from '../../config/db.js';
 import { InventoryService } from '../inventory/inventory.service.js';
@@ -205,7 +206,7 @@ export class AttendanceService {
     const shouldDeliver = Boolean(tshirtDelivered === true && validTshirtSize);
 
     // QA-01, QA-02, QA-03: Ejecución atómica y condicional en transacción interactiva
-    const updatedRegistration = await prisma.$transaction(async (tx) => {
+    const updatedRegistration = await writeTransaction(async (tx) => {
       let inventoryItem: any = null;
 
       if (shouldDeliver && validTshirtSize) {

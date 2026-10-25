@@ -12,15 +12,15 @@ export function formatEmailStatus(rawStatus?: string | null): FormattedEmailStat
     case 'SENT':
       return {
         code: 'ACCEPTED_BY_SMTP',
-        label: 'Aceptado por Brevo',
-        description: 'Brevo aceptó el mensaje para su procesamiento. La entrega al destinatario todavía no está confirmada.',
+        label: 'Aceptado por el proveedor',
+        description: 'El proveedor aceptó el mensaje para su procesamiento. La entrega al destinatario todavía no está confirmada.',
         badgeClass: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30',
       };
     case 'DELIVERED':
       return {
         code: 'DELIVERED',
         label: 'Entregado',
-        description: 'Entrega confirmada en el buzón del destinatario.',
+        description: 'El proveedor confirmó entrega al servidor destinatario. No garantiza lectura ni llegada a la bandeja principal.',
         badgeClass: 'bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 border border-emerald-600/40',
       };
     case 'SIMULATED':
@@ -34,13 +34,13 @@ export function formatEmailStatus(rawStatus?: string | null): FormattedEmailStat
       return {
         code: 'PENDING',
         label: 'Pendiente',
-        description: 'En cola a la espera de ser procesado por el worker.',
+        description: 'Pendiente de una operación expresamente autorizada. No se reanuda automáticamente.',
         badgeClass: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30',
       };
     case 'PROCESSING':
       return {
         code: 'PROCESSING',
-        label: 'Enviando',
+        label: 'Procesando',
         description: 'En proceso de conexión y transmisión al servidor SMTP.',
         badgeClass: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30',
       };
@@ -51,6 +51,10 @@ export function formatEmailStatus(rawStatus?: string | null): FormattedEmailStat
         description: 'Rechazado por el servidor SMTP o buzón inexistente/bloqueado.',
         badgeClass: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30',
       };
+    case 'DEFERRED':
+      return { code: s, label: 'Aplazado', description: 'El proveedor aplazó el procesamiento. No se reenvía automáticamente desde EventGrid.', badgeClass: 'text-amber-500 border border-border' };
+    case 'BLOCKED':
+      return { code: s, label: 'Bloqueado', description: 'El proveedor bloqueó el mensaje. Revise el motivo antes de autorizar otra operación.', badgeClass: 'text-rose-500 border border-border' };
     case 'FAILED':
       return {
         code: 'FAILED',

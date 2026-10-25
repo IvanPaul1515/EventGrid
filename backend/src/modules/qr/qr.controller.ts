@@ -40,7 +40,7 @@ export class QrController {
       const codeOrToken = (parsed.codeOrToken || parsed.qrToken)!.trim();
       const eventId = req.eventId || parsed.eventId || parsed.activeEventId || (req.headers['x-event-id'] as string) || undefined;
       const result = await QrService.validateAndScan(codeOrToken, eventId);
-      if (req.user?.role !== 'ADMIN' && result.status === 'EDITION_MISMATCH') {
+      if ((req.user?.role !== 'ADMIN' || Boolean(req.user?.assignedEventId)) && result.status === 'EDITION_MISMATCH') {
         result.registration = null;
         result.message = 'Esta entrada no pertenece a su edición asignada.';
       }
@@ -55,7 +55,7 @@ export class QrController {
             result: 'REJECTED',
             reason: result.message || 'Código QR no válido',
             error: result.error,
-            ticketScanned: codeOrToken.length > 30 ? codeOrToken.slice(0, 15) + '...' : codeOrToken,
+            inputLength: codeOrToken.length,
           },
         }).catch(() => {});
       } else {

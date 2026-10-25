@@ -29,7 +29,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
-    const expired = () => { setAuthError('401'); setToken(null); setUser(null); setIsLoading(false); };
+    const expired = () => { localStorage.removeItem('barcamp_token'); localStorage.removeItem('barcamp_user'); setAuthError('401'); setToken(null); setUser(null); setIsLoading(false); };
     window.addEventListener('eventgrid:session-expired', expired);
     const initAuth = async () => {
       const storedToken = localStorage.getItem('barcamp_token');
@@ -59,11 +59,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshSession = useCallback(() => {
     if (refreshingSession.current) return refreshingSession.current;
     if (!localStorage.getItem('barcamp_token')) return Promise.resolve();
+    const requestedToken = localStorage.getItem('barcamp_token');
     const task = api.get('/auth/me').then(response => {
+      if (localStorage.getItem('barcamp_token') !== requestedToken) return;
       setUser(response.data.data); localStorage.setItem('barcamp_user', JSON.stringify(response.data.data));
     }).catch(() => {}).finally(() => { refreshingSession.current = null; });
     refreshingSession.current = task; return task;
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    let timer: ReturnType<typeof setTimeout>;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (typeof payload.exp !== 'number') return;
+      const schedule = () => {
+        const remaining = payload.exp * 1000 - Date.now();
+        if (remaining <= 0) window.dispatchEvent(new Event('eventgrid:session-expired'));
+        else timer = setTimeout(schedule, Math.min(remaining, 2147483647));
+      };
+      schedule();
+    } catch { /* Server verification remains authoritative for opaque or malformed tokens. */ }
+    return () => clearTimeout(timer);
+  }, [token]);
 
   const login = (newToken: string, newUser: User) => {
     localStorage.setItem('barcamp_token', newToken);

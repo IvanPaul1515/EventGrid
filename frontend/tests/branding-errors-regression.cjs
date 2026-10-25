@@ -50,7 +50,7 @@ try{
   console.log('Scenario passed'); checks.push('Bootstrap 503 preserves credentials; manual retry; 403 denies content; custom edition palette and contrasting text; offline blocks entry');await context.close();
  }
  {
-  const {context,page}=await setup({stored:true,me:'401'});await page.goto(base+'/participants');await page.getByRole('heading',{name:'Tu sesión ha expirado'}).waitFor();assert.equal(await page.evaluate(()=>localStorage.getItem('barcamp_token')),null);await page.getByRole('link',{name:'Iniciar sesión'}).click();await page.getByLabel('Correo Electrónico',{exact:true}).waitFor();assert(page.url().endsWith('/login'));
+  const {context,page}=await setup({stored:true,me:'401'});await page.goto(base+'/participants');await page.getByRole('heading',{name:'Tu sesión ha finalizado'}).waitFor();assert.equal(await page.getByText('401',{exact:true}).count(),0);assert.equal(await page.evaluate(()=>localStorage.getItem('barcamp_token')),null);await page.getByRole('link',{name:'Volver a iniciar sesión'}).click();await page.getByLabel('Correo Electrónico',{exact:true}).waitFor();assert(page.url().endsWith('/login'));
   console.log('Scenario passed'); checks.push('Expired session 401, safe login action, no redirect loop');await context.close();
  }
  {

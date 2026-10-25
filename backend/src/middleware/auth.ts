@@ -78,6 +78,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
     if (error.name === 'TokenExpiredError') {
       return next(new UnauthorizedError('La sesión ha expirado. Inicie sesión nuevamente'));
     }
-    return next(new UnauthorizedError('Token de autenticación inválido'));
+    if (error.name === 'JsonWebTokenError' || error.name === 'NotBeforeError') return next(new UnauthorizedError('Token de autenticación inválido'));
+    return next(error); // Database/server failures must not invalidate a valid session.
   }
 }

@@ -25,6 +25,8 @@ export interface SearchAttendanceParams {
   limit?: number;
 }
 
+const uncertain = new Set<string>();
+const inFlight = new Map<string, Promise<any>>();
 export const attendanceService = {
   async getCounters(): Promise<AttendanceCounters> {
     const res = await api.get('/attendance/counters');
@@ -49,16 +51,32 @@ export const attendanceService = {
     registration: Registration;
     counters: AttendanceCounters;
   }> {
-    const res = await api.post('/attendance/check-in', { confirmed: true,
-      registrationId,
-      ...(tshirtSize ? { tshirtSize } : {}),
-      ...(tshirtDelivered !== undefined ? { tshirtDelivered } : {}),
-    });
-    return {
-      message: res.data.message,
-      registration: res.data.data,
-      counters: res.data.counters,
+    if (inFlight.has(registrationId)) return inFlight.get(registrationId)!;
+    const reconcile = async () => {
+      const fresh = (await api.get('/participants/' + registrationId)).data.data;
+      if (!fresh.attended) return null;
+      return { message: 'Asistencia confirmada en el servidor.', registration: fresh, counters: await attendanceService.getCounters() };
     };
+    const operation = (async () => {
+      if (uncertain.has(registrationId)) {
+        const persisted = await reconcile();
+        if (persisted) { uncertain.delete(registrationId); return persisted; }
+      }
+      try {
+        const res = await api.post('/attendance/check-in', { confirmed: true, registrationId, ...(tshirtSize ? { tshirtSize } : {}), ...(tshirtDelivered !== undefined ? { tshirtDelivered } : {}) });
+        uncertain.delete(registrationId);
+        return { message: res.data.message, registration: res.data.data, counters: res.data.counters };
+      } catch (error: any) {
+        if (!error.response || error.response.status >= 500) {
+          uncertain.add(registrationId);
+          try { const persisted = await reconcile(); if (persisted) { uncertain.delete(registrationId); return persisted; } } catch { /* Never retry the write blindly. */ }
+          throw new Error('Resultado de asistencia sin confirmar. Consulte el estado al recuperar la conexión antes de reintentar.');
+        }
+        throw error;
+      }
+    })().finally(() => { inFlight.delete(registrationId); });
+    inFlight.set(registrationId, operation);
+    return operation;
   },
 
   async revert(registrationId: string, reason: string): Promise<{
