@@ -3,30 +3,45 @@
   "waves": [
     {
       "operators": 5,
-      "elapsedMs": 723,
-      "p95WorkflowMs": 722,
+      "elapsedMs": 700,
+      "p95WorkflowMs": 687,
+      "expectedBusinessRejections": 5,
+      "saturationRejections": 0,
       "unexpectedErrors": 0,
       "duplicatesPrevented": 5,
       "delivered": 5,
+      "auditedSuccesses": 5,
+      "auditedRejections": 5,
+      "payments": 5,
       "rssMB": 187
     },
     {
       "operators": 10,
-      "elapsedMs": 1454,
-      "p95WorkflowMs": 1452,
+      "elapsedMs": 1246,
+      "p95WorkflowMs": 1232,
+      "expectedBusinessRejections": 10,
+      "saturationRejections": 0,
       "unexpectedErrors": 0,
       "duplicatesPrevented": 10,
       "delivered": 10,
-      "rssMB": 204
+      "auditedSuccesses": 10,
+      "auditedRejections": 10,
+      "payments": 10,
+      "rssMB": 203
     },
     {
       "operators": 20,
-      "elapsedMs": 2902,
-      "p95WorkflowMs": 2891,
+      "elapsedMs": 2497,
+      "p95WorkflowMs": 2469,
+      "expectedBusinessRejections": 20,
+      "saturationRejections": 0,
       "unexpectedErrors": 0,
       "duplicatesPrevented": 20,
       "delivered": 20,
-      "rssMB": 278
+      "auditedSuccesses": 20,
+      "auditedRejections": 20,
+      "payments": 20,
+      "rssMB": 270
     }
   ]
 }

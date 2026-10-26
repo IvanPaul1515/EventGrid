@@ -183,26 +183,57 @@ describe('manual official tariff and administrative courtesy', () => {
         operators.push({ token: jwt.sign({ id: user.id }, 'isolated-courtesy-test'), client });
       }
       const start = performance.now(), latencies: number[] = []; let duplicatePrevented=0;
+      const registrations: string[] = [], requests: string[] = [], incidents: string[] = [];
+      const observed = { expectedBusinessRejections: 0, saturationRejections: 0, unexpectedErrors: 0 };
+      const checkStatus = (response: any, expected: number) => {
+        if (response.status === 503) observed.saturationRejections++;
+        else if (response.status === expected && expected >= 400) observed.expectedBusinessRejections++;
+        else if (response.status !== expected) observed.unexpectedErrors++;
+        expect(response.status, JSON.stringify(response.body)).toBe(expected);
+      };
       try {
-        await Promise.all(operators.map(async ({token}, index) => {
+        const results = await Promise.allSettled(operators.map(async ({token}, index) => {
           const h = { Authorization: 'Bearer '+token, 'X-Event-Id': eventId };
           const started = performance.now(); expect((await request(app).get('/api/v1/attendance?search=Prueba').set(h)).status).toBe(200);
           const created = await request(app).post('/api/v1/participants').set(h).send(body({ amountPaid: 0 })); expect(created.status).toBe(201);
-          const id = created.body.data.id;
+          const id = created.body.data.id; registrations.push(id);
           expect((await request(app).post(`/api/v1/participants/${id}/payments`).set(h).send({ amount: 100, paymentMethodId: method.id })).status).toBe(201);
           const payload = { registrationId: id, confirmed: true, tshirtSize: size, tshirtDelivered: true };
-          const checked = await request(app).post('/api/v1/attendance/check-in').set(h).send(payload); expect(checked.status, JSON.stringify(checked.body)).toBe(200);
-          expect((await request(app).post('/api/v1/attendance/check-in').set(h).send(payload)).status).toBe(400); duplicatePrevented++;
+          const checked = await request(app).post('/api/v1/attendance/check-in').set(h).send(payload); checkStatus(checked,200);
+          checkStatus(await request(app).post('/api/v1/attendance/check-in').set(h).send(payload),400); duplicatePrevented++;
           const sent = await sendRequest('OPERATOR', { requestKey: crypto.randomUUID(), reason: 'Solicitud carga QA', registration: body() }, token); expect(sent.status).toBe(201);
+          requests.push(sent.body.data.id);
           expect((await decision('ADMIN', sent.body.data.id, index%2 ? 'REJECTED' : 'APPROVED')).status).toBe(200);
           const incident = await request(app).post('/api/v1/attendance/incidents').set(h).send({requestKey:crypto.randomUUID(),participantLabel:'Load QA '+index,category:'ADMIN',description:'Revisión controlada de recepción'}); expect(incident.status).toBe(201);
+          incidents.push(incident.body.data.id);
           expect((await request(app).patch('/api/v1/attendance/incidents/'+incident.body.data.id).set({Authorization:'Bearer '+tokens.ADMIN,'X-Event-Id':eventId}).send({status:'RESOLVED',resolution:'Caso QA resuelto'})).status).toBe(200);
           latencies.push(performance.now()-started);
         }));
+        const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+        expect(failures.map(result => String(result.reason))).toEqual([]);
         const inventory = await prisma.tshirtInventory.findUniqueOrThrow({ where: { eventId_size: { eventId, size } } }); expect(inventory.deliveredQuantity).toBe(count);
         expect(duplicatePrevented).toBe(count);
-        for (const {client} of operators) { expect(client.frames.some((frame: string) => frame.includes('courtesies'))).toBe(true); expect(client.frames.some((frame: string) => frame.includes('inventory'))).toBe(true); }
-        latencies.sort((a,b)=>a-b); waves.push({ operators: count, elapsedMs: Math.round(performance.now()-start), p95WorkflowMs: Math.round(latencies[Math.ceil(count*.95)-1]), unexpectedErrors: 0, duplicatesPrevented: duplicatePrevented, delivered: inventory.deliveredQuantity, rssMB: Math.round(process.memoryUsage().rss/1048576) });
+        expect(await prisma.registration.count({where:{id:{in:registrations},attended:true}})).toBe(count);
+        expect(await prisma.attendanceLog.count({where:{registrationId:{in:registrations},action:'CHECK_IN'}})).toBe(count);
+        expect(await prisma.payment.count({where:{registrationId:{in:registrations}}})).toBe(count);
+        expect(Number((await prisma.payment.aggregate({where:{registrationId:{in:registrations}},_sum:{amount:true}}))._sum.amount)).toBe(count*100);
+        const audits = await prisma.auditLog.findMany({where:{entityId:{in:registrations},action:'ATTENDANCE_CHECKIN'}});
+        expect(audits.filter(log=>JSON.parse(String(log.changes)).result==='SUCCESS')).toHaveLength(count);
+        expect(audits.filter(log=>JSON.parse(String(log.changes)).result==='REJECTED')).toHaveLength(count);
+        const decisions = await prisma.courtesyRequest.findMany({where:{id:{in:requests}},include:{registration:true}});
+        expect(decisions).toHaveLength(count);
+        for (const item of decisions) {
+          expect(item.pendingRegistrationId).toBeNull(); expect(item.decidedByUserId).toBe(ids.ADMIN);
+          expect(item.registration.isCourtesy).toBe(item.status==='APPROVED');
+          expect(Number(item.registration.ticketPrice)).toBe(item.status==='APPROVED'?0:2000);
+          expect(Number(item.registration.amountPaid)).toBe(0);
+          expect(Number(item.registration.balanceDue)).toBe(item.status==='APPROVED'?0:2000);
+          expect(item.registration.attended).toBe(false);
+          expect(await prisma.auditLog.count({where:{entityId:item.registrationId}})).toBeGreaterThanOrEqual(3);
+        }
+        expect(await prisma.receptionIncident.count({where:{id:{in:incidents},status:'RESOLVED'}})).toBe(count);
+        for (const {client} of operators) { for(const domain of ['courtesies','inventory','incidents']) expect(client.frames.some((frame: string) => frame.includes(domain))).toBe(true); }
+        latencies.sort((a,b)=>a-b); waves.push({ operators: count, elapsedMs: Math.round(performance.now()-start), p95WorkflowMs: Math.round(latencies[Math.ceil(count*.95)-1]), ...observed, duplicatesPrevented: duplicatePrevented, delivered: inventory.deliveredQuantity, auditedSuccesses: count, auditedRejections: count, payments: count, rssMB: Math.round(process.memoryUsage().rss/1048576) });
       } finally { for (const {client} of operators) RealtimeService.removeClient(eventId,client); }
     }
     const { writeFileSync } = await import('node:fs'); writeFileSync(new URL('../../docs/RECEPTION_COURTESY_LOAD_RESULTS.json', import.meta.url),JSON.stringify({ environment: 'Isolated temporary SQLite, in-process HTTP integration and SSE subscribers. Not production capacity.', waves },null,2)+'\n');
