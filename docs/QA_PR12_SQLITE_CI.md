@@ -44,3 +44,9 @@ En la ronda HTTP separada de 20, p95 por petición 314 ms (140 peticiones), cero
 Rama de corrección: codex/sqlite-ci-verification. El PR y SHA final se informan en la entrega junto con la ejecución real sobre Ubuntu. No declarar aprobada esta revisión hasta comprobar esa ejecución.
 PostgreSQL: validación estática disponible; motor, carga y restauración reales siguen pendientes de infraestructura aislada. SQLite temporal no garantiza capacidad de producción; persistencia y backup verificado siguen siendo requisitos antes de actualizar Render.
 Render permanece intencionalmente en 6688939, con autoDeploy desactivado. No desplegar, reiniciar, cambiar variables, activar SMTP ni modificar datos. Historiales, importes históricos, estilos, QR/PWA y reglas de cortesía no se modificaron en esta revisión.
+
+## Verificación real de esta revisión
+PR de corrección: https://github.com/IvanPaul1515/EventGrid/pull/13 . Commit de código/QA: 0d194249728c503d18c69df2ad2b14cd80752a30.
+Ejecución Ubuntu exitosa sobre ese commit: https://github.com/IvanPaul1515/EventGrid/actions/runs/40358896189 . Verificada por API y logs: npm ci, ambos builds, 81 pruebas aprobadas y una omitida, validación de los dos esquemas. La única omitida requiere el servidor Vite de prueba y navegador Chrome; se ejecutó localmente dentro de las 82 aprobadas, con SSE real.
+PWA del build final aprobada: 76 recursos públicos; API y uploads fuera de caché; actualización controlada y shell offline. Sin modificaciones del flujo ni de la interfaz.
+La revisión posterior de documentación no cambia el código probado. El commit final de integración se entrega con el PR; ambos quedan identificados en el historial Git. La sincronización local se hace mediante fast-forward, sin reset ni descarte de archivos.
