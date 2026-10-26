@@ -494,6 +494,11 @@ export class ImportService {
     // 1. Validar filas antes de escribir
     const validation = await this.validateRows(eventId, rows, columnMapping);
 
+    // Importing a spreadsheet is not administrative approval of a courtesy.
+    if (validation.rowsSummary.some(row => row.normalized?.isCourtesy)) {
+      throw new BadRequestError('Las cortesías requieren aprobación administrativa individual desde el registro manual o la ficha del participante.');
+    }
+
     // 2. Crear lote de importación (ImportBatch)
     const batch = await prisma.importBatch.create({
       data: {

@@ -49,7 +49,7 @@ export class ParticipantsController {
       const eventId = req.params.eventId || req.eventId!;
       const validated = CreateRegistrationSchema.parse(req.body);
 
-      const registration = await ParticipantsService.create(eventId, validated);
+      const registration = await ParticipantsService.create(eventId, validated, req.user!.id);
 
       await recordAuditLog({
         req,
@@ -92,7 +92,7 @@ export class ParticipantsController {
           result: 'SUCCESS',
           participantName: updated.participant?.fullName,
           ticketNumber: updated.registrationNumber,
-          current: validated,
+          current: (({ courtesyApproval, ...safe }) => safe)(validated),
           previous: (updated as any).previousValues,
         },
       });
