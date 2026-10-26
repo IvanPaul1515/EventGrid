@@ -97,6 +97,13 @@ const finalArgs = hasSchemaArg ? args : [...args, `--schema=${chosenSchema}`];
 
 console.log(`[prisma-detect] Entorno detectado. Usando esquema: ${chosenSchema}`);
 
+if (chosenSchema.includes('sqlite') && args[0] === 'db' && args[1] === 'push') {
+  const { PrismaClient } = await import('@prisma/client');
+  const { migrateReceptionMetadata } = await import('./reception-metadata-migration.js');
+  const db = new PrismaClient();
+  try { await migrateReceptionMetadata(db); } finally { await db.$disconnect(); }
+}
+
 const child = spawn(npxCmd, ['prisma', ...finalArgs], {
   cwd: backendRoot,
   stdio: 'inherit',

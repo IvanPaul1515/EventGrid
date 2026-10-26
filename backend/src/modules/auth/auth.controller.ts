@@ -1,3 +1,5 @@
+import { DeviceSessionService } from './device-session.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from './auth.service.js';
 import { LoginSchema, ChangePasswordSchema, UpdateProfileSchema } from './auth.dto.js';
@@ -56,7 +58,11 @@ export class AuthController {
     }
   }
 
-  static async logout(req: Request, res: Response) {
+  static async logout(req: Request, res: Response, next: NextFunction) {
+    try {
+      await DeviceSessionService.revoke(req.user!.sessionId!, req.user!.id);
+      RealtimeService.notifySession(req.user!.sessionId!);
+    } catch (error) { return next(error); }
     res.clearCookie('barcamp_token');
     return res.status(200).json({
       status: 'success',

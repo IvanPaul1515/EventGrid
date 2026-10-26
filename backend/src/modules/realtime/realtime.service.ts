@@ -12,11 +12,28 @@ export class RealtimeService {
   private static clients: Map<string, Set<Response>> = new Map();
   private static heartbeatInterval: NodeJS.Timeout | null = null;
   private static sequenceId = 0;
-  private static identities = new Map<Response, { userId: string; role: string; assignedEventId?: string | null; expiresAt?: number; sessionVersion?: number }>();
+  private static identities = new Map<Response, { userId: string; role: string; assignedEventId?: string | null; expiresAt?: number; sessionVersion?: number; sessionId?: string }>();
   static changed(eventId: string, domains: string[]) { this.emit(eventId, { type: 'DATA_CHANGED', data: { domains } }); }
   static notifyAccess(userId: string) {
     for (const [response, identity] of this.identities) if (identity.userId === userId) {
       try { response.write(`event: message\ndata: ${JSON.stringify({ type: 'ACCESS_CHANGED', timestamp: new Date().toISOString(), data: {} })}\n\n`); response.end(); } catch {}
+      for (const [eventId] of this.clients) this.removeClient(eventId, response);
+    }
+  }
+
+  static targetSessions(eventId: string, sessionIds: string[], event: { type: 'SCANNER_CHANGED'; data: { linkId: string } }) {
+    // Never route participant data through an edition-wide event.
+    for (const response of this.clients.get(eventId) || []) {
+      const identity = this.identities.get(response);
+      if (!identity?.sessionId || !sessionIds.includes(identity.sessionId)) continue;
+      try { response.write(`id: ${++this.sequenceId}\nevent: message\ndata: ${JSON.stringify({ ...event, eventId })}\n\n`); }
+      catch { this.removeClient(eventId, response); }
+    }
+  }
+
+  static notifySession(sessionId: string) {
+    for (const [response, identity] of this.identities) if (identity.sessionId === sessionId) {
+      try { response.write(`event: message\ndata: ${JSON.stringify({ type: 'ACCESS_CHANGED', data: {} })}\n\n`); response.end(); } catch {}
       for (const [eventId] of this.clients) this.removeClient(eventId, response);
     }
   }
@@ -32,7 +49,7 @@ export class RealtimeService {
     }
   }
 
-  static addClient(eventId: string, res: Response, identity?: { userId: string; role: string; assignedEventId?: string | null; expiresAt?: number; sessionVersion?: number }) {
+  static addClient(eventId: string, res: Response, identity?: { userId: string; role: string; assignedEventId?: string | null; expiresAt?: number; sessionVersion?: number; sessionId?: string }) {
     this.init();
     if (identity) this.identities.set(res, identity);
     if (!this.clients.has(eventId)) {
@@ -100,7 +117,9 @@ export class RealtimeService {
     try {
       const identities = [...this.identities.values()];
       const users = await prisma.user.findMany({ where: { id: { in: [...new Set(identities.map(identity => identity.userId))] } }, select: { id: true, role: true, assignedEventId: true, isActive: true, accountStatus: true, sessionVersion: true } });
+      const sessions = await prisma.authSession.findMany({ where: { id: { in: identities.flatMap(i => i.sessionId ? [i.sessionId] : []) } } });
       for (const identity of identities) {
+        if (identity.sessionId) { const session = sessions.find(s => s.id === identity.sessionId); if (!session || session.revokedAt || session.expiresAt.getTime() <= Date.now()) { this.notifySession(identity.sessionId); continue; } }
         const user = users.find(item => item.id === identity.userId);
         if (!user || !user.isActive || user.accountStatus === 'PENDING' || (identity.sessionVersion || 0) !== user.sessionVersion || user.role !== identity.role || user.assignedEventId !== identity.assignedEventId || (identity.expiresAt && Date.now() >= identity.expiresAt)) this.notifyAccess(identity.userId);
       }

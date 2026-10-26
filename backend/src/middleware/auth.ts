@@ -1,3 +1,4 @@
+import { DeviceSessionService } from '../modules/auth/device-session.service.js';
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { ENV } from '../config/env.js';
@@ -11,6 +12,7 @@ export interface AuthUser {
   fullName: string;
   assignedEventId?: string | null;
   expiresAt?: number;
+  sessionId?: string;
   sessionVersion?: number;
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
 }
@@ -49,6 +51,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
 
     // Verificar firma del JWT
     const decoded = jwt.verify(token, ENV.JWT_SECRET) as {
+      sid?: string;
       id: string;
       exp?: number;
       sessionVersion?: number;
@@ -67,14 +70,16 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       return next(new UnauthorizedError('Usuario inactivo o no encontrado'));
     }
 
+    const session = await DeviceSessionService.validate(token, decoded, user);
     req.user = {
+      sessionId: session.id,
       id: user.id,
       email: user.email,
       fullName: user.fullName,
       role: user.role as any,
       assignedEventId: user.assignedEventId,
       sessionVersion: user.sessionVersion,
-      expiresAt: decoded.exp ? decoded.exp * 1000 : undefined,
+      expiresAt: session.expiresAt,
     };
 
     await enforceEditionAccess(req, res, next);
