@@ -604,7 +604,7 @@ export const CommunicationsPage: React.FC = () => {
             <span>Comunicaciones y Mensajería</span>
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {isAdmin ? 'Gestione el envío de entradas digitales, recordatorios y comunicados masivos auditados.' : 'Entrada digital individual autorizada. Puede consultar únicamente el historial de sus propios envíos.'}
+            {isAdmin ? 'Gestione el envío de entradas digitales, recordatorios y comunicados masivos auditados.' : 'Entrada digital autorizada y seguimiento de su edición. «Mis envíos» muestra únicamente sus operaciones.'}
           </p>
         </div>
 
@@ -652,77 +652,16 @@ export const CommunicationsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Pestañas Principales */}
-      <div role="tablist" aria-label="Seguimiento de comunicaciones" className="flex gap-2">{(['summary','participants'] as const).map(tab=><button key={tab} type="button" role="tab" aria-selected={activeTab===tab} onClick={()=>setActiveTab(tab)} className={`px-4 py-2 rounded-lg border border-border ${activeTab===tab?'bg-primary text-white':'bg-card'}`}>{tab==='summary'?'Resumen':'Participantes'}</button>)}</div>
+      {/* Todas las pestañas preceden al contenido, también en pantallas pequeñas. */}
+      <div role="tablist" aria-label="Comunicaciones" className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-card border border-border">
+        {([
+          ['summary','Resumen'],['participants','Participantes'],['templates','Plantillas'],
+          ...(isAdmin?[['compose','Enviar comunicación'],['bulk','Envíos masivos'],['batches','Cola de lotes']]:[]),
+          ['logs',isAdmin?'Historial y seguimiento':'Mis envíos'],
+        ] as Array<[typeof activeTab,string]>).map(([tab,label])=><button key={tab} type="button" role="tab" aria-selected={activeTab===tab} onClick={()=>{setActiveTab(tab);if(tab==='batches')void loadBatchJobs();}} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeTab===tab?'bg-primary text-white shadow-sm':'text-muted-foreground hover:text-foreground hover:bg-muted'}`}>{label}</button>)}
+      </div>
       {activeTab==='summary'&&<CommunicationOverview/>}
       {activeTab==='participants'&&<CommunicationParticipants initialTemplate={contextTemplate}/>}
-
-      <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-card border border-border">
-        {isAdmin && <button
-          onClick={() => setActiveTab('compose')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
-            activeTab === 'compose'
-              ? 'bg-primary text-white shadow-sm'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-          }`}
-        >
-          <Send className="w-3.5 h-3.5" />
-          <span>Enviar comunicación</span>
-        </button>}
-
-        <button
-          onClick={() => setActiveTab('templates')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
-            activeTab === 'templates'
-              ? 'bg-primary text-white shadow-sm'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-          }`}
-        >
-          <FileText className="w-3.5 h-3.5" />
-          <span>Plantillas Oficiales</span>
-        </button>
-
-        {isAdmin && <button
-          onClick={() => setActiveTab('bulk')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
-            activeTab === 'bulk'
-              ? 'bg-primary text-white shadow-sm'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-          }`}
-        >
-          <Users className="w-3.5 h-3.5" />
-          <span>Envíos Masivos</span>
-        </button>}
-
-        {isAdmin && <button
-          onClick={() => {
-            setActiveTab('batches');
-            loadBatchJobs();
-          }}
-          className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
-            activeTab === 'batches'
-              ? 'bg-primary text-white shadow-sm'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-          }`}
-        >
-          <Layers className="w-3.5 h-3.5" />
-          <span>Cola de Lotes</span>
-        </button>}
-
-        <button
-          onClick={() => {
-            setActiveTab('logs');
-          }}
-          className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
-            activeTab === 'logs'
-              ? 'bg-primary text-white shadow-sm'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-          }`}
-        >
-          <History className="w-3.5 h-3.5" />
-          <span>{isAdmin ? 'Historial y Seguimiento' : 'Mis envíos'}</span>
-        </button>
-      </div>
 
       {/* ========================================================
           PESTAÑA 1: REDACTAR Y ENVIAR (INDIVIDUAL)
