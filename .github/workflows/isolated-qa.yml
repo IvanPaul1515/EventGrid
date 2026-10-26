@@ -1,0 +1,27 @@
+name: Isolated EventGrid QA
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  safe-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: file:./ci-client-generation-only.db
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - run: npm run build --prefix backend
+      - run: npm run build --prefix frontend
+      - run: npm test --prefix backend
+      - run: npm run prisma:validate:all --prefix backend

@@ -1,3 +1,5 @@
+import { writeTransaction } from '../../utils/writeTransaction.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../../config/db.js';
@@ -35,6 +37,7 @@ export class AuthService {
       email: user.email,
       fullName: user.fullName,
       role: user.role,
+      sessionVersion: user.sessionVersion,
     };
 
     const token = jwt.sign(payload, ENV.JWT_SECRET, {
@@ -91,10 +94,11 @@ export class AuthService {
     }
 
     const newHash = await bcrypt.hash(newPass, 10);
-    await prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash: newHash },
+    await writeTransaction(async tx=>{
+      await tx.user.update({where:{id:userId},data:{passwordHash:newHash,sessionVersion:{increment:1}}});
+      await tx.passwordReset.updateMany({where:{userId,usedAt:null,revokedAt:null},data:{revokedAt:new Date()}});
     });
+    RealtimeService.notifyAccess(userId);
 
     return { message: 'Contraseña actualizada correctamente' };
   }

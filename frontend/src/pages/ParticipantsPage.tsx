@@ -1,3 +1,4 @@
+import { CourtesyRequestsPanel } from '../components/participants/CourtesyRequestsPanel';
 import { MobileSearchInput } from '../components/common/MobileSearchInput';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { failureKind, failureCopy } from '../utils/appError';
@@ -367,6 +368,7 @@ export const ParticipantsPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <CourtesyRequestsPanel />
       {/* Encabezado y Acciones Principales */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

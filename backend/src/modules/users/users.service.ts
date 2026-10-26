@@ -1,3 +1,4 @@
+import { updateUserSafely } from './userSafety.js';
 import { InvitationsService } from './invitations.service.js';
 import crypto from 'crypto';
 import { prisma } from '../../config/db.js';
@@ -164,125 +165,16 @@ export class UsersService {
    * Actualizar datos básicos o rol de un usuario
    */
   static async updateUser(id: string, input: UpdateUserInput, actorUserId?: string) {
-    const user = await prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!user) {
-      throw new NotFoundError('Usuario no encontrado');
-    }
-
-    // Protección del último administrador activo
-    if (user.role === 'ADMIN' && (input.role && input.role !== 'ADMIN' || input.isActive === false)) {
-      const activeAdminCount = await prisma.user.count({
-        where: { role: 'ADMIN', isActive: true },
-      });
-
-      if (activeAdminCount <= 1) {
-        throw new BadRequestError('Acción bloqueada: No se puede demotar ni desactivar al último administrador activo del sistema.');
-      }
-    }
-
-    await this.validateAssignment(input.assignedEventId);
-    const finalRole = input.role || user.role;
-    const finalAssignment = input.assignedEventId !== undefined ? input.assignedEventId : user.assignedEventId;
-    if (finalRole === 'ADMIN' && !finalAssignment && !(user.role === 'ADMIN' && !user.assignedEventId)) throw new BadRequestError('Los nuevos administradores necesitan una edición asignada.');
-    if (input.isActive === true && user.accountStatus === 'PENDING') throw new BadRequestError('La cuenta pendiente requiere activación mediante su enlace privado.');
-    const data: any = {};
-    if (input.assignedEventId !== undefined) data.assignedEventId = input.assignedEventId;
-    if (input.staffArea !== undefined) data.staffArea = input.staffArea;
-    if (input.fullName !== undefined) data.fullName = input.fullName;
-    if (input.role !== undefined) data.role = input.role;
-    if (input.isActive !== undefined) data.isActive = input.isActive;
-
-    const updated = await prisma.user.update({
-      where: { id },
-      data,
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        assignedEventId: true,
-        accountStatus: true,
-        staffArea: true,
-        isActive: true,
-        lastLoginAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    // Auditoría
-    await prisma.auditLog.create({
-      data: {
-        userId: actorUserId || null,
-        action: 'USER_UPDATE',
-        entity: 'USER',
-        entityId: id,
-        changes: JSON.stringify(input),
-      },
-    }).catch(() => {});
-
-    return updated;
+    return updateUserSafely(id, input, actorUserId, 'UPDATE');
   }
 
   /**
    * Alternar estado activo / inactivo de una cuenta
    */
   static async toggleUserStatus(id: string, actorUserId?: string) {
-    const user = await prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!user) {
-      throw new NotFoundError('Usuario no encontrado');
-    }
-
-    const targetStatus = !user.isActive;
-    if (targetStatus && user.accountStatus === 'PENDING') throw new BadRequestError('La cuenta se activa únicamente cuando el destinatario establece su contraseña mediante la invitación.');
-
-    // Si se va a desactivar un administrador, verificar que no sea el último activo
-    if (!targetStatus && user.role === 'ADMIN') {
-      const activeAdminCount = await prisma.user.count({
-        where: { role: 'ADMIN', isActive: true },
-      });
-
-      if (activeAdminCount <= 1) {
-        throw new BadRequestError('Acción bloqueada: No se puede desactivar al último administrador activo del sistema.');
-      }
-    }
-
-    const updated = await prisma.user.update({
-      where: { id },
-      data: { isActive: targetStatus },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        assignedEventId: true,
-        accountStatus: true,
-        staffArea: true,
-        isActive: true,
-        lastLoginAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    // Auditoría
-    await prisma.auditLog.create({
-      data: {
-        userId: actorUserId || null,
-        action: 'USER_TOGGLE_STATUS',
-        entity: 'USER',
-        entityId: id,
-        changes: JSON.stringify({ previousStatus: user.isActive, newStatus: targetStatus }),
-      },
-    }).catch(() => {});
-
-    return updated;
+    const user = await prisma.user.findUnique({where:{id}});
+    if (!user) throw new NotFoundError('Usuario no encontrado');
+    return updateUserSafely(id, {isActive:!user.isActive}, actorUserId, user.isActive?'DEACTIVATE':'REACTIVATE');
   }
 
   /**
@@ -300,55 +192,8 @@ export class UsersService {
    * Eliminar cuenta de usuario
    */
   static async deleteUser(id: string, actorUserId?: string) {
-    if (id === actorUserId) {
-      throw new BadRequestError('No puedes eliminar tu propia cuenta de usuario conectada actualmente.');
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!user) {
-      throw new NotFoundError('Usuario no encontrado');
-    }
-
-    if (user.role === 'ADMIN') {
-      const activeAdminCount = await prisma.user.count({
-        where: { role: 'ADMIN', isActive: true },
-      });
-
-      if (activeAdminCount <= 1) {
-        throw new BadRequestError('Acción bloqueada: No se puede eliminar al último administrador activo del sistema.');
-      }
-    }
-
-    try {
-      await prisma.user.delete({
-        where: { id },
-      });
-    } catch (e: any) {
-      // Si existen registros vinculados por clave foránea (auditoría, asistencias, etc.), desactivar en lugar de borrar
-      await prisma.user.update({
-        where: { id },
-        data: { isActive: false },
-      });
-
-      return {
-        message: 'El usuario tiene registros históricos vinculados. La cuenta fue desactivada de forma segura para preservar la integridad referencial.',
-      };
-    }
-
-    // Auditoría
-    await prisma.auditLog.create({
-      data: {
-        userId: actorUserId || null,
-        action: 'USER_DELETE',
-        entity: 'USER',
-        entityId: id,
-        changes: JSON.stringify({ email: user.email, fullName: user.fullName }),
-      },
-    }).catch(() => {});
-
-    return { message: 'Usuario eliminado exitosamente' };
+    if (id === actorUserId) throw new BadRequestError('No puedes desactivar tu propia cuenta conectada.');
+    const user=await updateUserSafely(id,{isActive:false},actorUserId,'DEACTIVATE');
+    return {user,message:'Usuario desactivado. Su identidad e historial se conservan.'};
   }
 }

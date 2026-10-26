@@ -92,7 +92,7 @@ export class ParticipantsController {
           result: 'SUCCESS',
           participantName: updated.participant?.fullName,
           ticketNumber: updated.registrationNumber,
-          current: (({ courtesyApproval, ...safe }) => safe)(validated),
+          current: validated,
           previous: (updated as any).previousValues,
         },
       });

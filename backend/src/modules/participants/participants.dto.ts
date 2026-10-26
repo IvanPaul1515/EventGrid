@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-const CourtesyApprovalSchema = z.object({ email: z.string().email().max(254), password: z.string().min(1).max(256) });
-
 export const CreateRegistrationSchema = z.object({
   firstName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
   lastName: z.string().min(2, 'El apellido debe tener al menos 2 caracteres'),
@@ -18,7 +16,6 @@ export const CreateRegistrationSchema = z.object({
   totalAmount: z.number().finite().min(0, 'El monto no puede ser negativo').default(0),
   isVerified: z.boolean().default(false),
   isCourtesy: z.boolean().default(false),
-  courtesyApproval: CourtesyApprovalSchema.optional(),
   courtesyAuthorizedBy: z.string().optional().nullable(),
   courtesyReason: z.string().optional().nullable(),
   isDemo: z.boolean().default(false),
@@ -60,7 +57,6 @@ export const OnsiteSaleSchema = z.object({
   amountReceived: z.number().finite().min(0, 'El monto recibido no puede ser negativo').default(0),
   amountPaid: z.number().finite().min(0, 'El monto a abonar no puede ser negativo').optional(),
   notes: z.string().optional().nullable(),
-  courtesyApproval: CourtesyApprovalSchema.optional(),
   courtesyAuthorizedBy: z.string().optional().nullable(),
   courtesyReason: z.string().optional().nullable(),
 });

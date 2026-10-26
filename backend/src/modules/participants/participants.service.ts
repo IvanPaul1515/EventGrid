@@ -1,3 +1,4 @@
+import { recordCourtesyRequest } from './courtesy.policy.js';
 import { officialTicket, authorizeCourtesy, auditCourtesy } from './registrationPolicy.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
 import { CommunicationsService } from '../communications/communications.service.js';
@@ -330,11 +331,15 @@ export class ParticipantsService {
   /**
    * Crear nueva inscripción en la edición activa
    */
-  static async create(eventId: string, input: CreateRegistrationInput, actorId?: string) {
+  static async create(eventId: string, input: CreateRegistrationInput, actorId?: string, request?: { key: string; reason: string }) {
     if ((input.status as string) === 'ATTENDED') throw new BadRequestError('La asistencia solo puede confirmarse mediante check-in autorizado.');
     const reservedNumber = input.registrationNumber?.trim() || await ParticipantsService.getNextRegistrationNumber(eventId);
     return writeTransaction(async tx => {
     const prisma = tx;
+    if (request && actorId) {
+      const previous = await tx.courtesyRequest.findUnique({ where: { eventId_requestedByUserId_requestKey: { eventId, requestedByUserId: actorId, requestKey: request.key } } });
+      if (previous) return tx.registration.findUniqueOrThrow({ where: { id: previous.registrationId }, include: { participant: true, ticketType: true, paymentMethod: true, salesResponsible: true } });
+    }
     if ((input.status as string) === 'ATTENDED' || ['attended', 'attendedAt', 'attendedByUserId'].some(key => Object.prototype.hasOwnProperty.call(input, key))) throw new BadRequestError('La asistencia solo puede confirmarse mediante check-in autorizado.');
     const event = await prisma.event.findUnique({
       where: { id: eventId },
@@ -357,7 +362,7 @@ export class ParticipantsService {
     let isCourtesy = input.isCourtesy || false;
     let paymentMethodId = input.paymentMethodId || null;
 
-    if (ticketType && (Number(ticketType.price) === 0 || ticketType.name.toLowerCase().includes('cortes'))) {
+    if (ticketType && (Number(ticketType.price) === 0)) {
       isCourtesy = true;
     }
 
@@ -369,9 +374,9 @@ export class ParticipantsService {
       }
     }
 
-    const approval = isCourtesy ? await authorizeCourtesy(tx, eventId, actorId, input.courtesyReason, input.courtesyApproval) : null;
+    const approval = isCourtesy ? await authorizeCourtesy(tx, eventId, actorId, input.courtesyReason) : null;
     if (!isCourtesy) {
-      ticketType = officialTicket(event.ticketTypes) || null;
+      ticketType = officialTicket(event.ticketTypes, event.defaultTicketTypeId) || null;
       if (!ticketType) throw new BadRequestError('Configure una tarifa oficial activa antes de registrar participantes.');
     }
     // Regla de cortesía: forma de pago y responsable no aplican (null)
@@ -521,18 +526,24 @@ export class ParticipantsService {
     });
 
     // Si hubo pago inicial, registrar en libro contable de pagos
-    if (amountPaid > 0 && paymentMethodId) {
+    if (amountPaid > 0) {
       await prisma.payment.create({
         data: {
           registrationId: registration.id,
           amount: amountPaid,
           paymentMethodId,
           notes: 'Pago inicial de inscripción manual',
+          receivedByUserId: actorId || null,
         },
       });
     }
 
 
+    if (request && actorId) {
+      const changes = { createdByUserId: actorId, action: 'CREATE_PENDING_COURTESY_REGISTRATION' };
+      await tx.auditLog.create({ data: { userId: actorId, action: 'CREATE', entity: 'REGISTRATION', entityId: registration.id, changes: (process.env.DATABASE_URL?.startsWith('file:') ? JSON.stringify(changes) : changes) as any } });
+      await recordCourtesyRequest(tx, eventId, registration, actorId, request.reason, request.key);
+    }
     if (approval) await auditCourtesy(tx, eventId, registration.id, actorId, approval, true);
     return registration;
 
@@ -626,7 +637,7 @@ export class ParticipantsService {
     if (ticketTypeId) {
       ticketType = existing.event.ticketTypes.find((t) => t.id === ticketTypeId);
       if (!ticketType) throw new BadRequestError('Tarifa fuera de la edición activa.');
-      if (ticketType && (Number(ticketType.price) === 0 || ticketType.name.toLowerCase().includes('cortes'))) {
+      if (ticketType && (Number(ticketType.price) === 0)) {
         isCourtesy = true;
       }
     }
@@ -642,7 +653,7 @@ export class ParticipantsService {
     const courtesyChanged = isCourtesy && (!existing.isCourtesy ||
       (input.courtesyReason !== undefined && input.courtesyReason !== existing.courtesyReason) ||
       (input.courtesyAuthorizedBy !== undefined && input.courtesyAuthorizedBy !== existing.courtesyAuthorizedBy));
-    const approval = courtesyChanged ? await authorizeCourtesy(tx, eventId, userId, input.courtesyReason, input.courtesyApproval) : null;
+    const approval = courtesyChanged ? await authorizeCourtesy(tx, eventId, userId, input.courtesyReason) : null;
     // Si pasamos de cortesía a entrada normal pagada, restaurar el precio oficial de la tarifa
     let ticketPrice = existing.ticketPrice ? Number(existing.ticketPrice) : Number(existing.totalAmount);
     if (existing.isCourtesy && !isCourtesy) {
@@ -764,10 +775,9 @@ export class ParticipantsService {
 
     const isCourtesy =
       Number(ticketType.price) === 0 ||
-      ticketType.name.toLowerCase().includes('cortes') ||
       !!input.courtesyAuthorizedBy;
 
-    const approval = isCourtesy ? await authorizeCourtesy(tx, eventId, operatorUserId, input.courtesyReason, input.courtesyApproval) : null;
+    const approval = isCourtesy ? await authorizeCourtesy(tx, eventId, operatorUserId, input.courtesyReason) : null;
     const ticketPrice = isCourtesy ? 0 : Number(ticketType.price);
     const amountReceived = isCourtesy ? 0 : Number(input.amountReceived || 0);
     const amountPaid = isCourtesy
@@ -902,7 +912,7 @@ export class ParticipantsService {
 
     // 5. Registrar abono en el libro de pagos si amountPaid > 0
     let recordedPayment = null;
-    if (amountPaid > 0 && input.paymentMethodId) {
+    if (amountPaid > 0) {
       recordedPayment = await prisma.payment.create({
         data: {
           registrationId: registration.id,
@@ -1265,7 +1275,8 @@ export class ParticipantsService {
     const prefix = event.settings?.registrationPrefix || `BC${String(event.year).slice(-2)}-`;
     const startCount = await prisma.registration.count({ where: { eventId } });
 
-    const generalTicket = event.ticketTypes.find((t) => Number(t.price) > 0 && !t.name.toLowerCase().includes('preventa')) || event.ticketTypes[0];
+    const generalTicket = officialTicket(event.ticketTypes,event.defaultTicketTypeId);
+    if (!generalTicket) throw new BadRequestError('Configure la tarifa oficial de la edición antes de generar registros demo.');
     const presaleTicket = event.ticketTypes.find((t) => t.name.toLowerCase().includes('preventa')) || generalTicket;
     const courtesyTicket = event.ticketTypes.find((t) => Number(t.price) === 0) || null;
 

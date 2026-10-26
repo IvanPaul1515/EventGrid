@@ -51,6 +51,7 @@ export interface TicketType {
 }
 
 export interface EventEdition {
+  defaultTicketTypeId?: string | null;
   id: string;
   slug: string;
   name: string;

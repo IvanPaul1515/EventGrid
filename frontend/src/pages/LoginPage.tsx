@@ -184,6 +184,7 @@ export const LoginPage: React.FC = () => {
               )}
             </button>
           </form>
+              <a href="/forgot-password" className="block mt-3 text-center text-xs text-muted-foreground hover:text-primary">¿Olvidaste tu contraseña?</a>
 
           {/* Accesos habilitados explícitamente por el servidor de demostración. */}
           {demoError && <p role="alert" className="mt-4 text-xs text-muted-foreground">No pudimos consultar los accesos de demostración. <button type="button" className="underline" onClick={() => { void loadDemoAccess(); }}>Reintentar conexión</button></p>}

@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
       const context = await browser.newContext({ viewport: { width, height: 900 } });
       const page = await context.newPage(); page.setDefaultTimeout(15000);
       const user = { id: 'qa', role, fullName: 'QA '+role, email: 'qa@example.invalid' };
-      const event = { id: 'qa', name: 'QA edition', year: 2026, isDefault: true, status: 'ACTIVE', settings: {} };
+      const event = { id: 'qa', defaultTicketTypeId: 'general', name: 'QA edition', year: 2026, isDefault: true, status: 'ACTIVE', settings: {} };
       await page.addInitScript(u => { localStorage.setItem('barcamp_token', 'mock'); localStorage.setItem('barcamp_user', JSON.stringify(u)); }, user);
       let submitted;
       await page.route('**/api/**', async route => {
@@ -17,7 +17,7 @@ const assert = require('node:assert/strict');
         if (path.endsWith('/auth/me')) data = user;
         else if (path.endsWith('/events')) data = [event];
         else if (path.endsWith('/events/qa')) data = { ...event, ticketTypes: [{ id: 'general', name: 'Entrada General', price: 2000, isActive: true }, { id: 'preventa', name: 'Preventa', price: 1000, isActive: true }], paymentMethods: [], salesResponsibles: [] };
-        else if (path.endsWith('/participants') && req.method() === 'POST') {
+        else if ((path.endsWith('/participants') || path.endsWith('/courtesy-requests')) && req.method() === 'POST') {
           submitted = req.postDataJSON();
           return route.fulfill({ status: 400, json: { message: 'Respuesta QA controlada: no se escribió ningún dato.' } });
         }
@@ -35,24 +35,19 @@ const assert = require('node:assert/strict');
       await page.waitForFunction(() => document.querySelector('output[aria-label="Tarifa oficial"]')?.textContent === 'Tarifa oficial: RD$2,000.00');
       assert.equal(await dialog.locator('select[aria-label="Tarifa"]').count(), 0);
       assert.equal(await dialog.getByLabel('Precio de la tarifa').textContent(), '2,000.00');
-      await dialog.getByRole('checkbox', { name: 'Registrar como Entrada de Cortesía' }).click();
-      if (role === 'OPERATOR') {
-        const approval = page.getByRole('dialog', { name: 'Autorización administrativa' }); await approval.waitFor();
-        await approval.getByLabel('Correo del administrador').fill('admin@example.invalid');
-        await approval.getByLabel('Contraseña del administrador').fill('MockPassword!Only');
-        await approval.getByRole('button', { name: 'Confirmar autorización' }).click();
-      } else assert.equal(await page.getByRole('dialog', { name: 'Autorización administrativa' }).count(), 0);
-      assert.equal(await dialog.getByLabel('Precio de la tarifa').textContent(), '0.00');
+      await dialog.getByRole('checkbox', { name: role === 'OPERATOR' ? 'Solicitar cortesía' : 'Registrar como Entrada de Cortesía' }).click();
+      assert.equal(await dialog.locator('input[type="password"]').count(), 0);
+      assert.equal(await dialog.getByLabel('Precio de la tarifa').textContent(), role === 'ADMIN' ? '0.00' : '2,000.00');
       assert(await dialog.getByLabel('Monto pagado').isDisabled());
       const inputs = dialog.locator('input[type="text"]');
       await inputs.nth(0).fill('Prueba'); await inputs.nth(1).fill('QA');
       await dialog.locator('input[type="email"]').fill('qa@example.invalid');
       await dialog.locator('input[placeholder="ej. Ponente, Becado, Voluntario, Prensa"]').fill('Invitado QA');
-      await dialog.getByRole('button', { name: 'Registrar Participante', exact: true }).click();
+      await dialog.getByRole('button', { name: role === 'OPERATOR' ? 'Enviar solicitud de cortesía' : 'Registrar Participante', exact: true }).click();
       await page.getByText('Respuesta QA controlada: no se escribió ningún dato.', { exact: true }).waitFor();
-      assert.equal(submitted.isCourtesy, true); assert.equal(submitted.ticketPrice, 0); assert.equal(submitted.amountPaid, 0);
-      if (role === 'OPERATOR') assert.equal(submitted.courtesyApproval.email, 'admin@example.invalid');
-      else assert.equal(submitted.courtesyApproval, undefined);
+      if (role === 'OPERATOR') { assert.equal(submitted.registration.isCourtesy, false); assert.equal(submitted.registration.amountPaid, 0); assert.equal(submitted.reason, 'Invitado QA'); assert.equal(submitted.registration.ticketPrice, 2000); }
+      else { assert.equal(submitted.isCourtesy, true); assert.equal(submitted.ticketPrice, 0); }
+      assert.equal(submitted.courtesyApproval, undefined);
       assert.equal(await dialog.evaluate(el => el.scrollWidth > el.clientWidth), false);
       await context.close(); console.log(width+'px '+role+' PASS');
     }

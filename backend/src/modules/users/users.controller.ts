@@ -101,6 +101,7 @@ export class UsersController {
       return res.status(200).json({
         status: 'success',
         message: result.message,
+        data: result.user,
       });
     } catch (error) {
       next(error);

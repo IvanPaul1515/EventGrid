@@ -1,3 +1,4 @@
+import { writeTransaction } from '../../utils/writeTransaction.js';
 import { prisma } from '../../config/db.js';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors.js';
 import { InventoryService } from '../inventory/inventory.service.js';
@@ -262,7 +263,7 @@ export class EventsService {
     // Copiar Tipos de Entrada
     if (sourceEvent.ticketTypes && sourceEvent.ticketTypes.length > 0) {
       for (const tt of sourceEvent.ticketTypes) {
-        await prisma.ticketType.create({
+        const clonedTicket = await prisma.ticketType.create({
           data: {
             eventId: newEvent.id,
             name: tt.name,
@@ -271,6 +272,7 @@ export class EventsService {
             isActive: tt.isActive,
           },
         });
+        if (sourceEvent.defaultTicketTypeId===tt.id) await prisma.event.update({where:{id:newEvent.id},data:{defaultTicketTypeId:clonedTicket.id}});
       }
     }
 
@@ -386,11 +388,15 @@ export class EventsService {
       totalCapacity?: number | null;
     }
   ) {
+    return writeTransaction(async tx => {
+    const prisma = tx;
     const existing = await prisma.ticketType.findFirst({
       where: { id: ticketTypeId, eventId },
     });
     if (!existing) throw new NotFoundError('Tipo de entrada no encontrado en la edición activa');
 
+    const edition = await prisma.event.findUnique({where:{id:eventId},select:{defaultTicketTypeId:true}});
+    if (edition?.defaultTicketTypeId===ticketTypeId && (data.isActive===false || (data.price!==undefined && data.price<=0))) throw new BadRequestError('Seleccione otra tarifa oficial antes de desactivar o poner en cero la actual.');
     const updated = await prisma.ticketType.update({
       where: { id: ticketTypeId },
       data: {
@@ -406,6 +412,7 @@ export class EventsService {
 
     // QA-15: Precios historicos protegidos
     return updated;
+    });
   }
 
   static async uploadLogo(

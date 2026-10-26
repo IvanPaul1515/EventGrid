@@ -1,3 +1,4 @@
+import { officialTicket } from '../participants/registrationPolicy.js';
 import { prisma } from '../../config/db.js';
 import { BadRequestError, NotFoundError } from '../../utils/errors.js';
 import { ParticipantsService } from '../participants/participants.service.js';
@@ -495,9 +496,11 @@ export class ImportService {
     const validation = await this.validateRows(eventId, rows, columnMapping);
 
     // Importing a spreadsheet is not administrative approval of a courtesy.
-    if (validation.rowsSummary.some(row => row.normalized?.isCourtesy)) {
+    if (validation.rowsSummary.some(row => row.status !== 'ERROR' && (row.normalized?.isCourtesy || (row.normalized?.ticketType && event.ticketTypes.some(t => t.name.toLowerCase().includes(String(row.normalized.ticketType).trim().toLowerCase()) && Number(t.price)<=0))))) {
       throw new BadRequestError('Las cortesías requieren aprobación administrativa individual desde el registro manual o la ficha del participante.');
     }
+
+    if (!officialTicket(event.ticketTypes,event.defaultTicketTypeId) && validation.rowsSummary.some(row => row.status!=='ERROR' && !row.normalized?.ticketType && !(Number(row.normalized?.ticketPrice)>0))) throw new BadRequestError('Configure una tarifa oficial o especifique el precio histórico válido antes de importar.');
 
     // 2. Crear lote de importación (ImportBatch)
     const batch = await prisma.importBatch.create({
@@ -711,7 +714,7 @@ export class ImportService {
           if (n.isCourtesy) {
             matchedTicketType = event.ticketTypes.find((t) => Number(t.price) === 0) || null;
           } else {
-            matchedTicketType = event.ticketTypes.find((t) => Number(t.price) > 0) || event.ticketTypes[0];
+            matchedTicketType = officialTicket(event.ticketTypes,event.defaultTicketTypeId) || null;
           }
         }
 

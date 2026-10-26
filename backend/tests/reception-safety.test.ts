@@ -29,3 +29,13 @@ describe('safe provider failures and sensitive action limits', () => {
     limiter({...req,user:{id:'different-actor'}},res,next);expect(next).toHaveBeenCalledTimes(3);
   });
 });
+
+it('captures incidence invalidation before Express restores a nested request path', async () => {
+  const {RealtimeService}=await import('../src/modules/realtime/realtime.service.js');
+  const {realtimeMutations}=await import('../src/modules/realtime/realtime.mutations.js');
+  const emit=vi.spyOn(RealtimeService,'changed').mockImplementation(()=>{});
+  let finished:()=>void=()=>{};
+  const req:any={method:'POST',path:'/attendance/incidents',headers:{},params:{},user:{id:'admin'},eventId:'event'};
+  const res:any={statusCode:201,json(){return this;},once(_name:string,callback:()=>void){finished=callback;}};
+  try{realtimeMutations(req,res,()=>{});res.json({data:{id:'incident'}});req.path='/';finished();expect(emit).toHaveBeenCalledWith('event',['incidents','operations']);}finally{emit.mockRestore();}
+});

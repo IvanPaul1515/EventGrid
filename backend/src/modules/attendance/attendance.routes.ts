@@ -1,3 +1,5 @@
+import incidentsRoutes from './incidents.routes.js';
+import operationsRoutes from './operations.routes.js';
 import { Router } from 'express';
 import { AttendanceController } from './attendance.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
@@ -8,6 +10,8 @@ const router = Router({ mergeParams: true });
 
 router.use(authenticateToken);
 router.use(editionContext);
+router.use('/operations', operationsRoutes);
+router.use('/incidents', incidentsRoutes);
 
 // Rutas de lectura y exportación (ADMIN, OPERATOR, VIEWER)
 router.get('/', requireAnyRole, AttendanceController.searchAndList);

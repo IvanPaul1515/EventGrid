@@ -55,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
   }, [mobileOpen, setMobileOpen]);
 
   const navItems = [
+    {to:'/reception',label:'Recepción rápida',icon:UserCheck,roles:['ADMIN','OPERATOR']},
     {
       to: '/',
       label: 'Dashboard',
@@ -256,8 +257,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
         </div>
 
         <div className="p-3 text-center border-t border-border shrink-0">
-          <p className="text-sm font-display font-bold tracking-wide text-foreground">EventGrid</p>
-          <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">Desarrollado por Iván Marcelino</p>
+          <p className="text-sm font-display font-bold tracking-wide text-foreground">{collapsed && !mobileOpen ? 'EG' : 'EVENTGRID'}</p>
+          <p className={`mt-1 text-[10px] leading-relaxed text-muted-foreground ${collapsed && !mobileOpen ? 'hidden' : ''}`}>Desarrollado por Iván Marcelino</p>
         </div>
       </aside>
     </>

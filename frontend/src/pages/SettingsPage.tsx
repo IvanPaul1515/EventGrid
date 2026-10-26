@@ -1,3 +1,4 @@
+import { api } from '../services/api';
 import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { resolveImageUrl } from '../utils/imageUrl';
 import React, { useState, useEffect, useRef } from 'react';
@@ -421,7 +422,7 @@ export const SettingsPage: React.FC = () => {
         await eventsService.updateTicketType(currentEvent.id, editingTicket.id, payload);
         showNotification(
           'success',
-          `Tarifa "${editingTicket.name}" actualizada a RD$ ${Number(editingTicket.price).toFixed(2)} y reflejada en los participantes.`
+          `Tarifa "${editingTicket.name}" actualizada a RD$ ${Number(editingTicket.price).toFixed(2)} para registros nuevos. Los importes históricos se conservan.`
         );
       } else {
         await eventsService.createTicketType(currentEvent.id, payload);
@@ -1153,10 +1154,12 @@ export const SettingsPage: React.FC = () => {
                         <span className="font-mono text-base font-black text-foreground block">
                           RD$ {Number(ticket.price).toFixed(2)}
                         </span>
-                        <span className="text-[10px] text-muted-foreground">Precio Oficial</span>
+                        <span className="text-[10px] text-muted-foreground">{currentEvent?.defaultTicketTypeId === ticket.id ? 'Tarifa oficial predeterminada' : 'Precio del boleto'}</span>
                       </div>
 
                       <div className="flex items-center gap-1.5">
+                        {ticket.isActive && Number(ticket.price)>0 && currentEvent?.defaultTicketTypeId!==ticket.id && <button type="button" className="p-2 text-xs border border-border rounded-lg" onClick={async()=>{try{await api.put(`/events/${currentEvent!.id}/default-ticket`,{ticketTypeId:ticket.id});window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));await refreshEditions();}catch(err:any){setFeedback({type:'error',message:err.response?.data?.message||'No se pudo seleccionar la tarifa.'});}}}>Establecer como tarifa oficial</button>}
+
                         <button
                           type="button"
                           onClick={() => handleToggleTicketActive(ticket)}

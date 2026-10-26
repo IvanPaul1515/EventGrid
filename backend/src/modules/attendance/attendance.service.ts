@@ -153,8 +153,10 @@ export class AttendanceService {
 
     const now = new Date();
 
+    if (await prisma.courtesyRequest.findUnique({ where: { pendingRegistrationId: registrationId } })) throw new BadRequestError('Pendiente de autorización de cortesía. Consulte el resultado antes de confirmar ingreso.');
+
     if (registration.status === 'CANCELLED') {
-      await prisma.auditLog.create({
+      await writeTransaction(tx => tx.auditLog.create({
         data: {
           userId: operatorUserId,
           action: 'ATTENDANCE_CHECKIN',
@@ -169,7 +171,7 @@ export class AttendanceService {
             attemptedAt: now.toISOString(),
           }),
         },
-      }).catch(() => {});
+      })).catch(() => {});
 
       throw new BadRequestError('No se puede registrar asistencia de una inscripción cancelada.');
     }
@@ -181,7 +183,7 @@ export class AttendanceService {
         : 'hora desconocida';
       const registrar = registration.attendedByUser?.fullName || 'otro operador';
 
-      await prisma.auditLog.create({
+      await writeTransaction(tx => tx.auditLog.create({
         data: {
           userId: operatorUserId,
           action: 'ATTENDANCE_CHECKIN',
@@ -196,7 +198,7 @@ export class AttendanceService {
             attemptedAt: now.toISOString(),
           }),
         },
-      }).catch(() => {});
+      })).catch(() => {});
 
       throw new BadRequestError(
         `ASISTENCIA YA REGISTRADA: ${registration.participant.fullName} ya ingresó al evento a las ${arrivedTime} (Registrado por: ${registrar}).`
@@ -207,6 +209,7 @@ export class AttendanceService {
 
     // QA-01, QA-02, QA-03: Ejecución atómica y condicional en transacción interactiva
     const updatedRegistration = await writeTransaction(async (tx) => {
+      if (await tx.courtesyRequest.findUnique({ where: { pendingRegistrationId: registrationId } })) throw new BadRequestError('Pendiente de autorización de cortesía.');
       let inventoryItem: any = null;
 
       if (shouldDeliver && validTshirtSize) {
