@@ -4,38 +4,38 @@
     {
       "operators": 5,
       "requests": 35,
-      "durationMs": 335,
-      "p50Ms": 30,
-      "p95Ms": 130,
-      "maxMs": 199,
+      "durationMs": 433,
+      "p50Ms": 44,
+      "p95Ms": 115,
+      "maxMs": 166,
       "errorCount": 0,
       "errorRate": 0,
       "failures": [],
-      "rssDeltaMiB": 16.8
+      "rssDeltaMiB": 17.6
     },
     {
       "operators": 10,
       "requests": 70,
-      "durationMs": 515,
-      "p50Ms": 56,
-      "p95Ms": 162,
-      "maxMs": 182,
+      "durationMs": 684,
+      "p50Ms": 55,
+      "p95Ms": 204,
+      "maxMs": 248,
       "errorCount": 0,
       "errorRate": 0,
       "failures": [],
-      "rssDeltaMiB": 5.3
+      "rssDeltaMiB": 24.5
     },
     {
       "operators": 20,
       "requests": 140,
-      "durationMs": 1178,
-      "p50Ms": 84,
-      "p95Ms": 389,
-      "maxMs": 552,
+      "durationMs": 1205,
+      "p50Ms": 105,
+      "p95Ms": 409,
+      "maxMs": 468,
       "errorCount": 0,
       "errorRate": 0,
       "failures": [],
-      "rssDeltaMiB": 12.2
+      "rssDeltaMiB": 17.8
     }
   ]
 }

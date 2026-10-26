@@ -3,7 +3,7 @@ const {chromium}=require(process.env.EVENTGRID_PLAYWRIGHT||'playwright');const a
 (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});try{
 for(const width of [320,390,412,844,1440]){
  const c=await b.newContext({viewport:{width,height:900},hasTouch:width<1024}),p=await c.newPage();p.setDefaultTimeout(15000);let checkins=0, uncertainRead=true;
- const event={id:'qa',name:'QA tariff 2030',year:2030,status:'ACTIVE',isDefault:true,settings:{tshirtSizesEnabled:true,tshirtSizes:['M','L']}},user={id:'qa-user',role:'ADMIN',email:'qa@example.invalid',fullName:'QA User'};
+ const event={id:'qa', defaultTicketTypeId: 'tariff',name:'QA tariff 2030',year:2030,status:'ACTIVE',isDefault:true,settings:{tshirtSizesEnabled:true,tshirtSizes:['M','L']}},user={id:'qa-user',role:'ADMIN',email:'qa@example.invalid',fullName:'QA User'};
  await p.addInitScript(user=>{localStorage.setItem('barcamp_token','mock');localStorage.setItem('barcamp_user',JSON.stringify(user));},user);
  await p.route('**/api/**',async r=>{const q=r.request(),path=new URL(q.url()).pathname;let data=[];
  if(path.endsWith('/stream'))return r.fulfill({contentType:'text/event-stream',body:': connected'+String.fromCharCode(10,10)});

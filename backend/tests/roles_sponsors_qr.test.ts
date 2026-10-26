@@ -48,6 +48,7 @@ beforeAll(async () => {
     tokens[role] = jwt.sign({ id: user.id }, 'isolated-functional-test-secret');
   }
   const ticket = await prisma.ticketType.create({ data: { eventId: event.id, name: 'General', price: 123 } });
+  await prisma.event.update({where:{id:event.id},data:{defaultTicketTypeId:ticket.id}});
   const participant = await prisma.participant.create({ data: { firstName: 'Fictitious', lastName: 'Participant', fullName: 'Fictitious Participant', email: 'test@example.invalid', documentId: 'isolated-test' } });
   registration = await prisma.registration.create({ data: {
     eventId: event.id, participantId: participant.id, registrationNumber: 'TEST-001', ticketTypeId: ticket.id,
@@ -57,8 +58,6 @@ beforeAll(async () => {
 }, 30000);
 afterAll(async () => {
   await prisma.$disconnect();
-  const { rmSync } = await import('node:fs');
-  rmSync(isolated.folder, { recursive: true, force: true });
   vi.unstubAllEnvs();
 });
 
@@ -489,10 +488,10 @@ describe('reception audit guards and financial history', () => {
     const operator=await prisma.user.findUniqueOrThrow({where:{email:'operador@barcamp.org.do'}});
     for(const [i,paid,status] of [[0,315,'PAID'],[1,100,'PARTIAL'],[2,400,'PAID']] as const) {
       const record=await ParticipantsService.create(event.id,{firstName:'Audit',lastName:'Financial'+i,email:'audit-finance'+i+'@example.invalid',ticketTypeId:ticket.id,amountPaid:paid,totalAmount:paid,isCourtesy:false,isVerified:true,isDemo:false,status:'CONFIRMED',paymentMethodId:method.id});
-      expect(Number(record.ticketPrice)).toBe(315);expect(Number(record.amountPaid)).toBe(paid);expect(record.paymentStatus).toBe(status);
+      expect(Number(record.ticketPrice)).toBe(123);expect(Number(record.amountPaid)).toBe(paid);expect(record.paymentStatus).toBe(status);
       await expect(ParticipantsService.update(event.id,record.id,{amountPaid:1})).rejects.toThrow(/históricos/);
     }
-    const courtesy=await ParticipantsService.create(event.id,{firstName:'Audit',lastName:'Courtesy',email:'audit-courtesy@example.invalid',isCourtesy:true,isVerified:true,isDemo:false,status:'CONFIRMED',amountPaid:999,totalAmount:999,paymentMethodId:method.id});
+    const courtesy=await ParticipantsService.create(event.id,{firstName:'Audit',lastName:'Courtesy',email:'audit-courtesy@example.invalid',isCourtesy:true,isVerified:true,isDemo:false,status:'CONFIRMED',amountPaid:999,totalAmount:999,paymentMethodId:method.id,courtesyReason:'Cortesía de prueba aprobada'},(await prisma.user.findFirstOrThrow({where:{role:'ADMIN'}})).id);
     expect(Number(courtesy.ticketPrice)).toBe(0);expect(Number(courtesy.amountPaid)).toBe(0);expect(courtesy.paymentMethodId).toBeNull();expect(courtesy.paymentStatus).toBe('COURTESY');
     await expect(ParticipantsService.update(other.id, 'missing', {ticketTypeId:ticket.id})).rejects.toThrow();
     const base=await prisma.registration.create({data:{eventId:event.id,participantId:(await prisma.participant.create({data:{firstName:'Atomic',lastName:'Payments',fullName:'Atomic Payments',email:'atomic-payments@example.invalid'}})).id,registrationNumber:'ATOMIC-PAY',ticketPrice:1000,amountPaid:0,totalAmount:0,balanceDue:1000}});
@@ -538,6 +537,7 @@ it('measures controlled 5, 10 and 20 operator reception waves without production
   const loadEvent=await prisma.event.create({data:{slug:'audit-load',name:'Isolated Load QA',year:2026,startDate:new Date(),endDate:new Date(),settings:{create:{tshirtSizesEnabled:true,tshirtSizes:JSON.stringify(['LOAD'])}}}});
   const method=await prisma.paymentMethod.create({data:{eventId:loadEvent.id,name:'Mock load payment'}});
   const ticket=await prisma.ticketType.create({data:{eventId:loadEvent.id,name:'Load tariff',price:100}});
+  await prisma.event.update({where:{id:loadEvent.id},data:{defaultTicketTypeId:ticket.id}});
   await prisma.tshirtInventory.create({data:{eventId:loadEvent.id,size:'LOAD',initialQuantity:100}});
   const server=await new Promise<any>(resolve=>{const instance=app.listen(0,'127.0.0.1',()=>resolve(instance));});
   const url='http://127.0.0.1:'+server.address().port+'/api/v1';
@@ -575,7 +575,7 @@ it('measures controlled 5, 10 and 20 operator reception waves without production
       waves.push({operators:size,requests:latencies.length,durationMs:Math.round(performance.now()-began),p50Ms:Math.round(latencies[Math.floor(latencies.length*.5)]),p95Ms:Math.round(latencies[Math.floor(latencies.length*.95)]),maxMs:Math.round(latencies.at(-1)!),errorCount:failures.length,errorRate:Number((failures.length/latencies.length).toFixed(4)),failures,rssDeltaMiB:Number(((process.memoryUsage().rss-rssBefore)/1048576).toFixed(1))});
     }
     console.log(JSON.stringify({isolatedReceptionLoad:waves},null,2));
-    await fs.writeFile(path.resolve('docs/RECEPTION_LOAD_RESULTS.json'),JSON.stringify({environment:'Local Windows, Node '+process.version+', SQLite temporary database, real loopback HTTP, one wave per concurrency level. Not a Render or PostgreSQL capacity certification.',waves},null,2)+'\n');
+    await fs.writeFile(fileURLToPath(new URL('../../docs/RECEPTION_LOAD_RESULTS.json',import.meta.url)),JSON.stringify({environment:'Local Windows, Node '+process.version+', SQLite temporary database, real loopback HTTP, one wave per concurrency level. Not a Render or PostgreSQL capacity certification.',waves},null,2)+'\n');
   } finally {await new Promise<void>(resolve=>server.close(()=>resolve()));}
 },120000);
 

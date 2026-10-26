@@ -1,0 +1,32 @@
+{
+  "environment": "Isolated temporary SQLite, in-process HTTP integration and SSE subscribers. Not production capacity.",
+  "waves": [
+    {
+      "operators": 5,
+      "elapsedMs": 734,
+      "p95WorkflowMs": 732,
+      "unexpectedErrors": 0,
+      "duplicatesPrevented": 5,
+      "delivered": 5,
+      "rssMB": 196
+    },
+    {
+      "operators": 10,
+      "elapsedMs": 1585,
+      "p95WorkflowMs": 1583,
+      "unexpectedErrors": 0,
+      "duplicatesPrevented": 10,
+      "delivered": 10,
+      "rssMB": 212
+    },
+    {
+      "operators": 20,
+      "elapsedMs": 8154,
+      "p95WorkflowMs": 8143,
+      "unexpectedErrors": 0,
+      "duplicatesPrevented": 20,
+      "delivered": 20,
+      "rssMB": 274
+    }
+  ]
+}
