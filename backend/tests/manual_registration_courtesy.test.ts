@@ -172,7 +172,8 @@ describe('manual official tariff and administrative courtesy', () => {
   it('runs controlled 5/10/20 operator waves with payments, courtesy decisions, shirts and SSE', async () => {
     const { EventEmitter } = await import('node:events'); const waves: any[] = [];
     const method = await prisma.paymentMethod.create({ data: { eventId, name: 'Load QA Cash' } });
-    await prisma.eventSettings.create({ data: { eventId, tshirtSizesEnabled: true, tshirtSizes: JSON.stringify(['M5','M10','M20']) } });
+    const sizes = JSON.stringify(['M5','M10','M20']);
+    await prisma.eventSettings.upsert({ where: { eventId }, create: { eventId, tshirtSizesEnabled: true, tshirtSizes: sizes }, update: { tshirtSizes: sizes } });
     for (const count of [5,10,20]) {
       const size = 'M'+count; await prisma.tshirtInventory.create({ data: { eventId, size, initialQuantity: count } });
       const operators = [];
@@ -240,7 +241,8 @@ describe('manual official tariff and administrative courtesy', () => {
   },120000);
 
   it('protects the last shirt across two registrations and permits a single later delivery', async () => {
-    await prisma.eventSettings.update({ where: { eventId }, data: { tshirtSizes: JSON.stringify(['M5','M10','M20','LAST']) } });
+    const sizes = JSON.stringify(['M5','M10','M20','LAST']);
+    await prisma.eventSettings.upsert({ where: { eventId }, create: { eventId, tshirtSizesEnabled: true, tshirtSizes: sizes }, update: { tshirtSizes: sizes } });
     await prisma.tshirtInventory.create({ data: { eventId, size: 'LAST', initialQuantity: 1 } });
     const records = await Promise.all([post('ADMIN',body({ amountPaid: 0 })),post('ADMIN',body({ amountPaid: 0 }))]);
     const h = { Authorization:'Bearer '+tokens.OPERATOR, 'X-Event-Id':eventId };
