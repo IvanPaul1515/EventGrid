@@ -74,12 +74,13 @@ export const importService = {
     return res.data.data;
   },
 
-  async validate(fileName: string, sheetName: string, rows: any[], columnMapping: Record<string, string>): Promise<ValidationResult> {
+  async validate(fileName: string, sheetName: string, rows: any[], columnMapping: Record<string, string>, batchDefaults: Record<string, string> = {}): Promise<ValidationResult> {
     const res = await api.post('/import/validate', {
       fileName,
       sheetName,
       rows,
       columnMapping,
+      batchDefaults,
     });
     return res.data.data;
   },
@@ -90,7 +91,8 @@ export const importService = {
     sheetName: string,
     rows: any[],
     columnMapping: Record<string, string>,
-    conflictStrategy: 'SKIP' | 'UPDATE' | 'ONLY_NEW' = 'SKIP'
+    conflictStrategy: 'SKIP' | 'UPDATE' | 'ONLY_NEW' = 'SKIP',
+    batchDefaults: Record<string, string> = {}
   ): Promise<ExecutionResult> {
     const res = await api.post('/import/execute', {
       fileName,
@@ -98,6 +100,7 @@ export const importService = {
       sheetName,
       rows,
       columnMapping,
+      batchDefaults,
       conflictStrategy,
     });
     return res.data.data;

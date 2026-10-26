@@ -1148,11 +1148,11 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                       Origen de Inscripción
                     </span>
                     <span className="text-xs font-semibold text-foreground">
-                      {registration.source === 'ONSITE_SALE'
+                      {registration.originLabel || (registration.source === 'ONSITE_SALE'
                         ? '🏪 Venta Presencial'
                         : registration.source === 'EXCEL_IMPORT'
                         ? '📥 Archivo Excel'
-                        : '✍️ Registro Manual'}
+                        : '✍️ Registro Manual')}
                     </span>
                   </div>
                 </div>
@@ -1163,7 +1163,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                       Responsable de Venta
                     </span>
                     <span className="text-xs font-semibold text-foreground truncate block">
-                      {registration.salesResponsible?.name || 'Comité Organizador'}
+                      {registration.salesResponsible?.name || registration.commercialUser?.fullName || (registration.isCourtesy ? 'No aplica (cortesía)' : 'No especificado')}
                     </span>
                   </div>
 
@@ -1176,6 +1176,13 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                     </span>
                   </div>
                 </div>
+
+                {(registration.externalReference || registration.buyerName || registration.createdByUser) && <div className="p-3 rounded-xl bg-background border border-border text-xs space-y-1">
+                  {registration.externalReference && <p>Referencia externa: <strong>{registration.externalReference}</strong> · {registration.externalPlatform}</p>}
+                  {registration.externalPaymentStatus && <p>Estado informado en origen: {registration.externalPaymentStatus}</p>}
+                  {registration.buyerName && <p>Comprador: {registration.buyerName}</p>}
+                  {registration.createdByUser && <p>Registrado / importado por: {registration.createdByUser.fullName}</p>}
+                </div>}
 
                 {registration.notes && !isInlineEditing && (
                   <div className="p-3 rounded-xl bg-background border border-border">

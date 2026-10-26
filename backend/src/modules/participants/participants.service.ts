@@ -303,10 +303,13 @@ export class ParticipantsService {
       return { ...l, changes: ch };
     });
 
+    const attributionUsers = await prisma.user.findMany({ where: { id: { in: [registration.createdByUserId, registration.commercialUserId].filter((id): id is string => Boolean(id)) } }, select: { id: true, fullName: true } });
     const emailHistory = communicationRole==='VIEWER'?[]:await CommunicationsService.getUnifiedHistoryForRegistration(registration.id,undefined,20,communicationRole==='OPERATOR');
 
     return {
       ...registration,
+      createdByUser: attributionUsers.find(user => user.id === registration.createdByUserId) || null,
+      commercialUser: attributionUsers.find(user => user.id === registration.commercialUserId) || null,
       customFields,
       auditLogs: parsedAuditLogs,
       emailHistory,
@@ -333,7 +336,7 @@ export class ParticipantsService {
    */
   static async create(eventId: string, input: CreateRegistrationInput, actorId?: string, request?: { key: string; reason: string }) {
     if ((input.status as string) === 'ATTENDED') throw new BadRequestError('La asistencia solo puede confirmarse mediante check-in autorizado.');
-    const reservedNumber = input.registrationNumber?.trim() || await ParticipantsService.getNextRegistrationNumber(eventId);
+    const reservedNumber = await ParticipantsService.getNextRegistrationNumber(eventId);
     return writeTransaction(async tx => {
     const prisma = tx;
     if (request && actorId) {
@@ -347,6 +350,14 @@ export class ParticipantsService {
     });
     if (!event) throw new NotFoundError('Edición no encontrada');
 
+    const actor = actorId ? await tx.user.findUnique({ where: { id: actorId } }) : null;
+    if ((input.commercialUserId && input.commercialUserId !== actorId) || input.salesResponsibleId) {
+      if (actor?.role !== 'ADMIN' || !input.responsibleChangeReason) throw new BadRequestError('Cambiar el responsable comercial requiere administrador y motivo.');
+    }
+    if (input.commercialUserId && input.commercialUserId !== actorId) {
+      const target = await tx.user.findUnique({ where: { id: input.commercialUserId } });
+      if (!target?.isActive || (target.assignedEventId && target.assignedEventId !== eventId)) throw new BadRequestError('Responsable fuera de la edición activa.');
+    }
     const cleanEmail = input.email.toLowerCase().trim();
     const cleanDoc = input.documentId ? input.documentId.trim() : null;
     const fullName = `${input.firstName.trim()} ${input.lastName.trim()}`;
@@ -457,23 +468,7 @@ export class ParticipantsService {
       );
     }
 
-    // 4. Generar número de registro único si no fue suministrado
-    let regNumber = input.registrationNumber?.trim();
-    if (!regNumber) {
-      regNumber = reservedNumber;
-    } else {
-      const conflict = await prisma.registration.findUnique({
-        where: {
-          eventId_registrationNumber: {
-            eventId,
-            registrationNumber: regNumber,
-          },
-        },
-      });
-      if (conflict) {
-        throw new ConflictError(`El número de registro '${regNumber}' ya está en uso en esta edición`);
-      }
-    }
+    const regNumber = reservedNumber;
 
     // 5. Crear inscripción
     const isSqlite = process.env.DATABASE_URL?.startsWith('file:');
@@ -495,6 +490,9 @@ export class ParticipantsService {
         participantId: participant.id,
         registrationNumber: regNumber!,
         source: 'MANUAL',
+        originLabel: 'Venta presencial',
+        createdByUserId: actorId || null,
+        commercialUserId: isCourtesy || request || input.salesResponsibleId ? null : (input.commercialUserId || actorId || null),
         ticketTypeId: ticketType ? ticketType.id : null,
         ticketPrice,
         amountPaid,
@@ -539,6 +537,10 @@ export class ParticipantsService {
     }
 
 
+    if (actorId) {
+      const changes = { createdByUserId: actorId, origin: registration.originLabel, commercialUserId: registration.commercialUserId, salesResponsibleId: registration.salesResponsibleId, responsibleChangeReason: input.responsibleChangeReason, ticketPrice: Number(registration.ticketPrice), amountPaid: Number(registration.amountPaid), paymentMethodId: registration.paymentMethodId, paymentStatus: registration.paymentStatus, isCourtesy: registration.isCourtesy };
+      await tx.auditLog.create({ data: { userId: actorId, action: 'CREATE', entity: 'REGISTRATION', entityId: registration.id, changes: (process.env.DATABASE_URL?.startsWith('file:') ? JSON.stringify(changes) : changes) as any } });
+    }
     if (request && actorId) {
       const changes = { createdByUserId: actorId, action: 'CREATE_PENDING_COURTESY_REGISTRATION' };
       await tx.auditLog.create({ data: { userId: actorId, action: 'CREATE', entity: 'REGISTRATION', entityId: registration.id, changes: (process.env.DATABASE_URL?.startsWith('file:') ? JSON.stringify(changes) : changes) as any } });
@@ -570,6 +572,15 @@ export class ParticipantsService {
       throw new NotFoundError('Inscripción no encontrada en la edición activa');
     }
 
+    const numberChanged = Boolean(input.registrationNumber && input.registrationNumber !== existing.registrationNumber);
+    const responsibleChanged = (input.salesResponsibleId !== undefined && input.salesResponsibleId !== existing.salesResponsibleId) || (input.commercialUserId !== undefined && input.commercialUserId !== existing.commercialUserId);
+    if (numberChanged || responsibleChanged) {
+      const actor = userId ? await tx.user.findUnique({ where: { id: userId } }) : null;
+      if (actor?.role !== 'ADMIN' || (numberChanged && !input.numberChangeReason) || (responsibleChanged && !input.responsibleChangeReason)) throw new BadRequestError('Se requiere administrador y un motivo para cambiar numeración o responsable.');
+      if (input.commercialUserId) { const target = await tx.user.findUnique({ where: { id: input.commercialUserId } }); if (!target?.isActive || (target.assignedEventId && target.assignedEventId !== eventId)) throw new BadRequestError('Responsable fuera de la edición activa.'); }
+      const changes = { registrationNumber: { before: existing.registrationNumber, after: input.registrationNumber, reason: input.numberChangeReason }, commercialUserId: { before: existing.commercialUserId, after: input.commercialUserId }, salesResponsibleId: { before: existing.salesResponsibleId, after: input.salesResponsibleId }, responsibleChangeReason: input.responsibleChangeReason };
+      await tx.auditLog.create({ data: { userId: userId!, action: 'UPDATE', entity: 'REGISTRATION', entityId: registrationId, changes: (process.env.DATABASE_URL?.startsWith('file:') ? JSON.stringify(changes) : changes) as any } });
+    }
     const previousValues: Record<string, any> = {
       firstName: existing.participant.firstName,
       lastName: existing.participant.lastName,
@@ -710,6 +721,8 @@ export class ParticipantsService {
     const updated = await prisma.registration.update({
       where: { id: registrationId },
       data: {
+        registrationNumber: numberChanged ? input.registrationNumber! : undefined,
+        commercialUserId: input.commercialUserId,
         ticketTypeId,
         ticketPrice,
         amountPaid,
@@ -883,6 +896,9 @@ export class ParticipantsService {
         participantId: participant.id,
         registrationNumber: regNumber,
         source: 'ONSITE_SALE',
+        originLabel: 'Venta presencial',
+        createdByUserId: operatorUserId,
+        commercialUserId: isCourtesy ? null : operatorUserId,
         ticketTypeId: ticketType.id,
         ticketPrice,
         amountPaid,

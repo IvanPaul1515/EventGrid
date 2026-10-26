@@ -126,6 +126,15 @@ export interface Payment {
 }
 
 export interface Registration {
+  externalPaymentStatus?: string | null;
+  externalReference?: string | null;
+  externalPlatform?: string | null;
+  buyerName?: string | null;
+  originLabel?: string | null;
+  createdByUserId?: string | null;
+  commercialUserId?: string | null;
+  createdByUser?: {id:string;fullName:string} | null;
+  commercialUser?: {id:string;fullName:string} | null;
   id: string;
   eventId: string;
   participantId: string;

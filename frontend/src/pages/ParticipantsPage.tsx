@@ -1338,11 +1338,11 @@ export const ParticipantsPage: React.FC = () => {
         isOpen={isFormOpen}
         registrationToEdit={selectedForEdit}
         onClose={() => setIsFormOpen(false)}
-        onSuccess={() => {
+        onSuccess={(saved) => {
           fetchParticipants();
           showNotification(
             'success',
-            selectedForEdit ? 'Participante actualizado exitosamente' : 'Nuevo participante registrado correctamente'
+            selectedForEdit ? 'Participante actualizado exitosamente' : `Participante registrado. Número interno: ${saved.registrationNumber}`
           );
         }}
       />
