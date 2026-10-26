@@ -16,7 +16,7 @@ for(const width of [320,390,412,844,1440]){
  else if(path.endsWith('/stats')||path.endsWith('/financial-summary'))data=null;
  await r.fulfill({json:{data,pagination:{page:1,total:0,totalPages:1},counters:{attendedCount:0,totalRegistrations:0,pendingCount:0}}});
  });
- await p.goto('http://127.0.0.1:5178/participants');await p.getByRole('button',{name:'Nuevo Participante',exact:true}).click();const d=p.getByRole('dialog');await p.getByLabel('Tarifa oficial',{exact:true}).waitFor();await p.waitForFunction(()=>document.querySelector('output[aria-label="Tarifa oficial"]').textContent==='Entrada General');
+ await p.goto('http://127.0.0.1:5178/participants');await p.getByRole('button',{name:'Nuevo Participante',exact:true}).click();const d=p.getByRole('dialog');await p.getByLabel('Tarifa oficial',{exact:true}).waitFor();await p.waitForFunction(()=>document.querySelector('output[aria-label="Tarifa oficial"]').textContent==='Tarifa oficial: RD$315.00');
  assert.equal(await d.locator('select[aria-label="Tarifa"]').count(),0);
  assert.equal(await d.getByLabel('Precio de la tarifa').textContent(),'315.00');assert.equal(await d.getByLabel('Monto pagado').inputValue(),'0.00');
  await d.getByLabel('Monto pagado').fill('100');
