@@ -28,7 +28,7 @@ import { app } from '../src/app.js';
 import { ParticipantsService } from '../src/modules/participants/participants.service.js';
 import { ImportService } from '../src/modules/import/import.service.js';
 import { seedBarcamp2026 } from '../prisma/barcamp2026.js';
-import { CreateRegistrationSchema } from '../src/modules/participants/participants.dto.js';
+import { ListParticipantsQuerySchema, CreateRegistrationSchema } from '../src/modules/participants/participants.dto.js';
 let eventId: string, adminId: string, operatorId: string;
 beforeAll(async()=>{
  eventId=(await seedBarcamp2026(prisma)).id;
@@ -40,6 +40,9 @@ describe('numbering and import commercial provenance',()=>{
  it('generates numbers on the server, accepts missing institution, distinguishes creator from commercial owner',async()=>{
   const rows=await Promise.all(Array.from({length:5},(_,i)=>ParticipantsService.create(eventId,input('seq'+i),operatorId)));
   expect(new Set(rows.map(r=>r.registrationNumber)).size).toBe(5);
+  const exported=await ParticipantsService.exportData(eventId,ListParticipantsQuerySchema.parse({}),'csv');
+  expect(exported.buffer.toString('utf8')).toContain('OPERATOR');
+  expect(exported.buffer.toString('utf8')).not.toContain('Comité Organizador');
   expect(rows.every(r=>r.registrationNumber!=='UNTRUSTED'&&!r.attended&&r.createdByUserId===operatorId&&r.commercialUserId===operatorId&&r.originLabel==='Venta presencial')).toBe(true);
  });
  it('requires admin and reason for an exceptional internal-number correction and audits it',async()=>{
@@ -57,13 +60,13 @@ describe('numbering and import commercial provenance',()=>{
   expect(changed.commercialUserId).toBe(adminId);expect(changed.createdByUserId).toBe(operatorId);
  });
  it('keeps Excel references, platform, buyer and seller separate from importer and internal number',async()=>{
-  const mapping={name:'firstName',last:'lastName',email:'email',ref:'externalReference'};
-  const rows=[{name:'Excel',last:'Safe',email:'excel@metadata.invalid',ref:'EXTERNAL-123'}];
+  const mapping={name:'firstName',last:'lastName',email:'email',ref:'externalReference',externalState:'externalPaymentStatus'};
+  const rows=[{name:'Excel',last:'Safe',email:'excel@metadata.invalid',ref:'EXTERNAL-123',externalState:'Pendiente en origen'}];
   const defaults={externalPlatform:'Plataforma QA',salesResponsible:'Vendedor externo',buyerName:'Comprador QA'};
   const result=await ImportService.executeImport(eventId,adminId,'safe.xlsx',1,rows,mapping,'SKIP',defaults);
   expect(result.importedCount,JSON.stringify(result.errors)).toBe(1);
   const row=await prisma.registration.findFirstOrThrow({where:{externalReference:'EXTERNAL-123'}});
-  expect(row.registrationNumber).not.toBe('EXTERNAL-123');expect(row.externalPlatform).toBe('Plataforma QA');expect(row.buyerName).toBe('Comprador QA');expect(row.createdByUserId).toBe(adminId);expect(row.commercialUserId).toBeNull();expect(row.salesResponsibleId).not.toBeNull();expect(row.attended).toBe(false);
+  expect(row.externalPaymentStatus).toBe('Pendiente en origen');expect(row.registrationNumber).not.toBe('EXTERNAL-123');expect(row.externalPlatform).toBe('Plataforma QA');expect(row.buyerName).toBe('Comprador QA');expect(row.createdByUserId).toBe(adminId);expect(row.commercialUserId).toBeNull();expect(row.salesResponsibleId).not.toBeNull();expect(row.attended).toBe(false);
   const duplicate=await ImportService.validateRows(eventId,[{...rows[0],email:'another@metadata.invalid'}],mapping,defaults);expect(duplicate.duplicateRows).toBe(1);
   const again=await ImportService.executeImport(eventId,adminId,'safe.xlsx',1,rows,mapping,'SKIP',defaults);expect(again.importedCount).toBe(0);
   const previousNumber=row.registrationNumber,previousPrice=Number(row.ticketPrice);

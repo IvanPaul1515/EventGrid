@@ -8,9 +8,10 @@ import crypto from 'crypto';
 // Diccionario de alias lingüísticos para detección automática de columnas históricas de BarCamp
 const ALIAS_DICTIONARY: Record<string, string[]> = {
   externalPaymentStatus: ['estado de pago', 'estado pago', 'payment status'],
-  externalPlatform: ['plataforma', 'origen', 'plataforma externa'],
+  externalPlatform: ['plataforma', 'origen', 'plataforma externa', 'plataforma de origen'],
   buyerName: ['comprador', 'nombre comprador'],
   externalReference: [
+    'referencia externa',
     'no. registro', 'no registro', 'no.registro', 'no_registro', 'registro', 'no.', 'no',
     'ticket id', 'ticket no', 'ticket', 'id registro', 'id_registro', 'reg id', 'reg_id'
   ],

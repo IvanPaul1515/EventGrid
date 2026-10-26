@@ -95,4 +95,3 @@ CREATE UNIQUE INDEX "registrations_eventId_externalPlatform_externalReference_ke
 
 -- AddForeignKey
 ALTER TABLE "AuthSession" ADD CONSTRAINT "AuthSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-

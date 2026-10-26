@@ -1436,6 +1436,8 @@ export class ParticipantsService {
       orderBy: { registrationNumber: 'asc' },
     });
 
+    const attribution = await prisma.user.findMany({ where: { id: { in: [...new Set(registrations.flatMap(r => [r.commercialUserId, r.createdByUserId]).filter((id): id is string => Boolean(id)))] } }, select: { id: true, fullName: true } });
+    const attributionNames = new Map(attribution.map(user => [user.id, user.fullName]));
     const rows = registrations.map((r, index) => {
       const p = r.participant;
       return {
@@ -1461,7 +1463,12 @@ export class ParticipantsService {
         'Asistió al Evento': r.attended ? 'SÍ' : 'NO',
         'Hora de Asistencia': r.attendedAt ? new Date(r.attendedAt).toLocaleString('es-DO') : 'No ha llegado',
         'Operador Asistencia': r.attendedByUser?.fullName || 'N/A',
-        'Responsable de Venta': r.salesResponsible?.name || 'Comité Organizador',
+        'Responsable de Venta': r.salesResponsible?.name || (r.commercialUserId ? attributionNames.get(r.commercialUserId) : null) || (r.isCourtesy ? 'No aplica' : 'No especificado'),
+        'Registrado / Importado por': r.createdByUserId ? attributionNames.get(r.createdByUserId) || 'No especificado' : 'No especificado',
+        'Referencia externa': r.externalReference || '',
+        'Plataforma de origen': r.externalPlatform || '',
+        'Comprador': r.buyerName || '',
+        'Estado de pago externo': r.externalPaymentStatus || '',
         'Fecha y Hora de Venta': new Date(r.saleTimestamp).toLocaleString('es-DO', {
           year: 'numeric',
           month: '2-digit',
