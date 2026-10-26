@@ -1,4 +1,4 @@
-import { actionRateLimiter } from '../../middleware/rateLimiter.js';
+import courtesyRoutes from './courtesy.routes.js';
 import { Router } from 'express';
 import { ParticipantsController } from './participants.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
@@ -9,11 +9,10 @@ const router = Router({ mergeParams: true });
 
 router.use(authenticateToken);
 router.use(editionContext);
-const approvalLimit = actionRateLimiter(5, 15 * 60 * 1000);
-router.use((req, res, next) => req.body?.courtesyApproval ? approvalLimit(req, res, next) : next());
+router.use('/courtesy-requests', courtesyRoutes);
 
 // Rutas especiales y acciones globales (deben declararse antes de /:id)
-router.post('/demo', requireOperatorOrAdmin, ParticipantsController.generateDemo);
+router.post('/demo', requireAdmin, ParticipantsController.generateDemo);
 router.delete('/demo', requireOperatorOrAdmin, ParticipantsController.clearDemo);
 router.post('/onsite-sale', requireOperatorOrAdmin, ParticipantsController.onsiteSale);
 

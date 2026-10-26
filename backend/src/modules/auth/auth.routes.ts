@@ -1,3 +1,4 @@
+import { RecoveryService, recoveryMessage } from './recovery.service.js';
 import { actionRateLimiter } from '../../middleware/rateLimiter.js';
 import { ENV } from '../../config/env.js';
 import { InvitationsService } from '../users/invitations.service.js';
@@ -30,6 +31,10 @@ router.post('/accept-invitation', loginRateLimiter, explicitActionLimit, async (
     res.json({ data: await InvitationsService.accept(input.token, input.password) });
   } catch (error) { next(error); }
 });
+
+router.post('/recovery/request', actionRateLimiter(5,15*60*1000), async(req,res,next)=>{try{const email=z.string().email().max(254).parse(req.body.email);await RecoveryService.request(email);res.status(202).json({message:recoveryMessage});}catch(e){next(e);}});
+router.post('/recovery/validate', actionRateLimiter(20), async(req,res,next)=>{try{const token=z.string().min(32).max(200).parse(req.body.token);await RecoveryService.validate(token);res.json({valid:true});}catch(e){next(e);}});
+router.post('/recovery/confirm', actionRateLimiter(10), async(req,res,next)=>{try{const input=z.object({token:z.string().min(32).max(200),password:z.string().min(12).max(128)}).parse(req.body);await RecoveryService.confirm(input.token,input.password);res.json({message:'Contraseña actualizada. Inicia sesión nuevamente.'});}catch(e){next(e);}});
 
 router.post('/login', loginRateLimiter, AuthController.login);
 router.post('/logout', AuthController.logout);

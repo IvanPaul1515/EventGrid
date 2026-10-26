@@ -35,9 +35,10 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
 }) => {
   const { currentEvent } = useEdition();
   const { user } = useAuth();
-  const [showApproval, setShowApproval] = useState(false);
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
+  const [requestCourtesy, setRequestCourtesy] = useState(false);
+  const requestKey = useRef(crypto.randomUUID());
+  const [requestSent, setRequestSent] = useState(false);
+  const [requestMessage, setRequestMessage] = useState('');
 
   // Estados del formulario
   const [firstName, setFirstName] = useState('');
@@ -89,10 +90,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
 
             // Si es un registro nuevo y aún no hay tipo seleccionado, inicializar con el primer tipo activo
             if (!registrationToEdit && tts.length > 0) {
-              const paid = tts.filter(t => Number(t.price) > 0 && !/cortes/i.test(t.name))
-                .sort((a, b) => a.id.localeCompare(b.id));
-              const defT = paid.find(t => /general|principal|oficial/i.test(t.name)) ||
-                paid.find(t => !/preventa/i.test(t.name)) || paid[0];
+              const defT = tts.find(t => t.id === res.data.data.defaultTicketTypeId && t.isActive && Number(t.price) > 0);
               if (defT) {
                 setTicketTypeId(defT.id);
                 setTicketPrice(Number(defT.price));
@@ -166,13 +164,14 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       setNotes('');
     }
     setError(null);
-    setShowApproval(false);
-    setAdminEmail('');
-    setAdminPassword('');
+    setRequestCourtesy(false);
+    setRequestSent(false);
+    setRequestMessage('');
+    requestKey.current = crypto.randomUUID();
   }, [registrationToEdit, isOpen]);
 
   // Comprobar si el formulario tiene cambios sin guardar para evitar pérdidas accidentales (Sección 6)
-  const isFormDirty = Boolean(
+  const isFormDirty = !requestSent && Boolean(
     firstName.trim() ||
     lastName.trim() ||
     email.trim() ||
@@ -197,7 +196,6 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showApproval) { setShowApproval(false); setAdminPassword(''); setAdminEmail(''); return; }
       if (e.key === 'Escape' && !loading) {
         handleRequestClose();
       }
@@ -209,22 +207,21 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = '';
     };
-  }, [isOpen, loading, isFormDirty, registrationToEdit, showApproval]);
+  }, [isOpen, loading, isFormDirty, registrationToEdit]);
 
   if (!isOpen) return null;
 
   const toggleCourtesy = () => {
     if (isCourtesy) {
-      setIsCourtesy(false); setAdminEmail(''); setAdminPassword('');
+      setIsCourtesy(false);
       if (!registrationToEdit || registrationToEdit.isCourtesy) {
-        const paid = ticketTypes.filter(t => Number(t.price) > 0 && !/cortes/i.test(t.name)).sort((a, b) => a.id.localeCompare(b.id));
-        const official = paid.find(t => /general|principal|oficial/i.test(t.name)) || paid.find(t => !/preventa/i.test(t.name)) || paid[0];
+        const official = ticketTypes.find(t => t.id === currentEvent?.defaultTicketTypeId && t.isActive && Number(t.price)>0);
         setTicketTypeId(official?.id || ''); setTicketPrice(Number(official?.price || 0));
       }
       return;
     }
     if (user?.role === 'ADMIN') { setIsCourtesy(true); setAmountPaid(0); setCourtesyAuthorizedBy(user.fullName); }
-    else if (user?.role === 'OPERATOR') setShowApproval(true);
+    else if (user?.role === 'OPERATOR') { setRequestCourtesy(value => !value); setAmountPaid(0); }
   };
 
   const balanceDue = isCourtesy ? 0 : Math.max(0, ticketPrice - amountPaid);
@@ -232,7 +229,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (saving.current || catalogLoading) return;
+    if (saving.current || catalogLoading || requestSent) return;
     if (!isCourtesy && !ticketTypeId && !registrationToEdit) { setError('Configure una tarifa oficial activa para esta edición.'); return; }
     saving.current = true;
     setLoading(true);
@@ -257,13 +254,23 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       isCourtesy,
       courtesyAuthorizedBy: isCourtesy ? courtesyAuthorizedBy.trim() || null : null,
       courtesyReason: isCourtesy ? courtesyReason.trim() || null : null,
-      ...(isCourtesy && user?.role === 'OPERATOR' && adminPassword ? { courtesyApproval: { email: adminEmail, password: adminPassword } } : {}),
       paymentMethodId: isCourtesy ? null : (paymentMethodId || null),
       salesResponsibleId: isCourtesy ? null : (salesResponsibleId || null),
       status,
       notes: notes.trim() || null,
     };
 
+    if (requestCourtesy && user?.role === 'OPERATOR') {
+      try {
+        if (courtesyReason.trim().length < 3) throw new Error('Indique un motivo de al menos 3 caracteres.');
+        const response = await api.post('/participants/courtesy-requests', { requestKey: requestKey.current, reason: courtesyReason.trim(), ...(registrationToEdit ? { registrationId: registrationToEdit.id } : { registration: { ...payload, isCourtesy: false, amountPaid: 0, totalAmount: 0, status: 'PENDING' } }) });
+        setRequestSent(true);
+        setRequestMessage(response.data.data?.status === 'APPROVED' ? 'Cortesía aprobada.' : response.data.data?.status === 'REJECTED' ? 'Cortesía rechazada.' : 'Solicitud enviada. Pendiente de autorización.');
+        window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
+      } catch (err: any) { setError(err.response?.data?.message || err.message || 'No se pudo confirmar la solicitud. Consulte sus solicitudes antes de reintentar.'); }
+      finally { saving.current = false; setLoading(false); }
+      return;
+    }
     if (registrationToEdit) { delete payload.amountPaid; delete payload.totalAmount; delete payload.balanceDue; }
     try {
       let res;
@@ -273,7 +280,6 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
         res = await api.post('/participants', payload);
       }
       onSuccess(res.data.data);
-      setAdminPassword('');
       onClose();
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Error al guardar el participante';
@@ -312,6 +318,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
           </div>
         )}
 
+        {requestSent && <div role="status" className="p-4 border-b border-border bg-muted text-sm">{requestMessage} Consulte el resultado en sus solicitudes antes de reintentar.</div>}
         <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col justify-between">
           <div className="overflow-y-auto px-6 py-5 space-y-4 flex-1 min-h-0">
           {/* Fila 1: Nombres y Apellidos */}
@@ -450,7 +457,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                 step="0.01"
                 min="0"
                 aria-label="Monto pagado"
-                disabled={isCourtesy || Boolean(registrationToEdit)}
+                disabled={isCourtesy || requestCourtesy || Boolean(registrationToEdit)}
                 value={isCourtesy ? 0 : amountPaid}
                 onValueChange={setAmountPaid}
                 className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
@@ -565,13 +572,14 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
           {/* Toggle de Cortesía */}
           <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 space-y-3">
             <label className="flex items-center gap-2 text-xs font-semibold text-foreground">
-              <input type="checkbox" checked={isCourtesy} onChange={toggleCourtesy} disabled={loading || user?.role === 'VIEWER' || Boolean(registrationToEdit && Number(registrationToEdit.amountPaid || registrationToEdit.totalAmount) > 0)} />
-              Registrar como Entrada de Cortesía
+              <input type="checkbox" checked={isCourtesy || requestCourtesy} onChange={toggleCourtesy} disabled={loading || user?.role === 'VIEWER' || Boolean(registrationToEdit && Number(registrationToEdit.amountPaid || registrationToEdit.totalAmount) > 0)} />
+              {user?.role === 'OPERATOR' ? 'Solicitar cortesía' : 'Registrar como Entrada de Cortesía'}
             </label>
             <p className="text-xs text-muted-foreground">La cortesía requiere autorización administrativa. No registra un pago ni una entrega de efectivo.</p>
-            {isCourtesy && (
+            {requestCourtesy && <p className="text-xs text-muted-foreground">{firstName} {lastName} · {email} · {currentEvent?.name}. El registro seguirá pendiente con la tarifa oficial hasta que un administrador decida desde su sesión. No se registrará un pago.{registrationToEdit ? ' Esta acción solo envía la solicitud; no guarda cambios de datos personales.' : ''}</p>}
+            {(isCourtesy || requestCourtesy) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-amber-500/20">
-                <div>
+                {user?.role === 'ADMIN' && <div>
                   <label className="block text-[11px] font-semibold text-amber-200 mb-1">
                     Autorizado Por *
                   </label>
@@ -582,14 +590,14 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                     placeholder={user?.role === 'ADMIN' ? user.fullName : 'Administrador: se validará al guardar'}
                     className="w-full px-3 py-1.5 bg-background border border-amber-500/30 rounded-lg text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-amber-500"
                   />
-                </div>
+                </div>}
                 <div>
                   <label className="block text-[11px] font-semibold text-amber-200 mb-1">
                     Motivo de la Cortesía
                   </label>
                   <input
                     type="text"
-                    required={isCourtesy}
+                    required={isCourtesy || requestCourtesy}
                     minLength={3}
                     value={courtesyReason}
                     onChange={(e) => setCourtesyReason(e.target.value)}
@@ -692,7 +700,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || requestSent || catalogLoading}
               className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
@@ -700,31 +708,14 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
               ) : (
                 <>
                   <Save className="w-4 h-4" />
-                  <span>{registrationToEdit ? 'Guardar Cambios' : 'Registrar Participante'}</span>
+                  <span>{requestCourtesy ? 'Enviar solicitud de cortesía' : registrationToEdit ? 'Guardar Cambios' : 'Registrar Participante'}</span>
                 </>
               )}
             </button>
           </div>
         </form>
       </div>
-      {showApproval && (
-        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
-          <div role="dialog" aria-modal="true" aria-labelledby="courtesy-approval-title" className="w-full max-w-sm max-h-[90dvh] overflow-y-auto bg-card border border-border rounded-2xl p-5 space-y-4">
-            <h4 id="courtesy-approval-title" className="font-bold">Autorización administrativa</h4>
-            <p className="text-xs text-muted-foreground">Un administrador debe introducir sus credenciales. Se validarán al guardar este registro, sin cambiar tu sesión.</p>
-            <label className="block text-xs">Correo del administrador
-              <input type="email" autoFocus autoComplete="off" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} className="mt-1 w-full bg-background border border-border rounded-lg p-2" />
-            </label>
-            <label className="block text-xs">Contraseña del administrador
-              <input type="password" autoComplete="new-password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="mt-1 w-full bg-background border border-border rounded-lg p-2" />
-            </label>
-            <div className="flex justify-end gap-3">
-              <button type="button" onClick={() => { setShowApproval(false); setAdminPassword(''); setAdminEmail(''); }} className="text-sm">Cancelar</button>
-              <button type="button" disabled={!adminEmail.trim() || !adminPassword} onClick={() => { setIsCourtesy(true); setAmountPaid(0); setCourtesyAuthorizedBy(''); setShowApproval(false); }} className="bg-primary text-primary-foreground rounded-lg px-3 py-2 text-sm disabled:opacity-50">Confirmar autorización</button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>,
     document.body
   );

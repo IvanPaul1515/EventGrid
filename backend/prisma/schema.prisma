@@ -103,6 +103,10 @@ enum AuditEntity {
 }
 
 model User {
+  createdIncidents ReceptionIncident[] @relation("IncidentCreator")
+  assignedIncidents ReceptionIncident[] @relation("IncidentAssignee")
+  sessionVersion Int @default(0)
+  passwordResets PasswordReset[]
   id           String        @id @default(uuid())
   email        String        @unique
   accountStatus String @default("ACTIVE")
@@ -116,6 +120,8 @@ model User {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
+  courtesyRequests      CourtesyRequest[] @relation("CourtesyRequester")
+  courtesyDecisions     CourtesyRequest[] @relation("CourtesyReviewer")
   importBatches         ImportBatch[]
   auditLogs             AuditLog[]
   attendedRegistrations Registration[]  @relation("AttendanceRegistrar")
@@ -132,6 +138,9 @@ model User {
 }
 
 model Event {
+  receptionIncidents ReceptionIncident[]
+  defaultTicketTypeId String? @unique
+  defaultTicketType TicketType? @relation("OfficialTicket", fields: [defaultTicketTypeId], references: [id], onDelete: Restrict)
   id          String      @id @default(uuid())
   slug        String      @unique
   name        String
@@ -146,6 +155,7 @@ model Event {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
+  courtesyRequests       CourtesyRequest[]
   settings               EventSettings?
   registrations          Registration[]
   ticketTypes            TicketType[]
@@ -225,6 +235,8 @@ model Participant {
 }
 
 model Registration {
+  receptionIncidents ReceptionIncident[]
+  courtesyRequests     CourtesyRequest[]
   id                   String             @id @default(uuid())
   eventId              String
   participantId        String
@@ -293,6 +305,7 @@ model Registration {
 }
 
 model TicketType {
+  defaultFor Event? @relation("OfficialTicket")
   id               String    @id @default(uuid())
   eventId          String
   name             String   // Preventa, Entrada General, Cortesía, etc.
@@ -829,4 +842,65 @@ model InvitationDispatch {
   results String?
   createdAt DateTime @default(now())
   @@map("invitation_dispatches")
+}
+
+// Additive workflow: pending requests never settle a registration or create a payment.
+model CourtesyRequest {
+  id                  String @id @default(uuid())
+  eventId             String
+  registrationId      String
+  requestedByUserId   String
+  reason              String
+  status              String @default("PENDING")
+  requestKey          String
+  pendingRegistrationId String? @unique
+  decidedByUserId     String?
+  decisionReason      String?
+  createdAt           DateTime @default(now())
+  decidedAt           DateTime?
+  event               Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  registration        Registration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  requestedBy         User @relation("CourtesyRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  decidedBy           User? @relation("CourtesyReviewer", fields: [decidedByUserId], references: [id], onDelete: Restrict)
+  @@unique([eventId, requestedByUserId, requestKey])
+  @@index([eventId, status, createdAt])
+  @@map("courtesy_requests")
+}
+
+model PasswordReset {
+  id String @id @default(uuid())
+  userId String
+  tokenHash String @unique
+  expiresAt DateTime
+  usedAt DateTime?
+  revokedAt DateTime?
+  status String @default("PREPARED")
+  createdAt DateTime @default(now())
+  user User @relation(fields:[userId],references:[id],onDelete:Restrict)
+  @@index([userId,createdAt])
+  @@map("password_resets")
+}
+
+model ReceptionIncident {
+  id String @id @default(uuid())
+  eventId String
+  registrationId String?
+  participantLabel String
+  category String
+  description String
+  createdByUserId String
+  assignedToUserId String?
+  status String @default("OPEN")
+  resolution String?
+  requestKey String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  closedAt DateTime?
+  event Event @relation(fields:[eventId],references:[id],onDelete:Restrict)
+  registration Registration? @relation(fields:[registrationId],references:[id],onDelete:Restrict)
+  createdBy User @relation("IncidentCreator",fields:[createdByUserId],references:[id],onDelete:Restrict)
+  assignedTo User? @relation("IncidentAssignee",fields:[assignedToUserId],references:[id],onDelete:Restrict)
+  @@unique([eventId,createdByUserId,requestKey])
+  @@index([eventId,status,createdAt])
+  @@map("reception_incidents")
 }

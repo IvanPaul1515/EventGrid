@@ -11,6 +11,7 @@ export interface AuthUser {
   fullName: string;
   assignedEventId?: string | null;
   expiresAt?: number;
+  sessionVersion?: number;
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
 }
 
@@ -50,6 +51,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
     const decoded = jwt.verify(token, ENV.JWT_SECRET) as {
       id: string;
       exp?: number;
+      sessionVersion?: number;
       email: string;
       role: 'ADMIN' | 'OPERATOR' | 'VIEWER';
     };
@@ -57,9 +59,10 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
     // Verificar que el usuario continúe activo en la base de datos
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, email: true, fullName: true, role: true, assignedEventId: true, isActive: true, accountStatus: true },
+      select: { id: true, email: true, fullName: true, role: true, assignedEventId: true, isActive: true, accountStatus: true, sessionVersion: true },
     });
 
+    if (user && (decoded.sessionVersion || 0) !== user.sessionVersion) return next(new UnauthorizedError('La sesión fue revocada. Inicie sesión nuevamente'));
     if (!user || !user.isActive || user.accountStatus === 'PENDING') {
       return next(new UnauthorizedError('Usuario inactivo o no encontrado'));
     }
@@ -70,6 +73,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       fullName: user.fullName,
       role: user.role as any,
       assignedEventId: user.assignedEventId,
+      sessionVersion: user.sessionVersion,
       expiresAt: decoded.exp ? decoded.exp * 1000 : undefined,
     };
 

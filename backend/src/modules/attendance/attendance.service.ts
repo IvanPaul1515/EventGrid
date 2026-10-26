@@ -153,6 +153,8 @@ export class AttendanceService {
 
     const now = new Date();
 
+    if (await prisma.courtesyRequest.findUnique({ where: { pendingRegistrationId: registrationId } })) throw new BadRequestError('Pendiente de autorización de cortesía. Consulte el resultado antes de confirmar ingreso.');
+
     if (registration.status === 'CANCELLED') {
       await prisma.auditLog.create({
         data: {
@@ -207,6 +209,7 @@ export class AttendanceService {
 
     // QA-01, QA-02, QA-03: Ejecución atómica y condicional en transacción interactiva
     const updatedRegistration = await writeTransaction(async (tx) => {
+      if (await tx.courtesyRequest.findUnique({ where: { pendingRegistrationId: registrationId } })) throw new BadRequestError('Pendiente de autorización de cortesía.');
       let inventoryItem: any = null;
 
       if (shouldDeliver && validTshirtSize) {

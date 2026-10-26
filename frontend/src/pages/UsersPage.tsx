@@ -185,7 +185,7 @@ export const UsersPage: React.FC = () => {
   const handlePrepareInvitation = (u: UserItem) => setInvitationIds([u.id]);
 
   const handleDeleteUser = async (u: UserItem) => {
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar la cuenta de ${u.fullName} (${u.email})?`)) {
+    if (!window.confirm(`¿Estás seguro de que deseas desactivar la cuenta de ${u.fullName} (${u.email})?`)) {
       return;
     }
     try {
@@ -195,7 +195,7 @@ export const UsersPage: React.FC = () => {
       setTimeout(() => setSuccessMsg(null), 4000);
       fetchUsers();
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Error al eliminar usuario.');
+      setError(err?.response?.data?.message || 'Error al desactivar usuario.');
     }
   };
 
@@ -455,15 +455,15 @@ export const UsersPage: React.FC = () => {
                             </button><button title="Historial de invitaciones" onClick={() => setHistoryUser(u)} className="p-1.5 rounded-lg border border-border"><Clock className="w-3.5 h-3.5" /></button>
                             <button
                               onClick={() => handleDeleteUser(u)}
-                              disabled={isSelf || Boolean(invitationIds)}
+                              disabled={isSelf || !u.isActive || Boolean(invitationIds)}
                               className={`p-1.5 rounded-lg border border-border transition-colors ${
                                 isSelf
                                   ? 'opacity-30 cursor-not-allowed text-muted-foreground'
                                   : 'hover:bg-rose-500/10 text-rose-400 hover:text-rose-300'
                               }`}
-                              title={isSelf ? 'No puedes eliminar tu propia cuenta' : 'Eliminar usuario'}
+                              title={isSelf ? 'No puedes desactivar tu propia cuenta' : 'Desactivar usuario'}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <XCircle className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </td>
@@ -544,14 +544,7 @@ export const UsersPage: React.FC = () => {
                         Invitar
                       </button>
                       <button onClick={() => setHistoryUser(u)} className="px-2.5 py-1 rounded-lg border border-border text-[11px]">Historial</button>
-                      {!isSelf && (
-                        <button
-                          onClick={() => handleDeleteUser(u)}
-                          className="px-2.5 py-1 rounded-lg border border-border text-[11px] font-medium text-rose-400 hover:bg-rose-500/10"
-                        >
-                          Eliminar
-                        </button>
-                      )}
+
                     </div>
                   </div>
                 );

@@ -12,7 +12,7 @@ export class RealtimeService {
   private static clients: Map<string, Set<Response>> = new Map();
   private static heartbeatInterval: NodeJS.Timeout | null = null;
   private static sequenceId = 0;
-  private static identities = new Map<Response, { userId: string; role: string; assignedEventId?: string | null; expiresAt?: number }>();
+  private static identities = new Map<Response, { userId: string; role: string; assignedEventId?: string | null; expiresAt?: number; sessionVersion?: number }>();
   static changed(eventId: string, domains: string[]) { this.emit(eventId, { type: 'DATA_CHANGED', data: { domains } }); }
   static notifyAccess(userId: string) {
     for (const [response, identity] of this.identities) if (identity.userId === userId) {
@@ -32,7 +32,7 @@ export class RealtimeService {
     }
   }
 
-  static addClient(eventId: string, res: Response, identity?: { userId: string; role: string; assignedEventId?: string | null; expiresAt?: number }) {
+  static addClient(eventId: string, res: Response, identity?: { userId: string; role: string; assignedEventId?: string | null; expiresAt?: number; sessionVersion?: number }) {
     this.init();
     if (identity) this.identities.set(res, identity);
     if (!this.clients.has(eventId)) {
@@ -51,6 +51,7 @@ export class RealtimeService {
     };
 
     res.write(`id: ${++this.sequenceId}\nevent: message\ndata: ${JSON.stringify(initialPayload)}\n\n`);
+    this.changed(eventId, ['operations']);
   }
 
   static removeClient(eventId: string, res: Response) {
@@ -62,6 +63,7 @@ export class RealtimeService {
         this.clients.delete(eventId);
       }
     }
+    this.changed(eventId, ['operations']);
     if (!this.clients.size && this.heartbeatInterval) { clearInterval(this.heartbeatInterval); this.heartbeatInterval = null; }
   }
 
@@ -83,7 +85,7 @@ export class RealtimeService {
     for (const client of Array.from(eventClients)) {
       try {
         const identity = this.identities.get(client);
-        const visibleDomains = payload.data?.domains?.filter((domain: string) => domain !== 'users' || identity?.role === 'ADMIN');
+        const visibleDomains = payload.data?.domains?.filter((domain: string) => (!['users', 'operations'].includes(domain) || identity?.role === 'ADMIN') && (domain !== 'courtesies' || identity?.role === 'ADMIN' || identity?.role === 'OPERATOR'));
         if (payload.type === 'DATA_CHANGED' && visibleDomains && !visibleDomains.length) continue;
         const safeMessage = payload.type === 'DATA_CHANGED' ? `id: ${this.sequenceId}\nevent: message\ndata: ${JSON.stringify({ ...payload, data: { domains: visibleDomains || [] } })}\n\n` : message;
         client.write(safeMessage);
@@ -97,10 +99,10 @@ export class RealtimeService {
     if (!this.clients.size) return;
     try {
       const identities = [...this.identities.values()];
-      const users = await prisma.user.findMany({ where: { id: { in: [...new Set(identities.map(identity => identity.userId))] } }, select: { id: true, role: true, assignedEventId: true, isActive: true, accountStatus: true } });
+      const users = await prisma.user.findMany({ where: { id: { in: [...new Set(identities.map(identity => identity.userId))] } }, select: { id: true, role: true, assignedEventId: true, isActive: true, accountStatus: true, sessionVersion: true } });
       for (const identity of identities) {
         const user = users.find(item => item.id === identity.userId);
-        if (!user || !user.isActive || user.accountStatus === 'PENDING' || user.role !== identity.role || user.assignedEventId !== identity.assignedEventId || (identity.expiresAt && Date.now() >= identity.expiresAt)) this.notifyAccess(identity.userId);
+        if (!user || !user.isActive || user.accountStatus === 'PENDING' || (identity.sessionVersion || 0) !== user.sessionVersion || user.role !== identity.role || user.assignedEventId !== identity.assignedEventId || (identity.expiresAt && Date.now() >= identity.expiresAt)) this.notifyAccess(identity.userId);
       }
     } catch {
       for (const [eventId, clients] of this.clients) for (const client of [...clients]) { client.end(); this.removeClient(eventId, client); }
@@ -116,6 +118,10 @@ export class RealtimeService {
         }
       }
     }
+  }
+
+  static connectedOperatorIds(eventId: string) {
+    return [...new Set([...(this.clients.get(eventId) || [])].map(response => this.identities.get(response)).filter(identity => identity?.role === 'OPERATOR' && (!identity.expiresAt || identity.expiresAt > Date.now())).map(identity => identity!.userId))];
   }
 
   static getConnectedCount(eventId?: string): number {

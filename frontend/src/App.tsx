@@ -13,6 +13,7 @@ import { AppLoadingScreen } from './components/common/AppLoadingScreen';
 import { useMobileViewport } from './hooks/useMobileViewport';
 
 const StaffPage = React.lazy(() => import('./pages/StaffPage').then(m => ({ default: m.StaffPage })));
+const RecoveryPage = React.lazy(() => import('./pages/RecoveryPage').then(m => ({ default: m.RecoveryPage })));
 const ActivationPage = React.lazy(() => import('./pages/ActivationPage').then(m => ({ default: m.ActivationPage })));
 
 // Lazy loading optimizado por ruta para rendimiento SPA
@@ -46,12 +47,15 @@ export const App: React.FC = () => {
                   {/* Ruta Pública */}
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/activate" element={<ActivationPage />} />
+                  <Route path="/forgot-password" element={<RecoveryPage />} />
+                  <Route path="/reset-password" element={<RecoveryPage />} />
 
                   {/* Rutas Administrativas Protegidas */}
                   <Route element={<ProtectedRoute />}>
                     <Route element={<Layout />}>
                       <Route path="/" element={<DashboardPage />} />
                       <Route path="/attendance" element={<AttendancePage />} />
+                      <Route element={<ProtectedRoute allowedRoles={['ADMIN','OPERATOR']} />}><Route path="/reception" element={<AttendancePage quick />} /></Route>
                       <Route path="/participants" element={<ParticipantsPage />} />
                       <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'OPERATOR']} />}>
                         <Route path="/import" element={<ImportPage />} />

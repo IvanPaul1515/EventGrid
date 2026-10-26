@@ -1,3 +1,6 @@
+import { ReceptionIncidentsPanel } from '../components/attendance/ReceptionIncidentsPanel';
+import { ReceptionOverview } from '../components/attendance/ReceptionOverview';
+import { CourtesyRequestsPanel } from '../components/participants/CourtesyRequestsPanel';
 import { MobileSearchInput } from '../components/common/MobileSearchInput';
 import { useLocation, useNavigate } from 'react-router-dom';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -42,7 +45,7 @@ import {
   Shirt,
 } from 'lucide-react';
 
-export const AttendancePage: React.FC = () => {
+export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
   const { currentEvent } = useEdition();
   const { user, hasRole } = useAuth();
 
@@ -99,6 +102,8 @@ export const AttendancePage: React.FC = () => {
     }
   }, [location.state, location.pathname, navigate, user?.role]);
 
+  useEffect(()=>{const id=location.state?.registrationId;if(!id)return;let active=true;participantsService.getById(id).then(reg=>{if(active){setSelectedRegistration(reg);setIsDrawerOpen(true);navigate(location.pathname,{replace:true,state:null});}}).catch(()=>{if(active)setFeedback({type:'error',title:'No se pudo retomar el registro',message:'Compruebe la conexión y consulte la solicitud antes de reintentar.'});});return()=>{active=false;};},[location.state?.registrationId,currentEvent?.id]);
+
   // Feedback temporal
   const [feedback, setFeedback] = useState<{
     type: 'success' | 'warning' | 'error';
@@ -139,9 +144,9 @@ export const AttendancePage: React.FC = () => {
         }
       }).catch(console.error);
 
-      attendanceService.getDailySales().then(setDailySales).catch(console.error);
+      if (!quick) attendanceService.getDailySales().then(setDailySales).catch(console.error);
     }
-  }, [currentEvent]);
+  }, [currentEvent, quick]);
 
   // Cargar datos y contadores
   const requestVersion = useRef(0);
@@ -188,7 +193,7 @@ export const AttendancePage: React.FC = () => {
 
   useRealtimeRefresh('attendance', async () => { await fetchAttendance(true);
     if (selectedRegistration?.id) { const id = selectedRegistration.id; const fresh = await participantsService.getById(id); setSelectedRegistration(previous => previous?.id === id ? fresh : previous); }
-    const sales = await attendanceService.getDailySales(); setDailySales(sales);
+    if (!quick) { const sales = await attendanceService.getDailySales(); setDailySales(sales); }
   });
 
   // Evento local entre componentes (compatibilidad)
@@ -280,7 +285,10 @@ export const AttendancePage: React.FC = () => {
       : 0;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className={`space-y-6 max-w-7xl mx-auto ${quick?'[&_button]:min-h-11':''}`}>
+      {!quick && <ReceptionOverview />}
+      <ReceptionIncidentsPanel />
+      <CourtesyRequestsPanel />
       {/* Encabezado Principal de Recepción */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -292,7 +300,7 @@ export const AttendancePage: React.FC = () => {
           </div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl sm:text-3xl font-display font-black tracking-tight text-foreground flex items-center gap-2">
-              <span>Control de Asistencia</span>
+              <span>{quick?'Recepción rápida':'Control de Asistencia'}</span>
             </h1>
             {/* Indicador de conexión en tiempo real */}
             <div
@@ -351,6 +359,7 @@ export const AttendancePage: React.FC = () => {
 
           <button
             type="button"
+            hidden={quick}
             onClick={handleExport}
             className="px-3.5 py-2 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
             title="Descargar lista de asistencia en Excel"
@@ -362,7 +371,7 @@ export const AttendancePage: React.FC = () => {
       </div>
 
       {/* Resumen Diario de Recepción: Ventas y Cobros de Hoy */}
-      {dailySales && (
+      {!quick && dailySales && (
         <div className="p-4 rounded-2xl bg-gradient-to-r from-card via-card to-primary/5 border border-border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
