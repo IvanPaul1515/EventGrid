@@ -1,4 +1,5 @@
 import { writeTransaction } from '../../utils/writeTransaction.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import { mailFailureMessage, uncertainMailFailure } from '../../utils/mailFailure.js';
 import { usesBrevoHttps } from './brevo.transport.js';
 import nodemailer, { type Transporter } from 'nodemailer';
@@ -685,8 +686,8 @@ export class EmailQueueWorker {
               }
             })
           );
+          RealtimeService.changed(job.eventId, ['communications']);
         }
-
         // Actualizar contadores y estado final
         await this.finalizeBatchStatus(jobId);
       } catch (err: any) {

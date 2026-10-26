@@ -1,3 +1,4 @@
+import { EmailPreview } from './EmailPreview';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Type,
@@ -1082,32 +1083,7 @@ export const VisualEmailEditor: React.FC<VisualEmailEditorProps> = ({
             </div>
           </div>
 
-          {/* Marco de Vista Previa Aislado (Iframe Sandbox para Máxima Seguridad) */}
-          <div className="flex-1 flex items-center justify-center bg-muted/40 p-3 rounded-xl border border-border/70 overflow-hidden">
-            <div
-              className={`transition-all duration-200 bg-[#0a0707] shadow-lg overflow-hidden flex flex-col ${
-                previewViewport === 'mobile'
-                  ? 'w-[360px] h-[580px] rounded-[36px] border-[8px] border-slate-800'
-                  : 'w-full h-[580px] rounded-xl border border-border'
-              }`}
-            >
-              {/* Barra superior de simulación iPhone */}
-              {previewViewport === 'mobile' && (
-                <div className="h-5 bg-slate-800 flex items-center justify-center shrink-0">
-                  <div className="w-16 h-3 bg-slate-900 rounded-full" />
-                </div>
-              )}
-
-              {/* Iframe aislado: cero scripts, renderiza en tiempo real */}
-              <iframe
-                title="Vista Previa de Correo"
-                srcDoc={previewHtmlDoc}
-                sandbox="allow-same-origin"
-                className="w-full flex-1 border-0 bg-[#0a0707]"
-              />
-            </div>
-          </div>
-
+          <EmailPreview html={previewHtmlDoc} mode={previewViewport} onModeChange={setPreviewViewport} hideControls/>
           <div className="text-[11px] text-muted-foreground flex items-center justify-between px-1">
             <span>Se actualiza automáticamente al escribir o cambiar opciones.</span>
             <span className="flex items-center gap-1.5 font-medium">

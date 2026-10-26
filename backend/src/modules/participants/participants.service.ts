@@ -210,7 +210,7 @@ export class ParticipantsService {
   /**
    * Obtener detalle completo de un registro (Ficha 360°)
    */
-  static async getById(eventId: string, registrationId: string) {
+  static async getById(eventId: string, registrationId: string, communicationRole?:string, canReadOtherEditions=true) {
     const registration = await prisma.registration.findFirst({
       where: {
         id: registrationId,
@@ -251,7 +251,7 @@ export class ParticipantsService {
       throw new NotFoundError('Inscripción no encontrada en la edición seleccionada');
     }
 
-    const otherRegistrations = await prisma.registration.findMany({
+    const otherRegistrations = canReadOtherEditions ? await prisma.registration.findMany({
       where: {
         participantId: registration.participantId,
         eventId: { not: eventId },
@@ -266,7 +266,7 @@ export class ParticipantsService {
       orderBy: {
         event: { year: 'desc' },
       },
-    });
+    }) : [];
 
     let customFields: any = registration.customFields;
     if (typeof customFields === 'string') {
@@ -303,7 +303,7 @@ export class ParticipantsService {
       return { ...l, changes: ch };
     });
 
-    const emailHistory = await CommunicationsService.getUnifiedHistoryForRegistration(registration.id);
+    const emailHistory = communicationRole==='VIEWER'?[]:await CommunicationsService.getUnifiedHistoryForRegistration(registration.id,undefined,20,communicationRole==='OPERATOR');
 
     return {
       ...registration,

@@ -1,3 +1,5 @@
+import { responsiveEmailHtml } from '../../utils/emailDocument.js';
+import { safeCommunicationError } from '../../utils/communicationError.js';
 import { uncertainMailFailure, mailFailureMessage } from '../../utils/mailFailure.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { brevoTransport, usesBrevoHttps } from './brevo.transport.js';
@@ -1723,6 +1725,7 @@ export class CommunicationsService {
       text = text.replace(regex, val);
     }
 
+    html = responsiveEmailHtml(html);
     return {
       subject,
       html,
@@ -1927,6 +1930,7 @@ export class CommunicationsService {
     });
 
     if (!registration) throw new NotFoundError('Inscripción no encontrada');
+    if (input.expectedRecipientEmail && input.expectedRecipientEmail.trim() !== registration.participant.email.trim()) throw new BadRequestError('El correo del participante cambió. Actualiza la vista previa antes de enviar.');
 
     // QA-07: Si eventId no venía en el payload, usar el de la inscripción
     const eventId = input.eventId || registration.eventId;
@@ -2892,7 +2896,7 @@ export class CommunicationsService {
    * Historial unificado de comunicaciones por participante/inscripción (Fase QA Integral)
    * Unifica EmailLog y EmailBatchItem sin duplicar operaciones.
    */
-  static async getUnifiedHistoryForRegistration(registrationId: string, operatorUserId?: string) {
+  static async getUnifiedHistoryForRegistration(registrationId: string, operatorUserId?: string, limit?: number, digitalOnly=false) {
     const TEMPLATE_NAMES: Record<string, string> = {
       INSCRIPTION_CONFIRMATION: 'Confirmación de inscripción',
       DIGITAL_TICKET: 'Entrada digital',
@@ -2919,14 +2923,15 @@ export class CommunicationsService {
 
     const [logs, batchItems] = await Promise.all([
       prisma.emailLog.findMany({
-        where: { registrationId, ...(operatorUserId ? { sentByUserId: operatorUserId, templateCode: 'DIGITAL_TICKET' } : {}) },
+        where: { registrationId, ...(digitalOnly ? { templateCode: 'DIGITAL_TICKET' } : {}), ...(operatorUserId ? { sentByUserId: operatorUserId, templateCode: 'DIGITAL_TICKET' } : {}) },
         include: {
           sentByUser: { select: { id: true, fullName: true, email: true } },
         },
         orderBy: { sentAt: 'desc' },
+        ...(limit ? {take:limit} : {}),
       }),
       operatorUserId ? Promise.resolve([]) : prisma.emailBatchItem.findMany({
-        where: { registrationId },
+        where: { registrationId, ...(digitalOnly ? { job: { templateCode: 'DIGITAL_TICKET' } } : {}) },
         include: {
           job: {
             include: {
@@ -2935,6 +2940,7 @@ export class CommunicationsService {
           },
         },
         orderBy: { createdAt: 'desc' },
+        ...(limit ? {take:limit} : {}),
       }),
     ]);
 
@@ -3014,7 +3020,7 @@ export class CommunicationsService {
       return dateB - dateA;
     });
 
-    return unified;
+    return unified.slice(0,limit||unified.length).map(item=>({...item,errorMessage:safeCommunicationError(item.errorMessage,!operatorUserId&&!digitalOnly)}));
   }
 
   /**
@@ -3064,6 +3070,7 @@ export class CommunicationsService {
       }
       // 1. Actualizar EmailBatchItem si existe coincidencia por messageId o recipientEmail
       if (messageId) {
+        const affected = await prisma.emailBatchItem.findMany({ where: { messageId }, select: { job: { select: { eventId:true } } } });
         await prisma.emailBatchItem.updateMany({
           where: { messageId },
           data: {
@@ -3071,7 +3078,8 @@ export class CommunicationsService {
             lastAttemptAt: new Date(),
             ...(errorDesc ? { errorMessage: errorDesc } : {}),
           },
-        }).catch(() => {});
+        });
+        for (const event of new Set(affected.map(item=>item.job.eventId))) RealtimeService.changed(event,['communications']);
       }
 
       // 2. Actualizar EmailLog idempotentemente
@@ -3090,7 +3098,8 @@ export class CommunicationsService {
             status: targetStatus,
             ...(errorDesc ? { errorMessage: errorDesc } : {}),
           },
-        }).catch(() => {});
+        });
+        if (matchingLog.eventId) RealtimeService.changed(matchingLog.eventId,['communications']);
         processedCount++;
       }
     }

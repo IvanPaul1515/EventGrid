@@ -9,6 +9,7 @@ export function formatEmailStatus(rawStatus?: string | null): FormattedEmailStat
   const s = (rawStatus || '').toUpperCase().trim();
   switch (s) {
     case 'ACCEPTED_BY_SMTP':
+    case 'ACCEPTED_BY_PROVIDER':
     case 'SENT':
       return {
         code: 'ACCEPTED_BY_SMTP',
@@ -30,6 +31,8 @@ export function formatEmailStatus(rawStatus?: string | null): FormattedEmailStat
         description: 'Envío simulado en entorno seguro sin llamadas externas ni consumo de cuota.',
         badgeClass: 'bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30',
       };
+    case 'PREPARED':
+      return { code: s, label: 'Preparado', description: 'Preparado sin envío automático; requiere autorización explícita.', badgeClass: 'text-muted-foreground border border-border' };
     case 'PENDING':
       return {
         code: 'PENDING',

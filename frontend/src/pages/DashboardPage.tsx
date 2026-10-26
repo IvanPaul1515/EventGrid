@@ -1,3 +1,4 @@
+import { CommunicationOverview } from '../components/communications/CommunicationOverview';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ErrorPanel } from '../components/common/ErrorPanel';
 import { failureKind, FailureKind } from '../utils/appError';
@@ -440,6 +441,7 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
+      {user && ['ADMIN','OPERATOR'].includes(user.role)&&<CommunicationOverview compact/>}
       {/* Pestañas de Navegación Analítica Adaptativas */}
       <div className="flex items-center gap-1.5 p-1 rounded-xl bg-card border border-border w-full overflow-x-auto no-scrollbar sm:flex-wrap">
         <button
