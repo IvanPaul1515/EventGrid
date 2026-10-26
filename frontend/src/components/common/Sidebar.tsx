@@ -255,7 +255,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
           </nav>
         </div>
 
-        <div className="p-3 text-center text-[10px] text-muted-foreground border-t border-border shrink-0">EventGrid</div>
+        <div className="p-3 text-center border-t border-border shrink-0">
+          <p className="text-sm font-display font-bold tracking-wide text-foreground">EventGrid</p>
+          <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">Desarrollado por Iván Marcelino</p>
+        </div>
       </aside>
     </>
   );

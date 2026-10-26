@@ -2,6 +2,7 @@ import { CurrencyInput } from '../common/CurrencyInput';
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Registration, PaymentMethod, SalesResponsible, TicketType } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 import { useEdition } from '../../context/EditionContext';
 import { api } from '../../services/api';
 import {
@@ -33,6 +34,10 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   onSuccess,
 }) => {
   const { currentEvent } = useEdition();
+  const { user } = useAuth();
+  const [showApproval, setShowApproval] = useState(false);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
 
   // Estados del formulario
   const [firstName, setFirstName] = useState('');
@@ -84,9 +89,10 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
 
             // Si es un registro nuevo y aún no hay tipo seleccionado, inicializar con el primer tipo activo
             if (!registrationToEdit && tts.length > 0) {
-              const defT =
-                tts.find((t) => Number(t.price) > 0 && !t.name.toLowerCase().includes('preventa')) ||
-                tts[0];
+              const paid = tts.filter(t => Number(t.price) > 0 && !/cortes/i.test(t.name))
+                .sort((a, b) => a.id.localeCompare(b.id));
+              const defT = paid.find(t => /general|principal|oficial/i.test(t.name)) ||
+                paid.find(t => !/preventa/i.test(t.name)) || paid[0];
               if (defT) {
                 setTicketTypeId(defT.id);
                 setTicketPrice(Number(defT.price));
@@ -160,6 +166,9 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       setNotes('');
     }
     setError(null);
+    setShowApproval(false);
+    setAdminEmail('');
+    setAdminPassword('');
   }, [registrationToEdit, isOpen]);
 
   // Comprobar si el formulario tiene cambios sin guardar para evitar pérdidas accidentales (Sección 6)
@@ -188,6 +197,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showApproval) { setShowApproval(false); setAdminPassword(''); setAdminEmail(''); return; }
       if (e.key === 'Escape' && !loading) {
         handleRequestClose();
       }
@@ -199,26 +209,22 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = '';
     };
-  }, [isOpen, loading, isFormDirty, registrationToEdit]);
+  }, [isOpen, loading, isFormDirty, registrationToEdit, showApproval]);
 
   if (!isOpen) return null;
 
-  // Manejo de cambio en el selector de tipo de entrada
-  const handleTicketTypeChange = (newTicketId: string) => {
-    if (newTicketId === '__courtesy__') { setTicketTypeId(''); setTicketPrice(0); setAmountPaid(0); setIsCourtesy(true); setPaymentMethodId(''); setSalesResponsibleId(''); return; }
-    setTicketTypeId(newTicketId);
-    const selected = ticketTypes.find((t) => t.id === newTicketId);
-    if (selected) {
-      const price = Number(selected.price);
-      setTicketPrice(price);
-      if (price === 0 || selected.name.toLowerCase().includes('cortes')) {
-        setIsCourtesy(true);
-        setAmountPaid(0);
-      } else {
-        setIsCourtesy(false);
-        // Tariff selection never invents a payment or replaces historical payments.
+  const toggleCourtesy = () => {
+    if (isCourtesy) {
+      setIsCourtesy(false); setAdminEmail(''); setAdminPassword('');
+      if (!registrationToEdit || registrationToEdit.isCourtesy) {
+        const paid = ticketTypes.filter(t => Number(t.price) > 0 && !/cortes/i.test(t.name)).sort((a, b) => a.id.localeCompare(b.id));
+        const official = paid.find(t => /general|principal|oficial/i.test(t.name)) || paid.find(t => !/preventa/i.test(t.name)) || paid[0];
+        setTicketTypeId(official?.id || ''); setTicketPrice(Number(official?.price || 0));
       }
+      return;
     }
+    if (user?.role === 'ADMIN') { setIsCourtesy(true); setAmountPaid(0); setCourtesyAuthorizedBy(user.fullName); }
+    else if (user?.role === 'OPERATOR') setShowApproval(true);
   };
 
   const balanceDue = isCourtesy ? 0 : Math.max(0, ticketPrice - amountPaid);
@@ -227,7 +233,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving.current || catalogLoading) return;
-    if (!isCourtesy && !ticketTypeId && !registrationToEdit) { setError('Seleccione una tarifa válida o Cortesía.'); return; }
+    if (!isCourtesy && !ticketTypeId && !registrationToEdit) { setError('Configure una tarifa oficial activa para esta edición.'); return; }
     saving.current = true;
     setLoading(true);
     setError(null);
@@ -251,6 +257,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       isCourtesy,
       courtesyAuthorizedBy: isCourtesy ? courtesyAuthorizedBy.trim() || null : null,
       courtesyReason: isCourtesy ? courtesyReason.trim() || null : null,
+      ...(isCourtesy && user?.role === 'OPERATOR' && adminPassword ? { courtesyApproval: { email: adminEmail, password: adminPassword } } : {}),
       paymentMethodId: isCourtesy ? null : (paymentMethodId || null),
       salesResponsibleId: isCourtesy ? null : (salesResponsibleId || null),
       status,
@@ -266,6 +273,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
         res = await api.post('/participants', payload);
       }
       onSuccess(res.data.data);
+      setAdminPassword('');
       onClose();
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Error al guardar el participante';
@@ -418,21 +426,9 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                 <Tag className="w-3.5 h-3.5 text-primary" />
                 <span>Tarifa</span>
               </label>
-              <select
-                aria-label="Tarifa"
-                disabled={catalogLoading}
-                value={isCourtesy ? '__courtesy__' : ticketTypeId}
-                onChange={(e) => handleTicketTypeChange(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">-- Seleccionar Tarifa --</option>
-                <option value="__courtesy__" disabled={Boolean(registrationToEdit && Number(registrationToEdit.amountPaid || registrationToEdit.totalAmount) > 0)}>Cortesía — RD$ 0.00</option>
-                {ticketTypes.filter(tt => Number(tt.price) > 0 || tt.id === ticketTypeId).map((tt) => (
-                  <option key={tt.id} value={tt.id}>
-                    {tt.name} — RD$ {Number(tt.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </option>
-                ))}
-              </select>
+              <output aria-label="Tarifa oficial" className="block w-full px-3 py-2 bg-muted border border-border rounded-xl text-xs font-bold text-foreground">
+                {catalogLoading ? 'Cargando tarifa...' : isCourtesy ? 'Cortesía — RD$ 0.00' : ticketTypes.find(t => t.id === ticketTypeId)?.name || 'Sin tarifa oficial configurada'}
+              </output>
             </div>
 
             <div>
@@ -568,7 +564,11 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
 
           {/* Toggle de Cortesía */}
           <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 space-y-3">
-            <p className="text-xs text-muted-foreground">La opción Cortesía se selecciona directamente en Tarifa. No registra un pago ni una entrega de efectivo.</p>
+            <label className="flex items-center gap-2 text-xs font-semibold text-foreground">
+              <input type="checkbox" checked={isCourtesy} onChange={toggleCourtesy} disabled={loading || user?.role === 'VIEWER' || Boolean(registrationToEdit && Number(registrationToEdit.amountPaid || registrationToEdit.totalAmount) > 0)} />
+              Registrar como Entrada de Cortesía
+            </label>
+            <p className="text-xs text-muted-foreground">La cortesía requiere autorización administrativa. No registra un pago ni una entrega de efectivo.</p>
             {isCourtesy && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-amber-500/20">
                 <div>
@@ -578,9 +578,8 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                   <input
                     type="text"
                     value={courtesyAuthorizedBy}
-                    onChange={(e) => setCourtesyAuthorizedBy(e.target.value)}
-                    placeholder="ej. Comité Organizador / Patrocinador"
-                    required={isCourtesy}
+                    readOnly
+                    placeholder={user?.role === 'ADMIN' ? user.fullName : 'Administrador: se validará al guardar'}
                     className="w-full px-3 py-1.5 bg-background border border-amber-500/30 rounded-lg text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
@@ -590,6 +589,8 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                   </label>
                   <input
                     type="text"
+                    required={isCourtesy}
+                    minLength={3}
                     value={courtesyReason}
                     onChange={(e) => setCourtesyReason(e.target.value)}
                     placeholder="ej. Ponente, Becado, Voluntario, Prensa"
@@ -706,6 +707,24 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
           </div>
         </form>
       </div>
+      {showApproval && (
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-labelledby="courtesy-approval-title" className="w-full max-w-sm max-h-[90dvh] overflow-y-auto bg-card border border-border rounded-2xl p-5 space-y-4">
+            <h4 id="courtesy-approval-title" className="font-bold">Autorización administrativa</h4>
+            <p className="text-xs text-muted-foreground">Un administrador debe introducir sus credenciales. Se validarán al guardar este registro, sin cambiar tu sesión.</p>
+            <label className="block text-xs">Correo del administrador
+              <input type="email" autoFocus autoComplete="off" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} className="mt-1 w-full bg-background border border-border rounded-lg p-2" />
+            </label>
+            <label className="block text-xs">Contraseña del administrador
+              <input type="password" autoComplete="new-password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="mt-1 w-full bg-background border border-border rounded-lg p-2" />
+            </label>
+            <div className="flex justify-end gap-3">
+              <button type="button" onClick={() => { setShowApproval(false); setAdminPassword(''); setAdminEmail(''); }} className="text-sm">Cancelar</button>
+              <button type="button" disabled={!adminEmail.trim() || !adminPassword} onClick={() => { setIsCourtesy(true); setAmountPaid(0); setCourtesyAuthorizedBy(''); setShowApproval(false); }} className="bg-primary text-primary-foreground rounded-lg px-3 py-2 text-sm disabled:opacity-50">Confirmar autorización</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );

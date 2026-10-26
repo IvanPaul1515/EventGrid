@@ -1,3 +1,4 @@
+import { actionRateLimiter } from '../../middleware/rateLimiter.js';
 import { Router } from 'express';
 import { ParticipantsController } from './participants.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
@@ -8,6 +9,8 @@ const router = Router({ mergeParams: true });
 
 router.use(authenticateToken);
 router.use(editionContext);
+const approvalLimit = actionRateLimiter(5, 15 * 60 * 1000);
+router.use((req, res, next) => req.body?.courtesyApproval ? approvalLimit(req, res, next) : next());
 
 // Rutas especiales y acciones globales (deben declararse antes de /:id)
 router.post('/demo', requireOperatorOrAdmin, ParticipantsController.generateDemo);

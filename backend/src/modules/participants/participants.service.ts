@@ -1,3 +1,4 @@
+import { officialTicket, authorizeCourtesy, auditCourtesy } from './registrationPolicy.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
 import { CommunicationsService } from '../communications/communications.service.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
@@ -329,7 +330,7 @@ export class ParticipantsService {
   /**
    * Crear nueva inscripción en la edición activa
    */
-  static async create(eventId: string, input: CreateRegistrationInput) {
+  static async create(eventId: string, input: CreateRegistrationInput, actorId?: string) {
     if ((input.status as string) === 'ATTENDED') throw new BadRequestError('La asistencia solo puede confirmarse mediante check-in autorizado.');
     const reservedNumber = input.registrationNumber?.trim() || await ParticipantsService.getNextRegistrationNumber(eventId);
     return writeTransaction(async tx => {
@@ -368,6 +369,11 @@ export class ParticipantsService {
       }
     }
 
+    const approval = isCourtesy ? await authorizeCourtesy(tx, eventId, actorId, input.courtesyReason, input.courtesyApproval) : null;
+    if (!isCourtesy) {
+      ticketType = officialTicket(event.ticketTypes) || null;
+      if (!ticketType) throw new BadRequestError('Configure una tarifa oficial activa antes de registrar participantes.');
+    }
     // Regla de cortesía: forma de pago y responsable no aplican (null)
     if (isCourtesy) {
       paymentMethodId = null;
@@ -491,9 +497,10 @@ export class ParticipantsService {
         totalAmount: amountPaid,
         isVerified: isCourtesy ? true : (input.isVerified || (amountPaid > 0)),
         isCourtesy,
-        courtesyAuthorizedBy: isCourtesy ? (input.courtesyAuthorizedBy || 'Comité Organizador') : null,
-        courtesyReason: isCourtesy ? (input.courtesyReason || null) : null,
-        courtesyDate: isCourtesy ? new Date() : null,
+        courtesyAuthorizedBy: approval?.name || null,
+        courtesyUserId: approval?.id || null,
+        courtesyReason: approval?.reason || null,
+        courtesyDate: approval?.date || null,
         isDemo: input.isDemo || false,
         paymentMethodId: isCourtesy ? null : paymentMethodId,
         paymentStatus: initialPaymentStatus,
@@ -526,6 +533,7 @@ export class ParticipantsService {
     }
 
 
+    if (approval) await auditCourtesy(tx, eventId, registration.id, actorId, approval, true);
     return registration;
 
     }, { isolationLevel: 'Serializable', timeout: 15000 });
@@ -631,11 +639,17 @@ export class ParticipantsService {
       }
     }
 
+    const courtesyChanged = isCourtesy && (!existing.isCourtesy ||
+      (input.courtesyReason !== undefined && input.courtesyReason !== existing.courtesyReason) ||
+      (input.courtesyAuthorizedBy !== undefined && input.courtesyAuthorizedBy !== existing.courtesyAuthorizedBy));
+    const approval = courtesyChanged ? await authorizeCourtesy(tx, eventId, userId, input.courtesyReason, input.courtesyApproval) : null;
     // Si pasamos de cortesía a entrada normal pagada, restaurar el precio oficial de la tarifa
     let ticketPrice = existing.ticketPrice ? Number(existing.ticketPrice) : Number(existing.totalAmount);
     if (existing.isCourtesy && !isCourtesy) {
       ticketPrice = ticketType ? Number(ticketType.price) : (input.ticketPrice ? Number(input.ticketPrice) : 0);
-    } else if (input.ticketPrice !== undefined && input.ticketPrice !== null) {
+    } else if (input.ticketPrice !== undefined && input.ticketPrice !== null && !isCourtesy && Number(input.ticketPrice) !== ticketPrice) {
+      const actor = userId ? await prisma.user.findUnique({ where: { id: userId } }) : null;
+      if (actor?.role !== 'ADMIN') throw new BadRequestError('La tarifa no puede modificarse manualmente.');
       ticketPrice = Number(input.ticketPrice);
     } else if (input.ticketTypeId !== undefined && input.ticketTypeId !== existing.ticketTypeId && ticketType) {
       ticketPrice = Number(ticketType.price);
@@ -692,12 +706,10 @@ export class ParticipantsService {
         totalAmount: amountPaid,
         isVerified: isCourtesy ? true : (input.isVerified !== undefined ? input.isVerified : existing.isVerified),
         isCourtesy,
-        courtesyAuthorizedBy: isCourtesy
-          ? (input.courtesyAuthorizedBy !== undefined ? input.courtesyAuthorizedBy : existing.courtesyAuthorizedBy)
-          : null,
-        courtesyReason: isCourtesy
-          ? (input.courtesyReason !== undefined ? input.courtesyReason : existing.courtesyReason)
-          : null,
+        courtesyAuthorizedBy: isCourtesy ? (approval?.name || existing.courtesyAuthorizedBy) : null,
+        courtesyReason: isCourtesy ? (approval?.reason || existing.courtesyReason) : null,
+        courtesyUserId: isCourtesy ? (approval?.id || existing.courtesyUserId) : null,
+        courtesyDate: isCourtesy ? (approval?.date || existing.courtesyDate) : null,
         paymentMethodId: isCourtesy ? null : paymentMethodId,
         paymentStatus,
         salesResponsibleId: isCourtesy ? null : (input.salesResponsibleId !== undefined ? input.salesResponsibleId : existing.salesResponsibleId),
@@ -721,6 +733,7 @@ export class ParticipantsService {
       },
     });
 
+    if (approval) await auditCourtesy(tx, eventId, registrationId, userId, approval);
     return {
       ...updated,
       status: updated.status,
@@ -754,6 +767,7 @@ export class ParticipantsService {
       ticketType.name.toLowerCase().includes('cortes') ||
       !!input.courtesyAuthorizedBy;
 
+    const approval = isCourtesy ? await authorizeCourtesy(tx, eventId, operatorUserId, input.courtesyReason, input.courtesyApproval) : null;
     const ticketPrice = isCourtesy ? 0 : Number(ticketType.price);
     const amountReceived = isCourtesy ? 0 : Number(input.amountReceived || 0);
     const amountPaid = isCourtesy
@@ -866,10 +880,10 @@ export class ParticipantsService {
         totalAmount: amountPaid,
         isVerified: true,
         isCourtesy,
-        courtesyAuthorizedBy: isCourtesy ? (input.courtesyAuthorizedBy || 'Comité Organizador') : null,
-        courtesyReason: isCourtesy ? (input.courtesyReason || 'Cortesía presencial en recepción') : null,
+        courtesyAuthorizedBy: approval?.name || null,
+        courtesyReason: approval?.reason || null,
         courtesyDate: isCourtesy ? now : null,
-        courtesyUserId: isCourtesy ? operatorUserId : null,
+        courtesyUserId: approval?.id || null,
         paymentMethodId: isCourtesy ? null : input.paymentMethodId || null,
         paymentStatus: onsitePaymentStatus,
         status: balanceDue === 0 || isCourtesy ? 'CONFIRMED' : 'PENDING',
@@ -901,6 +915,7 @@ export class ParticipantsService {
     }
 
 
+    if (approval) await auditCourtesy(tx, eventId, registration.id, operatorUserId, approval, true);
     return {
       registration,
       payment: recordedPayment,
@@ -1085,6 +1100,8 @@ export class ParticipantsService {
    * Asignar cortesía a un participante
    */
   static async assignCourtesy(eventId: string, registrationId: string, input: AssignCourtesyInput, adminUserId: string) {
+    return writeTransaction(async tx => {
+    const prisma = tx;
     const registration = await prisma.registration.findFirst({
       where: { id: registrationId, eventId },
       include: { participant: true },
@@ -1094,6 +1111,8 @@ export class ParticipantsService {
       throw new NotFoundError('Inscripción no encontrada en la edición activa');
     }
 
+    if (Number(registration.amountPaid) > 0) throw new BadRequestError('No se puede convertir a cortesía una inscripción con pagos registrados.');
+    const approval = await authorizeCourtesy(prisma, eventId, adminUserId, input.reason);
     // Buscar tipo de entrada cortesía si existe
     const courtesyTicketType = await prisma.ticketType.findFirst({
       where: {
@@ -1106,7 +1125,7 @@ export class ParticipantsService {
       where: { id: registrationId },
       data: {
         isCourtesy: true,
-        courtesyAuthorizedBy: input.authorizedBy,
+        courtesyAuthorizedBy: approval.name,
         courtesyReason: input.reason,
         courtesyDate: new Date(),
         courtesyUserId: adminUserId,
@@ -1126,10 +1145,12 @@ export class ParticipantsService {
       },
     });
 
+    await auditCourtesy(tx, eventId, registrationId, adminUserId, approval);
     return {
       ...updated,
       previousTshirtSize: registration.tshirtSize || null,
     };
+    }, { isolationLevel: 'Serializable', timeout: 15000 });
   }
 
   /**
