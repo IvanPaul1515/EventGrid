@@ -1,4 +1,5 @@
 import { actionRateLimiter } from '../../middleware/rateLimiter.js';
+import trackingRoutes from './tracking.routes.js';
 import { prisma } from '../../config/db.js';
 import { ForbiddenError } from '../../utils/errors.js';
 import { Router } from 'express';
@@ -13,6 +14,7 @@ const explicitActionLimit = actionRateLimiter();
 router.post('/webhooks/brevo', CommunicationsController.handleBrevoWebhook);
 
 router.use(authenticateToken);
+router.use('/tracking', trackingRoutes);
 router.param('registrationId', async (req, _res, next) => {
   try {
     if ((req.user?.role !== 'ADMIN' || Boolean(req.user?.assignedEventId)) && !await prisma.registration.findFirst({ where: { id: req.params.registrationId, eventId: req.eventId } })) throw new ForbiddenError('Inscripción fuera de su edición');

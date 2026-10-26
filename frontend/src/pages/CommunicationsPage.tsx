@@ -1,3 +1,6 @@
+import { CommunicationOverview } from '../components/communications/CommunicationOverview';
+import { CommunicationParticipants } from '../components/communications/CommunicationParticipants';
+import { EmailPreview } from '../components/communications/EmailPreview';
 import { useRealtimeRefresh } from '../context/RealtimeContext';
 import React, { useState, useEffect, useRef } from 'react';
 import { ErrorPanel } from '../components/common/ErrorPanel';
@@ -54,8 +57,9 @@ export const CommunicationsPage: React.FC = () => {
   const templateScope = useRef<string | null>(null);
 
   // Pestañas: 1. Redactar y enviar, 2. Plantillas, 3. Envíos masivos, 4. Historial y seguimiento
-  const [activeTab, setActiveTab] = useState<'compose' | 'templates' | 'bulk' | 'batches' | 'logs'>('compose');
+  const [activeTab, setActiveTab] = useState<'summary' | 'participants' | 'compose' | 'templates' | 'bulk' | 'batches' | 'logs'>('summary');
 
+  const [contextTemplate,setContextTemplate]=useState('DIGITAL_TICKET');
   // Estado del servicio SMTP (para banner informativo en cabecera)
   const [serviceConfig, setServiceConfig] = useState<Pick<EmailConfig, 'isEnabled' | 'host'> | null>(null);
 
@@ -197,7 +201,7 @@ export const CommunicationsPage: React.FC = () => {
     setStatusError(null); setTemplates([]); setSelectedTemplate(null); setLogs([]);
     setSelectedRegistration(null); setSearchResults([]); setComposeTemplateCode('DIGITAL_TICKET');
     setComposeSubject(''); setComposeBodyHtml(''); setComposeCustomMessage('');
-    if (!isAdmin) setActiveTab('compose');
+    setActiveTab('summary');
   }, [currentEvent?.id, user?.role]);
 
   // Cargar estado inicial
@@ -205,11 +209,9 @@ export const CommunicationsPage: React.FC = () => {
     if (currentEvent) {
       loadServiceStatus();
       loadTemplates();
-      if (activeTab === 'logs') {
-        loadLogs();
-      }
     }
-  }, [currentEvent?.id, activeTab, isAdmin]);
+  }, [currentEvent?.id, isAdmin]);
+  useEffect(() => { if (currentEvent && activeTab === 'logs') void loadLogs(1); }, [currentEvent?.id, activeTab, isAdmin]);
 
   const loadBatchJobs = async () => {
     if (!currentEvent) return;
@@ -651,8 +653,12 @@ export const CommunicationsPage: React.FC = () => {
       </div>
 
       {/* Pestañas Principales */}
+      <div role="tablist" aria-label="Seguimiento de comunicaciones" className="flex gap-2">{(['summary','participants'] as const).map(tab=><button key={tab} type="button" role="tab" aria-selected={activeTab===tab} onClick={()=>setActiveTab(tab)} className={`px-4 py-2 rounded-lg border border-border ${activeTab===tab?'bg-primary text-white':'bg-card'}`}>{tab==='summary'?'Resumen':'Participantes'}</button>)}</div>
+      {activeTab==='summary'&&<CommunicationOverview/>}
+      {activeTab==='participants'&&<CommunicationParticipants initialTemplate={contextTemplate}/>}
+
       <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-card border border-border">
-        <button
+        {isAdmin && <button
           onClick={() => setActiveTab('compose')}
           className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
             activeTab === 'compose'
@@ -661,8 +667,8 @@ export const CommunicationsPage: React.FC = () => {
           }`}
         >
           <Send className="w-3.5 h-3.5" />
-          <span>Redactar y Enviar</span>
-        </button>
+          <span>Enviar comunicación</span>
+        </button>}
 
         <button
           onClick={() => setActiveTab('templates')}
@@ -706,7 +712,6 @@ export const CommunicationsPage: React.FC = () => {
         <button
           onClick={() => {
             setActiveTab('logs');
-            loadLogs(1);
           }}
           className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
             activeTab === 'logs'
@@ -722,7 +727,7 @@ export const CommunicationsPage: React.FC = () => {
       {/* ========================================================
           PESTAÑA 1: REDACTAR Y ENVIAR (INDIVIDUAL)
       ======================================================== */}
-      {activeTab === 'compose' && (
+      {isAdmin && activeTab === 'compose' && (
         <div className="space-y-4">
           {/* Barra superior de Selección de Destinatario y Acciones de Envío */}
           <div className="p-4 rounded-2xl bg-card border border-border shadow-sm space-y-3">
@@ -881,7 +886,7 @@ export const CommunicationsPage: React.FC = () => {
       {/* ========================================================
           PESTAÑA 2: PLANTILLAS OFICIALES
       ======================================================== */}
-      {!isAdmin && activeTab === 'templates' && <fieldset disabled className="min-w-0"><VisualEmailEditor readOnly initialSubject={composeSubject} initialHtml={composeBodyHtml} templateCode={composeTemplateCode} templates={templates} /></fieldset>}
+      {!isAdmin && activeTab==='templates'&&<div className="grid gap-3 sm:grid-cols-2">{templates.map(template=><article key={template.code} className="bg-card border border-border rounded-xl p-4 space-y-2"><h2 className="font-bold">{template.name}</h2><p className="text-sm text-muted-foreground">Plantilla oficial de {currentEvent?.name}. Contenido protegido.</p><button type="button" className="text-primary" onClick={()=>{setContextTemplate(template.code);setActiveTab('participants');}}>Elegir participante</button></article>)}</div>}
       {isAdmin && activeTab === 'templates' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Lista de Plantillas */}
@@ -2015,18 +2020,7 @@ export const CommunicationsPage: React.FC = () => {
                   <p className="text-xs">Generando representación exacta...</p>
                 </div>
               ) : previewData ? (
-                <div
-                  className={`transition-all duration-300 rounded-xl overflow-hidden shadow-2xl bg-white ${
-                    previewMode === 'mobile' ? 'w-[375px] h-[550px]' : 'w-full h-[500px]'
-                  }`}
-                >
-                  <iframe
-                    title="Vista previa del correo"
-                    sandbox="allow-same-origin"
-                    srcDoc={previewData.html}
-                    className="w-full h-full border-0"
-                  />
-                </div>
+                <EmailPreview html={previewData.html} mode={previewMode} onModeChange={setPreviewMode} hideControls/>
               ) : null}
             </div>
 

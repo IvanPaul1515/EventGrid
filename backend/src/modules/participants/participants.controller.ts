@@ -33,7 +33,7 @@ export class ParticipantsController {
   static async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const eventId = req.params.eventId || req.eventId!;
-      const participant = await ParticipantsService.getById(eventId, req.params.id);
+      const participant = await ParticipantsService.getById(eventId, req.params.id,req.user?.role,req.user?.role==='ADMIN'&&!req.user.assignedEventId);
 
       return res.status(200).json({
         status: 'success',

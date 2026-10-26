@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { safeCommunicationError } from '../../utils/communicationError.js';
 import { EmailQueueWorker } from './communications.queue.js';
 import { authorizeOperatorEmail, OPERATOR_EMAIL_CODES } from './operator-policy.js';
 import { Request, Response, NextFunction } from 'express';
@@ -143,6 +144,7 @@ export class CommunicationsController {
     try {
       const validated = SendEmailSchema.parse(req.body);
       authorizeOperatorEmail(req, validated);
+      if (req.user?.role === 'OPERATOR' && (validated.forceResend || validated.confirmedResend) && await prisma.emailLog.findFirst({ where: { registrationId: validated.registrationId, templateCode: validated.templateCode, status: 'UNKNOWN_DELIVERY_STATUS' } })) throw new ForbiddenError('El reenvío de un resultado incierto requiere revisión administrativa.');
       const result = await CommunicationsService.sendSingleEmail(validated, req.user?.id);
 
       await recordAuditLog({
@@ -218,7 +220,7 @@ export class CommunicationsController {
       const result = await CommunicationsService.getLogs(eventId, parsed);
       return res.status(200).json({
         status: 'success',
-        data: result.data,
+        data: result.data.map(item=>({...item,errorMessage:safeCommunicationError(item.errorMessage,req.user?.role==='ADMIN')})),
         pagination: result.pagination,
       });
     } catch (error) {
@@ -319,7 +321,7 @@ export class CommunicationsController {
     try {
       const { registrationId } = req.params;
       const history = await CommunicationsService.getUnifiedHistoryForRegistration(registrationId, req.user?.role === 'OPERATOR' ? req.user.id : undefined);
-      return res.status(200).json({ status: 'success', data: history });
+      return res.status(200).json({ status: 'success', data: history.map(item=>({...item,errorMessage:safeCommunicationError(item.errorMessage,req.user?.role==='ADMIN')})) });
     } catch (error) {
       next(error);
     }

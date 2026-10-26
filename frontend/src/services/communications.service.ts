@@ -146,6 +146,7 @@ export const communicationsService = {
   },
 
   async sendSingleEmail(payload: {
+    expectedRecipientEmail?: string;
     eventId?: string | null;
     registrationId: string;
     templateCode: string;

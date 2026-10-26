@@ -1,3 +1,6 @@
+import { CommunicationHistory } from '../components/communications/CommunicationHistory';
+import { useCommunicationBadges } from '../components/communications/useCommunicationBadges';
+import { formatEmailStatus } from '../utils/emailFormatters';
 import { CourtesyRequestsPanel } from '../components/participants/CourtesyRequestsPanel';
 import { MobileSearchInput } from '../components/common/MobileSearchInput';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -17,6 +20,7 @@ import { TableSkeleton } from '../components/common/Skeleton';
 import { EmptyState } from '../components/common/EmptyState';
 import { ErrorState } from '../components/common/ErrorState';
 import {
+  Mail,
   Users,
   Plus,
   Download,
@@ -57,6 +61,15 @@ export const ParticipantsPage: React.FC = () => {
 
   // Datos y paginación
   const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [communicationId,setCommunicationId]=useState<string|null>(null);
+  const communicationBadges=useCommunicationBadges(registrations.map(reg=>reg.id));
+  const mailAction=(reg:Registration)=>{
+    if(!hasRole(['ADMIN','OPERATOR']))return null;
+    const badge=communicationBadges[reg.id],status=badge?.lastStatus;
+    const label=badge?(status?formatEmailStatus(status).label:'Sin comunicaciones'):'Consultar historial';
+    const color=status&&['FAILED','REJECTED','BLOCKED'].includes(status)?'text-rose-500':status==='UNKNOWN_DELIVERY_STATUS'?'text-amber-500':status&&['SENT','DELIVERED','ACCEPTED_BY_SMTP','ACCEPTED_BY_PROVIDER'].includes(status)?'text-emerald-500':status&&['PENDING','PROCESSING','PREPARED'].includes(status)?'text-blue-500':'text-muted-foreground';
+    return <button type="button" title={'Comunicaciones: '+label} aria-label={'Comunicaciones de '+reg.participant.fullName+': '+label} className={'min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 p-1.5 rounded-lg hover:bg-muted '+color} onClick={e=>{e.stopPropagation();setCommunicationId(reg.id);}}><Mail className="w-4 h-4"/></button>;
+  };
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState<number>(init.page || 1);
   const [limit, setLimit] = useState<number>(init.limit || 10);
@@ -697,7 +710,7 @@ export const ParticipantsPage: React.FC = () => {
                   key={reg.id}
                   onClick={() => handleOpenDetail(reg)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+                    if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
                       e.preventDefault();
                       handleOpenDetail(reg);
                     }
@@ -785,6 +798,7 @@ export const ParticipantsPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-1">
+                      {mailAction(reg)}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -959,7 +973,7 @@ export const ParticipantsPage: React.FC = () => {
                       key={reg.id}
                       onClick={() => handleOpenDetail(reg)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
+                        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
                           e.preventDefault();
                           handleOpenDetail(reg);
                         }
@@ -1172,6 +1186,7 @@ export const ParticipantsPage: React.FC = () => {
                       {visibleColumns.actions && (
                         <td className="p-3.5 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1.5">
+                            {mailAction(reg)}
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1270,6 +1285,7 @@ export const ParticipantsPage: React.FC = () => {
         </div>
       </div>
 
+      {communicationId&&<CommunicationHistory registrationId={communicationId} onClose={()=>setCommunicationId(null)}/>}
       {/* Ficha Lateral 360° */}
       <ParticipantDetailDrawer
         registration={selectedForDetail}
