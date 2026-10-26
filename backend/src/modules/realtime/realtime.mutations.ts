@@ -11,7 +11,7 @@ const domains: Record<string, string[]> = {
   import: ['participants', 'attendance', 'sales', 'inventory', 'dashboard', 'courtesies', 'operations'], demo: ['participants', 'attendance', 'inventory', 'dashboard', 'courtesies', 'operations'],
 };
 export function realtimeMutations(req: Request, res: Response, next: NextFunction) {
-  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || /\/scanner(?:\/|$)/.test(req.path)) return next();
   const incidentMutation = req.path.includes('/incidents');
   const parts = req.path.split('/').filter(Boolean);
   const module = parts.find(part => part !== 'events' && domains[part]) || (parts.includes('events') ? 'events' : '');

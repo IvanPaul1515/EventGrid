@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 
 interface QrScanModalProps {
+  onLinkedRead?: (token: string) => Promise<string>;
   isOpen: boolean;
   onClose: () => void;
   onAttendanceMarked?: () => void;
@@ -36,9 +37,11 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
   isOpen,
   onClose,
   onAttendanceMarked,
+  onLinkedRead,
   onOpenParticipantDetail,
 }) => {
   const { currentEvent } = useEdition();
+  const linkedRead = useRef(onLinkedRead); linkedRead.current = onLinkedRead;
 
   // Modo de escaneo: 'camera' (Cámara en vivo cuadrada) o 'manual' (Lector USB / Token manual)
   const [scanMode, setScanMode] = useState<'camera' | 'manual'>('camera');
@@ -170,6 +173,11 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
       cameraGeneration.current += 1;
       cameraQueue.current = cameraQueue.current.catch(() => {}).then(releaseCamera);
       await cameraQueue.current;
+      if (linkedRead.current) {
+        const message = await linkedRead.current(trimmed);
+        if (generation === scanGeneration.current) { setScanResult(null); setCheckInSuccess(message); }
+        return;
+      }
       const result = await qrService.scan(trimmed, currentEvent?.id);
       if (generation !== scanGeneration.current) return;
       setDeliverNow(true);
@@ -390,7 +398,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-foreground text-sm leading-tight">Escáner de Entradas QR</h3>
-              <p className="text-[11px] text-muted-foreground leading-tight">Control de asistencia y check-in</p>
+              <p className="text-[11px] text-muted-foreground leading-tight">{onLinkedRead ? 'Lectura para la PC · confirme la asistencia allí' : 'Control de asistencia y check-in'}</p>
             </div>
           </div>
           <button
