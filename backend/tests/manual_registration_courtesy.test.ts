@@ -21,6 +21,7 @@ vi.mock('../src/config/db.js', async () => {
 });
 import { prisma } from '../src/config/db.js';
 import { app } from '../src/app.js';
+import { seedBarcamp2026 } from '../prisma/barcamp2026.js';
 import { ImportService } from '../src/modules/import/import.service.js';
 
 let eventId: string, general: string, presale: string, free: string, courtesyMethod: string;
@@ -99,6 +100,26 @@ describe('manual official tariff and administrative courtesy', () => {
     const before = await prisma.importBatch.count();
     await expect(ImportService.executeImport(eventId, ids.OPERATOR, 'mock.xlsx', 1, [], {}, 'SKIP')).rejects.toThrow('aprobación administrativa individual');
     expect(await prisma.importBatch.count()).toBe(before); validate.mockRestore();
+  });
+
+  it('initializes only BarCamp 2026 with a database tariff of 1750 and uses it for registration', async () => {
+    const event = await seedBarcamp2026(prisma);
+    const tariffs = await prisma.ticketType.findMany({ where: { eventId: event.id } });
+    expect(tariffs).toHaveLength(1); expect(Number(tariffs[0].price)).toBe(1750);
+    const res = await request(app).post('/api/v1/participants').set('Authorization', 'Bearer '+tokens.ADMIN).set('X-Event-Id', event.id).send(body({ ticketTypeId: undefined, ticketPrice: 1 }));
+    expect(res.status).toBe(201); expect(Number(res.body.data.ticketPrice)).toBe(1750);
+    expect(Number((await prisma.ticketType.findUnique({ where: { id: general } }))!.price)).toBe(2000);
+  });
+  it('admin tariff edits survive initialization and historical registrations remain unchanged', async () => {
+    const event = await seedBarcamp2026(prisma);
+    const tariff = await prisma.ticketType.findFirstOrThrow({ where: { eventId: event.id } });
+    const edit = await request(app).put(`/api/v1/events/${event.id}/ticket-types/${tariff.id}`).set('Authorization', 'Bearer '+tokens.ADMIN).set('X-Event-Id', event.id).send({ price: 1900 });
+    expect(edit.status).toBe(200);
+    await seedBarcamp2026(prisma);
+    expect(Number((await prisma.ticketType.findUnique({ where: { id: tariff.id } }))!.price)).toBe(1900);
+    const historical = await prisma.registration.findFirstOrThrow({ where: { eventId: event.id } }); expect(Number(historical.ticketPrice)).toBe(1750);
+    const courtesy = await request(app).post('/api/v1/participants').set('Authorization', 'Bearer '+tokens.ADMIN).set('X-Event-Id', event.id).send(body({ ticketTypeId: tariff.id, isCourtesy: true, courtesyReason: 'Ponente QA autorizado' }));
+    expect(courtesy.status).toBe(201); expect(Number(courtesy.body.data.ticketPrice)).toBe(0);
   });
 
 });

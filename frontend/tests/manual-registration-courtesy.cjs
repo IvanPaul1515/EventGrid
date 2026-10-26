@@ -32,7 +32,7 @@ const assert = require('node:assert/strict');
       if (role === 'VIEWER') { assert.equal(await create.count(), 0); await context.close(); continue; }
       await create.click();
       const dialog = page.getByRole('dialog').first();
-      await page.waitForFunction(() => document.querySelector('output[aria-label="Tarifa oficial"]')?.textContent === 'Entrada General');
+      await page.waitForFunction(() => document.querySelector('output[aria-label="Tarifa oficial"]')?.textContent === 'Tarifa oficial: RD$2,000.00');
       assert.equal(await dialog.locator('select[aria-label="Tarifa"]').count(), 0);
       assert.equal(await dialog.getByLabel('Precio de la tarifa').textContent(), '2,000.00');
       await dialog.getByRole('checkbox', { name: 'Registrar como Entrada de Cortesía' }).click();

@@ -1,3 +1,4 @@
+import { seedBarcamp2026 } from './barcamp2026.js';
 import { INITIAL_TSHIRT_INVENTORY } from '../src/modules/inventory/inventory.service.js';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
@@ -98,21 +99,7 @@ async function main() {
   console.log(`   - Consulta:      ${viewerUser.email}`);
 
   // 2. Edición BarCamp RD 2026 (Activa)
-  const event2026 = await prisma.event.upsert({
-    where: { slug: 'barcamp-rd-2026' },
-    update: {},
-    create: {
-      slug: 'barcamp-rd-2026',
-      name: 'BarCamp RD 2026',
-      year: 2026,
-      startDate: new Date('2026-11-07T08:00:00.000Z'),
-      endDate: new Date('2026-11-07T18:00:00.000Z'),
-      venue: 'PUCMM — Campus Santiago de los Caballeros, República Dominicana',
-      description: 'El mayor evento de tecnología, emprendimiento e innovación abierta en el Cibao y el Caribe.',
-      status: 'ACTIVE' as any,
-      isDefault: true,
-    },
-  });
+  const event2026 = await seedBarcamp2026(prisma);
 
   const newDemoSettings = process.env.DEMO_QUICK_ACCESS === 'true' && !await prisma.eventSettings.findUnique({ where: { eventId: event2026.id } });
   // Configuración visual BarCamp 2026

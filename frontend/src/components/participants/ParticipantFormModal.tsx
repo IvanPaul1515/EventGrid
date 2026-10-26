@@ -427,7 +427,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                 <span>Tarifa</span>
               </label>
               <output aria-label="Tarifa oficial" className="block w-full px-3 py-2 bg-muted border border-border rounded-xl text-xs font-bold text-foreground">
-                {catalogLoading ? 'Cargando tarifa...' : isCourtesy ? 'Cortesía — RD$ 0.00' : ticketTypes.find(t => t.id === ticketTypeId)?.name || 'Sin tarifa oficial configurada'}
+                {catalogLoading ? 'Cargando tarifa...' : isCourtesy ? 'Cortesía — RD$ 0.00' : ticketTypeId ? `Tarifa oficial: RD$${ticketPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Sin tarifa oficial configurada'}
               </output>
             </div>
 
