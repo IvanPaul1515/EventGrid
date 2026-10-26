@@ -3,30 +3,30 @@
   "waves": [
     {
       "operators": 5,
-      "elapsedMs": 734,
-      "p95WorkflowMs": 732,
+      "elapsedMs": 723,
+      "p95WorkflowMs": 722,
       "unexpectedErrors": 0,
       "duplicatesPrevented": 5,
       "delivered": 5,
-      "rssMB": 196
+      "rssMB": 187
     },
     {
       "operators": 10,
-      "elapsedMs": 1585,
-      "p95WorkflowMs": 1583,
+      "elapsedMs": 1454,
+      "p95WorkflowMs": 1452,
       "unexpectedErrors": 0,
       "duplicatesPrevented": 10,
       "delivered": 10,
-      "rssMB": 212
+      "rssMB": 204
     },
     {
       "operators": 20,
-      "elapsedMs": 8154,
-      "p95WorkflowMs": 8143,
+      "elapsedMs": 2902,
+      "p95WorkflowMs": 2891,
       "unexpectedErrors": 0,
       "duplicatesPrevented": 20,
       "delivered": 20,
-      "rssMB": 274
+      "rssMB": 278
     }
   ]
 }

@@ -56,7 +56,7 @@ Implementación y QA local completadas. La publicación se verifica mediante el 
 
 ### Resultados verificables
 - 78/78 pruebas aprobadas en cinco suites aisladas; incluye correo con mocks, recuperación, roles, idempotencia, auditoría, migración de fixture SQLite antiguo, restauración y 13 sesiones de navegador sobre HTTP/SSE real.
-- Rondas 5/10/20 con cero errores inesperados. En la última ronda mixta de 20, p95 del flujo completo 8,143 ms; no representa latencia de una petición individual ni capacidad garantizada de producción. Métricas HTTP separadas en RECEPTION_LOAD_RESULTS.json.
+- Rondas 5/10/20 con cero errores inesperados. En la ronda mixta local de 20 tras serializar las auditorías de rechazo, p95 del flujo completo 2,891 ms; no representa latencia de una petición individual ni capacidad garantizada de producción. Métricas HTTP separadas en RECEPTION_LOAD_RESULTS.json.
 - Build backend y frontend/TypeScript aprobado; validación de ambos esquemas aprobada. Cliente PostgreSQL compilado sin conectarse a ninguna base real; cliente local SQLite restaurado después.
 - Navegador Chrome con API simulada: recuperación y accesos demo 390/1440; formulario admin/operador y bloqueo consulta; recepción 320/390/412/844/1440; errores, temas, carga y recuperación de conexión; cámara QR simulada libera pistas y exige una confirmación.
 - PWA sobre build final: 76 recursos públicos precargados, API/uploads excluidos de caché, actualización y shell offline aprobados. No se confirma asistencia offline.
@@ -67,3 +67,6 @@ El package-lock.json preexistente sigue intacto y fuera de estos commits (359 ad
 La puesta en servicio necesita respaldo verificado, persistencia, migración aditiva y selección explícita de tarifa antes de admitir altas. El start de demostración que ejecuta db push/seed no sustituye un despliegue de producción con migraciones revisadas. Ver el procedimiento documentado.
 GitHub se integra mediante PR desde codex/reception-courtesy-requests; su enlace y SHA final se registran en la entrega. Render permanece deliberadamente en la versión anterior para conservar la asistencia e inventario existentes.
 
+
+### Seguimiento de integración
+PR: https://github.com/IvanPaul1515/EventGrid/pull/12. Implementación base a05164a; QA/documentación 5aa0c91. El primer CI Linux detectó un 503 durante carga mixta: las auditorías de check-ins rechazados escribían fuera de la cola SQLite. Se incorporaron a writeTransaction, conservando las validaciones y sin reintentos automáticos; la prueba mantiene sus 20 operadores y cero errores esperados. Suite afectada: 18/18 local tras la corrección. El SHA de integración final se informa en la entrega.

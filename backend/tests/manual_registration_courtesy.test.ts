@@ -191,7 +191,7 @@ describe('manual official tariff and administrative courtesy', () => {
           const id = created.body.data.id;
           expect((await request(app).post(`/api/v1/participants/${id}/payments`).set(h).send({ amount: 100, paymentMethodId: method.id })).status).toBe(201);
           const payload = { registrationId: id, confirmed: true, tshirtSize: size, tshirtDelivered: true };
-          expect((await request(app).post('/api/v1/attendance/check-in').set(h).send(payload)).status).toBe(200);
+          const checked = await request(app).post('/api/v1/attendance/check-in').set(h).send(payload); expect(checked.status, JSON.stringify(checked.body)).toBe(200);
           expect((await request(app).post('/api/v1/attendance/check-in').set(h).send(payload)).status).toBe(400); duplicatePrevented++;
           const sent = await sendRequest('OPERATOR', { requestKey: crypto.randomUUID(), reason: 'Solicitud carga QA', registration: body() }, token); expect(sent.status).toBe(201);
           expect((await decision('ADMIN', sent.body.data.id, index%2 ? 'REJECTED' : 'APPROVED')).status).toBe(200);
