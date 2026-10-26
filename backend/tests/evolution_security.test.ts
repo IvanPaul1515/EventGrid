@@ -188,6 +188,9 @@ describe('manual reception incidents and tested SQLite restoration', () => {
         await before.$executeRawUnsafe('INSERT INTO ticket_types (id,eventId,name,price,updatedAt) VALUES (?,?,?,?,?)', tid, eid, 'Unambiguous legacy label', 1750, now);
         await before.$executeRawUnsafe('INSERT INTO participants (id,firstName,lastName,fullName,email,updatedAt) VALUES (?,?,?,?,?,?)', pid, 'Legacy', 'Person', 'Legacy Person', 'legacy-person@qa.invalid', now);
         await before.$executeRawUnsafe('INSERT INTO registrations (id,eventId,participantId,registrationNumber,ticketPrice,amountPaid,totalAmount,balanceDue,updatedAt) VALUES (?,?,?,?,?,?,?,?,?)', rid, eid, pid, 'LEGACY', 1600, 900, 900, 700, now);
+        const { migrateReceptionMetadata } = await import('../scripts/reception-metadata-migration.js');
+        await migrateReceptionMetadata(before);
+        await migrateReceptionMetadata(before); // idempotent migration
         await before.$disconnect();
         execFileSync(process.execPath, [cli, 'db', 'push', '--schema', fileURLToPath(new URL('../prisma/schema.sqlite.prisma', import.meta.url)), '--skip-generate'], { env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe' });
         const upgraded = new PrismaClient({ datasourceUrl: url });

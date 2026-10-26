@@ -31,7 +31,8 @@ export class ImportController {
       const result = await ImportService.validateRows(
         eventId,
         validated.rows,
-        validated.columnMapping
+        validated.columnMapping,
+        validated.batchDefaults
       );
 
       return res.status(200).json({
@@ -56,7 +57,8 @@ export class ImportController {
         validated.fileSize,
         validated.rows,
         validated.columnMapping,
-        validated.conflictStrategy
+        validated.conflictStrategy,
+        validated.batchDefaults
       );
 
       await recordAuditLog({

@@ -1,3 +1,4 @@
+import { LinkedScannerPanel } from '../components/attendance/LinkedScannerPanel';
 import { ReceptionIncidentsPanel } from '../components/attendance/ReceptionIncidentsPanel';
 import { ReceptionOverview } from '../components/attendance/ReceptionOverview';
 import { CourtesyRequestsPanel } from '../components/participants/CourtesyRequestsPanel';
@@ -47,6 +48,7 @@ import {
 
 export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
   const { currentEvent } = useEdition();
+  const activeEdition = useRef(currentEvent?.id); activeEdition.current = currentEvent?.id;
   const { user, hasRole } = useAuth();
 
   // Estados de datos
@@ -94,6 +96,7 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
   const [registrationToEdit, setRegistrationToEdit] = useState<Registration | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const [mobileLinked, setMobileLinked] = useState(false);
   const [isQrScanOpen, setIsQrScanOpen] = useState(false);
   useEffect(() => {
     if (location.state?.openQr && hasRole(['ADMIN', 'OPERATOR'])) {
@@ -286,6 +289,13 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
 
   return (
     <div className={`space-y-6 max-w-7xl mx-auto ${quick?'[&_button]:min-h-11':''}`}>
+      {currentEvent && hasRole(['ADMIN', 'OPERATOR']) && <LinkedScannerPanel onLinkedMode={setMobileLinked} eventId={currentEvent.id} busy={isDrawerOpen || isNewParticipantOpen || isOnsiteSaleOpen || isQrScanOpen} onRead={async id => {
+        const editionId = currentEvent.id;
+        const registration = await participantsService.getById(id);
+        if (activeEdition.current !== editionId) return;
+        setSelectedRegistration(registration); setIsDrawerOpen(true);
+      }} />}
+      <div hidden={mobileLinked} className="space-y-6">
       {!quick && <ReceptionOverview />}
       <ReceptionIncidentsPanel />
       <CourtesyRequestsPanel />
@@ -844,7 +854,8 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
           setIsNewParticipantOpen(false);
           setRegistrationToEdit(null);
         }}
-        onSuccess={async () => {
+        onSuccess={async (saved) => {
+          showFeedback('success', registrationToEdit ? 'Registro actualizado' : 'Registro creado', `Número interno: ${saved.registrationNumber}`);
           await fetchAttendance();
           setIsNewParticipantOpen(false);
           setRegistrationToEdit(null);
@@ -870,6 +881,7 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
           }
         }}
       />
+      </div>
     </div>
   );
 };

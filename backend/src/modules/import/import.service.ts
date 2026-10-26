@@ -7,7 +7,11 @@ import crypto from 'crypto';
 
 // Diccionario de alias lingüísticos para detección automática de columnas históricas de BarCamp
 const ALIAS_DICTIONARY: Record<string, string[]> = {
-  registrationNumber: [
+  externalPaymentStatus: ['estado de pago', 'estado pago', 'payment status'],
+  externalPlatform: ['plataforma', 'origen', 'plataforma externa', 'plataforma de origen'],
+  buyerName: ['comprador', 'nombre comprador'],
+  externalReference: [
+    'referencia externa',
     'no. registro', 'no registro', 'no.registro', 'no_registro', 'registro', 'no.', 'no',
     'ticket id', 'ticket no', 'ticket', 'id registro', 'id_registro', 'reg id', 'reg_id'
   ],
@@ -60,7 +64,7 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
   ],
   salesResponsible: [
     'responsable de venta', 'responsable venta', 'responsable_de_venta', 'responsable',
-    'vendedor', 'cajero', 'registrado por', 'creado por'
+    'vendedor', 'cajero'
   ],
   saleTimestamp: [
     'horario de venta', 'horario venta', 'horario_de_venta', 'fecha de venta', 'fecha venta',
@@ -269,7 +273,7 @@ export class ImportService {
   /**
    * Paso 4: Validar datos, detectar duplicados y verificar formas de pago
    */
-  static async validateRows(eventId: string, rows: any[], columnMapping: Record<string, string>) {
+  static async validateRows(eventId: string, rows: any[], columnMapping: Record<string, string>, batchDefaults: Record<string, string> = {}) {
     const event = await prisma.event.findUnique({
       where: { id: eventId },
       include: {
@@ -298,6 +302,7 @@ export class ImportService {
     // Índices en el propio archivo para detectar duplicados internos
     const seenEmailsInFile = new Map<string, number>();
     const seenDocsInFile = new Map<string, number>();
+    const seenExternal = new Set<string>();
 
     const rowsSummary: Array<{
       rowNumber: number;
@@ -352,6 +357,18 @@ export class ImportService {
       }
       if (normalized.alternatePhone) {
         normalized.alternatePhone = normalizePhone(normalized.alternatePhone) || normalized.alternatePhone;
+      }
+
+      for (const [field, value] of Object.entries(batchDefaults)) if (!normalized[field]) normalized[field] = value;
+      // Old mapping clients are accepted, but their source number is never an internal number.
+      normalized.externalReference = String(normalized.externalReference || normalized.registrationNumber || '').trim() || null;
+      normalized.externalPlatform = String(normalized.externalPlatform || 'Excel').trim();
+      const externalKey = normalized.externalReference ? normalized.externalPlatform + ':' + normalized.externalReference : null;
+      if (externalKey) {
+        if (seenExternal.has(externalKey)) errors.push('Referencia externa repetida en este archivo');
+        seenExternal.add(externalKey);
+        const duplicate = event.registrations.find(r => r.externalPlatform === normalized.externalPlatform && r.externalReference === normalized.externalReference);
+        if (duplicate) { isDuplicateInDb = true; existingTicket = duplicate.registrationNumber; }
       }
 
       // 1. Validar campos obligatorios mínimos
@@ -432,9 +449,6 @@ export class ImportService {
         isDuplicateInDb = true;
         const reg = event.registrations.find((r) => r.participant.documentId === normalized.documentId.trim());
         existingTicket = reg?.registrationNumber;
-      } else if (normalized.registrationNumber && existingRegNumbersInDb.has(normalized.registrationNumber.trim())) {
-        isDuplicateInDb = true;
-        existingTicket = normalized.registrationNumber.trim();
       }
 
       // Clasificación de estado de fila
@@ -479,7 +493,8 @@ export class ImportService {
     fileSize: number,
     rows: any[],
     columnMapping: Record<string, string>,
-    conflictStrategy: 'SKIP' | 'UPDATE' | 'ONLY_NEW' = 'SKIP'
+    conflictStrategy: 'SKIP' | 'UPDATE' | 'ONLY_NEW' = 'SKIP',
+    batchDefaults: Record<string, string> = {}
   ) {
     const event = await prisma.event.findUnique({
       where: { id: eventId },
@@ -493,7 +508,7 @@ export class ImportService {
     if (!event) throw new NotFoundError('Edición no encontrada');
 
     // 1. Validar filas antes de escribir
-    const validation = await this.validateRows(eventId, rows, columnMapping);
+    const validation = await this.validateRows(eventId, rows, columnMapping, batchDefaults);
 
     // Importing a spreadsheet is not administrative approval of a courtesy.
     if (validation.rowsSummary.some(row => row.status !== 'ERROR' && (row.normalized?.isCourtesy || (row.normalized?.ticketType && event.ticketTypes.some(t => t.name.toLowerCase().includes(String(row.normalized.ticketType).trim().toLowerCase()) && Number(t.price)<=0))))) {
@@ -568,7 +583,8 @@ export class ImportService {
                 eventId,
                 OR: [
                   { participant: { email: n.email } },
-                  n.documentId ? { participant: { documentId: n.documentId } } : {},
+                  ...(n.documentId ? [{ participant: { documentId: n.documentId } }] : []),
+                  ...(n.externalReference ? [{ externalReference: n.externalReference, externalPlatform: n.externalPlatform }] : []),
                 ],
               },
               include: { participant: true },
@@ -583,9 +599,7 @@ export class ImportService {
               await prisma.registration.update({
                 where: { id: existingReg.id },
                 data: {
-                  totalAmount: n.isCourtesy ? 0 : Number(n.totalAmount || 0),
-                  isCourtesy: n.isCourtesy || false,
-                  status: n.status || existingReg.status,
+
                   notes: n.notes || existingReg.notes,
                   ...qrUpdate,
                 },
@@ -726,37 +740,8 @@ export class ImportService {
           : (n.amountPaid ? Number(n.amountPaid) : Number(n.totalAmount || 0));
         const balanceDue = Math.max(0, ticketPrice - amountPaid);
 
-        // Generar número de registro único utilizando la secuencia unificada
-        let rawRegNum = n.registrationNumber ? String(n.registrationNumber).trim() : '';
-        let regNum = '';
-
-        const isPlainSmallNumber = /^\d{1,4}$/.test(rawRegNum);
-        if (rawRegNum && !isPlainSmallNumber) {
-          const existingSameNum = await prisma.registration.findUnique({
-            where: { eventId_registrationNumber: { eventId, registrationNumber: rawRegNum } },
-          });
-
-          if (!existingSameNum) {
-            regNum = rawRegNum;
-            if (rawRegNum.startsWith(prefix)) {
-              const suffix = rawRegNum.slice(prefix.length);
-              const numVal = parseInt(suffix, 10);
-              if (!isNaN(numVal) && numVal > 0) {
-                const currentSeq = await prisma.registrationSequence.findUnique({ where: { eventId } });
-                const base = Math.max(numVal, currentSeq?.current || 0);
-                await prisma.registrationSequence.upsert({
-                  where: { eventId },
-                  create: { eventId, current: base },
-                  update: { current: base },
-                });
-              }
-            }
-          }
-        }
-
-        if (!regNum) {
-          regNum = await ParticipantsService.getNextRegistrationNumber(eventId, event.year, prefix);
-        }
+        // Every NEW import uses EventGrid's atomic sequence. Historical numbers are untouched.
+        const regNum = await ParticipantsService.getNextRegistrationNumber(eventId, event.year, prefix);
 
         const paymentStatus = n.isCourtesy
           ? 'COURTESY'
@@ -771,12 +756,19 @@ export class ImportService {
         const qrCode = `eg_qr_${crypto.randomBytes(16).toString('hex')}`;
 
         // Crear inscripción vinculada al lote
-        await prisma.registration.create({
+        const importedRegistration = await prisma.registration.create({
           data: {
             eventId,
             participantId: participant.id,
             registrationNumber: regNum,
             source: 'EXCEL_IMPORT',
+            externalPaymentStatus: n.externalPaymentStatus ? String(n.externalPaymentStatus) : null,
+            externalReference: n.externalReference || null,
+            externalPlatform: n.externalPlatform || 'Excel',
+            buyerName: n.buyerName || null,
+            originLabel: n.externalPlatform || 'Excel',
+            createdByUserId: userId,
+            commercialUserId: null,
             importBatchId: batch.id,
             ticketTypeId: matchedTicketType ? matchedTicketType.id : null,
             ticketPrice,
@@ -802,6 +794,8 @@ export class ImportService {
           },
         });
 
+        const changes = { importedByUserId: userId, origin: importedRegistration.originLabel, externalReference: importedRegistration.externalReference, salesResponsibleId: resolvedRespId, buyerName: importedRegistration.buyerName, amountPaid, ticketPrice, paymentStatus, paymentMethodId: resolvedPaymentId, isCourtesy: false };
+        await prisma.auditLog.create({ data: { userId, action: 'IMPORT', entity: 'REGISTRATION', entityId: importedRegistration.id, changes: (process.env.DATABASE_URL?.startsWith('file:') ? JSON.stringify(changes) : changes) as any } });
         importedCount++;
       } catch (err: any) {
         errorCount++;

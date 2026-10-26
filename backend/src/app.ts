@@ -1,3 +1,4 @@
+import scannerRoutes from './modules/scanner/scanner.routes.js';
 import { personnelRoutes } from './modules/users/personnel.routes.js';
 import express from 'express';
 import cors from 'cors';
@@ -107,6 +108,7 @@ app.get(`${ENV.API_PREFIX}/health`, async (req, res) => {
 app.use(ENV.API_PREFIX, realtimeMutations);
 
 // Rutas de módulos
+app.use(`${ENV.API_PREFIX}/events/:eventId/scanner`, scannerRoutes);
 app.use(`${ENV.API_PREFIX}/auth`, authRoutes);
 app.use(`${ENV.API_PREFIX}/realtime`, realtimeRoutes);
 app.use(`${ENV.API_PREFIX}/events`, realtimeRoutes);

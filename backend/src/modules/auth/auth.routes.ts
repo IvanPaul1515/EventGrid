@@ -1,3 +1,6 @@
+import { DeviceSessionService } from './device-session.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
+import { prisma } from '../../config/db.js';
 import { RecoveryService, recoveryMessage } from './recovery.service.js';
 import { actionRateLimiter } from '../../middleware/rateLimiter.js';
 import { ENV } from '../../config/env.js';
@@ -37,8 +40,15 @@ router.post('/recovery/validate', actionRateLimiter(20), async(req,res,next)=>{t
 router.post('/recovery/confirm', actionRateLimiter(10), async(req,res,next)=>{try{const input=z.object({token:z.string().min(32).max(200),password:z.string().min(12).max(128)}).parse(req.body);await RecoveryService.confirm(input.token,input.password);res.json({message:'Contraseña actualizada. Inicia sesión nuevamente.'});}catch(e){next(e);}});
 
 router.post('/login', loginRateLimiter, AuthController.login);
-router.post('/logout', AuthController.logout);
+router.post('/logout', authenticateToken, AuthController.logout);
 router.get('/me', authenticateToken, AuthController.me);
+router.get('/sessions', authenticateToken, async (req, res, next) => {
+  try { const sessions = await prisma.authSession.findMany({ where: { userId: req.user!.id, revokedAt: null, expiresAt: { gt: new Date() }, sessionVersion: req.user!.sessionVersion }, select: { id: true, createdAt: true, expiresAt: true }, orderBy: { createdAt: 'desc' } }); res.json({ data: sessions.map(session => ({ ...session, current: session.id === req.user!.sessionId })) }); } catch (error) { next(error); }
+});
+router.delete('/sessions/:sessionId', authenticateToken, explicitActionLimit, async (req, res, next) => {
+  try { const revoked = await DeviceSessionService.revoke(z.string().min(1).max(100).parse(req.params.sessionId), req.user!.id); if (revoked) RealtimeService.notifySession(req.params.sessionId); res.sendStatus(204); } catch (error) { next(error); }
+});
+
 router.put('/change-password', authenticateToken, AuthController.changePassword);
 
 export default router;

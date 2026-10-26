@@ -48,7 +48,10 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [alternatePhone, setAlternatePhone] = useState('');
+  const [numberChangeReason, setNumberChangeReason] = useState('');
+  const [responsibleChangeReason, setResponsibleChangeReason] = useState('');
   const [registrationNumber, setRegistrationNumber] = useState('');
+  useEffect(() => { setNumberChangeReason(''); setResponsibleChangeReason(''); }, [isOpen, registrationToEdit?.id]);
 
   // Tarifas y estado financiero
   const [ticketTypeId, setTicketTypeId] = useState<string>('');
@@ -83,7 +86,11 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
         .get(`/events/${currentEvent.id}`)
         .then((res) => {
           if (active && res.data.data) {
-            setPaymentMethods(res.data.data.paymentMethods || []);
+            const methods: PaymentMethod[] = (res.data.data.paymentMethods || []).filter((method: PaymentMethod) => !method.name.toLowerCase().includes('cortes'));
+            const paymentOrder = (name: string) => /efectivo|cash/i.test(name) ? 0 : /tarjeta|card/i.test(name) ? 1 : 2;
+            methods.sort((a, b) => paymentOrder(a.name) - paymentOrder(b.name));
+            setPaymentMethods(methods);
+            if (!registrationToEdit) setPaymentMethodId(methods.find(method => /efectivo|cash/i.test(method.name))?.id || '');
             setSalesResponsibles(res.data.data.salesResponsibles || []);
             const tts: TicketType[] = (res.data.data.ticketTypes || []).filter((tt: TicketType) => tt.isActive !== false || tt.id === registrationToEdit?.ticketTypeId);
             setTicketTypes(tts);
@@ -243,7 +250,9 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       email,
       phone: phone.trim() || null,
       alternatePhone: alternatePhone.trim() || null,
-      registrationNumber: registrationNumber.trim() || null,
+      registrationNumber: registrationToEdit && user?.role === 'ADMIN' ? registrationNumber.trim() || undefined : undefined,
+      numberChangeReason: numberChangeReason.trim() || undefined,
+      responsibleChangeReason: responsibleChangeReason.trim() || undefined,
       ticketTypeId: ticketTypeId || null,
       ticketPrice: isCourtesy ? 0 : Number(ticketPrice),
       amountPaid: isCourtesy ? 0 : Number(amountPaid),
@@ -520,7 +529,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
 
           {/* Fila 5: Número de Registro, Fecha de Compra y Estado */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
+            {registrationToEdit ? <div>
               <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">
                 Número de Registro
               </label>
@@ -528,13 +537,15 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                 type="text"
                 value={registrationNumber}
                 onChange={(e) => setRegistrationNumber(e.target.value)}
-                placeholder="Vacío para autogenerar"
+                readOnly={user?.role !== 'ADMIN'}
+                placeholder="Asignado automáticamente"
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs font-mono text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <span className="text-[10px] text-muted-foreground mt-0.5 block">
-                Prefijo: {currentEvent?.settings?.registrationPrefix || 'BC26-'}
+                Solo el administrador puede corregirlo con un motivo.
               </span>
-            </div>
+              {user?.role === 'ADMIN' && <input aria-label="Motivo de cambio del número" placeholder="Motivo de la corrección" value={numberChangeReason} onChange={e => setNumberChangeReason(e.target.value)} className="input-field text-base" />}
+            </div> : <p className="text-xs text-muted-foreground">Número interno: se asigna automáticamente al guardar.</p>}
 
             <div>
               <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
@@ -554,18 +565,19 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">
-                Estado de Confirmación
+                Estado de inscripción (no es asistencia)
               </label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               >
-                <option value="CONFIRMED">Confirmado</option>
-                <option value="PENDING">Pendiente</option>
+                <option value="CONFIRMED">Inscripción confirmada</option>
+                <option value="PENDING">Inscripción pendiente</option>
 
                 <option value="CANCELLED">Cancelado</option>
               </select>
+              <p className="text-[11px] text-muted-foreground mt-1">La confirmación corresponde a la inscripción. El estado de pago se calcula con los abonos; la asistencia solo se registra mediante check-in.</p>
             </div>
           </div>
 
@@ -617,9 +629,9 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                 {isCourtesy && <span className="text-[10px] text-amber-500 font-bold">No aplica</span>}
               </label>
               <select
-                value={isCourtesy ? '' : paymentMethodId}
+                value={isCourtesy || requestCourtesy ? '' : paymentMethodId}
                 onChange={(e) => setPaymentMethodId(e.target.value)}
-                disabled={isCourtesy}
+                disabled={isCourtesy || requestCourtesy}
                 className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
                   isCourtesy ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground' : ''
                 }`}
@@ -640,14 +652,14 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
                 {isCourtesy && <span className="text-[10px] text-amber-500 font-bold">No aplica</span>}
               </label>
               <select
-                value={isCourtesy ? '' : salesResponsibleId}
+                value={isCourtesy || requestCourtesy ? '' : salesResponsibleId}
                 onChange={(e) => setSalesResponsibleId(e.target.value)}
-                disabled={isCourtesy}
+                disabled={isCourtesy || requestCourtesy || user?.role !== 'ADMIN'}
                 className={`w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
                   isCourtesy ? 'opacity-50 cursor-not-allowed bg-muted text-muted-foreground' : ''
                 }`}
               >
-                <option value="">{isCourtesy ? 'No aplica (Cortesía)' : '-- Comité Organizador --'}</option>
+                <option value="">{isCourtesy ? 'No aplica (Cortesía)' : `Responsable: ${registrationToEdit ? registrationToEdit.commercialUser?.fullName || 'No especificado' : user?.fullName || 'usuario actual'}`}</option>
                 {!isCourtesy &&
                   salesResponsibles.map((sr) => (
                     <option key={sr.id} value={sr.id}>
@@ -657,6 +669,8 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
               </select>
             </div>
           </div>
+
+          {user?.role === 'ADMIN' && (salesResponsibleId || registrationToEdit) && <label className="block text-xs">Motivo del responsable comercial<input value={responsibleChangeReason} onChange={e => setResponsibleChangeReason(e.target.value)} className="input-field text-base" /></label>}
 
           {/* Verificación de Pago Toggle (Solo si no es cortesía) */}
           {!isCourtesy && (

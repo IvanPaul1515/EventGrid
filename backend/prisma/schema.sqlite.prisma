@@ -8,6 +8,7 @@ generator client {
 }
 
 model User {
+  deviceSessions AuthSession[]
   createdIncidents ReceptionIncident[] @relation("IncidentCreator")
   assignedIncidents ReceptionIncident[] @relation("IncidentAssignee")
   sessionVersion Int @default(0)
@@ -140,6 +141,15 @@ model Participant {
 }
 
 model Registration {
+  externalPaymentStatus String?
+  externalReference String?
+  externalPlatform String?
+  buyerName String?
+  originLabel String?
+  createdByUserId String?
+  commercialUserId String?
+  @@unique([eventId, externalPlatform, externalReference])
+
   receptionIncidents ReceptionIncident[]
   courtesyRequests     CourtesyRequest[]
   id                   String   @id @default(uuid())
@@ -806,4 +816,57 @@ model ReceptionIncident {
   @@unique([eventId,createdByUserId,requestKey])
   @@index([eventId,status,createdAt])
   @@map("reception_incidents")
+}
+
+// Device identity is independent from the account-wide revocation version.
+model AuthSession {
+  id String @id
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionVersion Int
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  @@index([userId, revokedAt])
+}
+
+// Relay authority is persisted; SSE is only a targeted invalidation hint.
+model ReceptionStation {
+  id String @id @default(uuid())
+  eventId String
+  sessionId String @unique
+  userId String
+  label String
+  leaseUntil DateTime
+  busy Boolean @default(false)
+  activeLinkId String? @unique
+  activeReadingId String? @unique
+  version Int @default(0)
+  @@index([eventId, userId, leaseUntil])
+}
+model ScannerLink {
+  id String @id @default(uuid())
+  eventId String
+  stationId String
+  mobileSessionId String
+  status String @default("REQUESTED")
+  codeHash String?
+  codeCipher String?
+  attempts Int @default(0)
+  expiresAt DateTime
+  mobileLeaseUntil DateTime
+  createdAt DateTime @default(now())
+  @@index([mobileSessionId, status])
+  @@index([stationId, status])
+}
+model ScannerReading {
+  id String @id @default(uuid())
+  linkId String
+  stationId String
+  requestKey String
+  registrationId String?
+  status String @default("PENDING")
+  result String
+  createdAt DateTime @default(now())
+  @@unique([linkId, requestKey])
 }

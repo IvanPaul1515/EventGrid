@@ -1,9 +1,8 @@
+import { DeviceSessionService } from './device-session.service.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { prisma } from '../../config/db.js';
-import { ENV } from '../../config/env.js';
 import { UnauthorizedError, NotFoundError, BadRequestError } from '../../utils/errors.js';
 
 export class AuthService {
@@ -25,24 +24,7 @@ export class AuthService {
       throw new UnauthorizedError('Credenciales incorrectas');
     }
 
-    // Actualizar fecha de último login
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    });
-
-    // Generar JWT
-    const payload = {
-      id: user.id,
-      email: user.email,
-      fullName: user.fullName,
-      role: user.role,
-      sessionVersion: user.sessionVersion,
-    };
-
-    const token = jwt.sign(payload, ENV.JWT_SECRET, {
-      expiresIn: ENV.JWT_EXPIRES_IN as any,
-    });
+    const token = await DeviceSessionService.issue(user);
 
     return {
       token,

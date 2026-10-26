@@ -51,7 +51,10 @@ const SYSTEM_FIELDS: SystemFieldDef[] = [
   { key: 'alternatePhone', label: 'Teléfono Alterno', required: false, description: 'Contacto secundario' },
   { key: 'institution', label: 'Institución / Empresa', required: false, description: 'Universidad, empresa o centro educativo' },
   { key: 'ticketType', label: 'Tipo de Entrada', required: false, description: 'General, VIP, Estudiante, etc.' },
-  { key: 'registrationNumber', label: 'No. Registro / Ticket', required: false, description: 'Código o número de ticket (autogenerado si se omite)' },
+  { key: 'externalPaymentStatus', label: 'Estado de pago externo', required: false, description: 'Estado informado por la plataforma; se conserva sin sustituir el balance calculado' },
+  { key: 'externalReference', label: 'Referencia externa / Ticket de origen', required: false, description: 'Se conserva separada del número interno automático' },
+  { key: 'externalPlatform', label: 'Plataforma / origen', required: false, description: 'Origen de la compra externa' },
+  { key: 'buyerName', label: 'Comprador', required: false, description: 'Comprador original, distinto del participante e importador' },
   { key: 'paymentMethod', label: 'Forma de Pago', required: false, description: 'Efectivo, Tarjeta, Transferencia, Cortesía, etc.' },
   { key: 'totalAmount', label: 'Pago Total (RD$)', required: false, description: 'Monto pagado en pesos dominicanos' },
   { key: 'salesResponsible', label: 'Responsable de Venta', required: false, description: 'Persona o comité receptor del pago' },
@@ -79,6 +82,7 @@ export const ImportPage: React.FC = () => {
 
   // Mapeo de columnas (Paso 3)
   // Formato: { "Nombres": "firstName", "Correo": "email", ... }
+  const [batchDefaults, setBatchDefaults] = useState<Record<string, string>>({});
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
 
   // Validación de filas (Paso 4)
@@ -250,7 +254,8 @@ export const ImportPage: React.FC = () => {
         analyzeResult.fileName,
         selectedSheet,
         analyzeResult.rows,
-        columnMapping
+        columnMapping,
+        batchDefaults
       );
       setValidationResult(valRes);
       setCurrentStep(4);
@@ -274,7 +279,8 @@ export const ImportPage: React.FC = () => {
         selectedSheet,
         analyzeResult.rows,
         columnMapping,
-        conflictStrategy
+        conflictStrategy,
+        batchDefaults
       );
       setExecutionResult(execRes);
       setCurrentStep(6);
@@ -564,6 +570,10 @@ export const ImportPage: React.FC = () => {
       {/* ======================================================== */}
       {currentStep === 3 && analyzeResult && (
         <div className="space-y-6 animate-in fade-in">
+          <div className="p-4 rounded-xl bg-card border border-border grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <p className="sm:col-span-2 text-xs text-muted-foreground">Valores del lote: se usan solo donde la fila no tiene información. El importador no se asigna como vendedor. El número interno siempre es automático.</p>
+            {([{key:'externalPlatform',label:'Plataforma / origen'}, {key:'salesResponsible',label:'Responsable comercial'}, {key:'buyerName',label:'Comprador'}, {key:'paymentMethod',label:'Forma de pago'}]).map(field => <label key={field.key} className="text-xs">{field.label}<input className="input-field text-base" maxLength={100} value={batchDefaults[field.key] || ''} onChange={e => setBatchDefaults(previous => ({...previous,[field.key]:e.target.value}))} /></label>)}
+          </div>
           <div className="p-5 rounded-2xl bg-card border border-border space-y-4">
             <div>
               <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">
