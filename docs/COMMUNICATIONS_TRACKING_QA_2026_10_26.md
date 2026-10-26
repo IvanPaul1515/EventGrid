@@ -41,3 +41,6 @@ PR, SHA de integración, ejecución CI y resultado real del despliegue se entreg
 
 ## Límites
 No hay HTML histórico completo donde el modelo no lo persiste; la vista de detalles es explícita al respecto. La lista ampliable de plantillas para operadores sigue como diseño futuro: esta intervención no concede otras capacidades. Con proveedor desactivado, el envío real está bloqueado; cambiarlo no ejecuta históricos. La persistencia SQLite, restauración PostgreSQL, pruebas físicas y renderizado idéntico en clientes de correo reales siguen fuera de lo comprobado.
+
+## Ajuste de navegación tras revisión visual publicada
+Se reunieron Resumen, Participantes, Plantillas y Mis envíos en una única barra, siempre antes del contenido. Los controles administrativos adicionales se mantienen en esa misma barra. Una aserción de navegador comprueba el orden y los cuatro tabs del operador a 320/390/1440. Se actualizó el texto del encabezado para distinguir seguimiento permitido de la edición y registro personal de Mis envíos. Este ajuste solo cambia frontend/pruebas/documentación y no requiere reiniciar el backend publicado.
