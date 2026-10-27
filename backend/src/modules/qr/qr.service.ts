@@ -2,6 +2,8 @@ import { prisma } from '../../config/db.js';
 import { NotFoundError, BadRequestError } from '../../utils/errors.js';
 import QRCode from 'qrcode';
 import crypto from 'crypto';
+import { ENV } from '../../config/env.js';
+import { writeTransaction } from '../../utils/writeTransaction.js';
 
 export class QrService {
   static payload(token: string) { return `${(process.env.PUBLIC_APP_URL || 'https://eventgrid.app').replace(/\/$/,'')}/t/${encodeURIComponent(token)}`; }
@@ -131,7 +133,16 @@ export class QrService {
     const newSecureToken = `eg_qr_${crypto.randomBytes(16).toString('hex')}`;
     const now = new Date();
 
-    const updated = await prisma.registration.update({
+    const updated = await writeTransaction(async tx => {
+      // Retain only a one-way fingerprint so a known revoked credential can be
+      // distinguished safely from an unknown QR, without retaining the secret.
+      const current = await tx.registration.findUniqueOrThrow({ where: { id: registrationId } });
+      if (current.qrCode) {
+        const fingerprint = crypto.createHash('sha256').update(current.qrCode).digest('hex');
+        const changes = { registrationId, eventId: registration.eventId, reason: reason || 'Rotación administrativa' };
+        await tx.auditLog.create({ data: { action: 'QR_REVOKED', entity: 'REGISTRATION', entityId: fingerprint, userId: userId || null, changes: (ENV.DATABASE_URL?.startsWith('file:') ? JSON.stringify(changes) : changes) as any } });
+      }
+      return tx.registration.update({
       where: { id: registrationId },
       data: {
         qrCode: newSecureToken,
@@ -146,9 +157,10 @@ export class QrService {
           include: { settings: true },
         },
       },
+      });
     });
 
-    const qrPayload = `https://eventgrid.app/t/${updated.qrCode}`;
+    const qrPayload = this.payload(updated.qrCode!);
     const qrDataUrl = await QRCode.toDataURL(qrPayload, {
       width: 320,
       margin: 2,
@@ -209,12 +221,13 @@ export class QrService {
     });
 
     if (!registration) {
+      const revoked = await prisma.auditLog.findFirst({ where: { action: 'QR_REVOKED', entity: 'REGISTRATION', entityId: crypto.createHash('sha256').update(token).digest('hex') }, select: { id: true } });
       return {
         valid: false,
-        status: 'INVALID_CODE',
+        status: revoked ? 'REVOKED' : 'INVALID_CODE',
         error: 'TICKET_NOT_FOUND',
         canCheckIn: false,
-        message: 'El código o token no corresponde a ninguna inscripción registrada en EventGrid.',
+        message: revoked ? 'Esta entrada fue revocada. Consulte con recepción.' : 'No se pudo verificar esta entrada.',
         registration: null,
       };
     }

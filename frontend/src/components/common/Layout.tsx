@@ -23,7 +23,7 @@ const LayoutContent: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   if (presentation.device === 'phone' && !ready) return <AppLoadingScreen message="Recuperando sesión del escáner..." />;
-  if (state.link?.status === 'LINKED' && !state.station?.pc && currentEvent) return <div className="app-viewport min-h-screen bg-background text-foreground overflow-y-auto"><main className="max-w-lg mx-auto p-4 sm:p-6 pb-safe-content">
+  if (state.link?.status === 'LINKED' && !state.station?.pc && currentEvent) return <div className="app-viewport min-h-screen bg-background text-foreground overflow-y-auto"><main className="scanner-workspace max-w-lg mx-auto p-4 sm:p-6 pb-safe-content">
     {pathname !== '/reception' && <Navigate to="/reception" replace />}
     <Suspense fallback={<AppLoadingScreen compact message="Preparando cámara..." />}><LinkedScannerWorkspace eventId={currentEvent.id} busy={false} onRead={async () => {}} onLinkedMode={() => {}} /></Suspense>
   </main></div>;

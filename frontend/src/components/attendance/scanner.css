@@ -1,0 +1,18 @@
+/* Scoped to scanner controls; existing application styling remains untouched. */
+.scanner-ui .btn-primary, .scanner-ui .btn-secondary {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  min-height: 44px; padding: .65rem 1rem; border: 1px solid hsl(var(--border));
+  border-radius: 12px; font: inherit; font-weight: 600; text-decoration: none;
+  cursor: pointer; transition: background-color .15s;
+}
+.scanner-ui .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+.scanner-ui .btn-primary:hover:not(:disabled) { background: hsl(var(--primary-hover)); }
+.scanner-ui .btn-secondary { background: hsl(var(--card)); color: hsl(var(--foreground)); }
+.scanner-ui .btn-secondary:hover:not(:disabled) { background: hsl(var(--muted)); }
+.scanner-ui button:disabled { opacity: .5; cursor: not-allowed; }
+.scanner-ui :is(button,input,select):focus-visible { outline: 3px solid hsl(var(--ring)); outline-offset: 3px; }
+.scanner-ui .input-field { min-height: 48px; width: 100%; padding: .75rem; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: 16px; }
+.scanner-ui .scanner-code { text-align: center; font-size: 1.75rem; font-family: ui-monospace,monospace; letter-spacing: .35em; font-variant-numeric: tabular-nums; }
+.scanner-workspace { padding-top: max(1rem,env(safe-area-inset-top,0px)); }
+.scanner-overlay { top: var(--mobile-viewport-top,0px); height: var(--mobile-viewport-height,100dvh); padding: max(.75rem,env(safe-area-inset-top,0px)) max(.75rem,env(safe-area-inset-right,0px)) max(.75rem,env(safe-area-inset-bottom,0px)) max(.75rem,env(safe-area-inset-left,0px)); }
+.scanner-viewport { max-width: min(310px,calc(var(--mobile-viewport-height,100dvh) - 230px)); }
