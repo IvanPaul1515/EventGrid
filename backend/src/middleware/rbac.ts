@@ -20,6 +20,8 @@ export function requireRole(allowedRoles: Array<'ADMIN' | 'OPERATOR' | 'VIEWER'>
 }
 
 export type Permission =
+  | 'RECEPTION_QUEUE_MANAGE'
+  | 'RECEPTION_QUEUE_SCAN'
   | 'COURTESY_AUTHORIZE'
   | 'PRICE_MODIFY'
   | 'REGISTRATION_CANCEL'
@@ -36,6 +38,7 @@ export type Permission =
 
 export const ROLE_PERMISSIONS: Record<'ADMIN' | 'OPERATOR' | 'VIEWER', Permission[]> = {
   ADMIN: [
+    'RECEPTION_QUEUE_MANAGE', 'RECEPTION_QUEUE_SCAN',
     'COURTESY_AUTHORIZE',
     'PRICE_MODIFY',
     'REGISTRATION_CANCEL',
@@ -51,6 +54,7 @@ export const ROLE_PERMISSIONS: Record<'ADMIN' | 'OPERATOR' | 'VIEWER', Permissio
     'QR_REVOKE',
   ],
   OPERATOR: [
+    'RECEPTION_QUEUE_MANAGE', 'RECEPTION_QUEUE_SCAN',
     'PARTICIPANTS_EXPORT',
     'COMMUNICATIONS_SEND',
     'QR_SCAN',
@@ -70,7 +74,7 @@ export function requirePermission(permission: Permission) {
       return next(new UnauthorizedError('Usuario no autenticado'));
     }
 
-    if (!hasPermission(req.user.role, permission)) {
+    if (!hasUserPermission(req.user, permission)) {
       return next(
         new ForbiddenError(
           `Acceso denegado. Permiso insuficiente: se requiere ${permission}`
@@ -80,6 +84,10 @@ export function requirePermission(permission: Permission) {
 
     next();
   };
+}
+
+export function hasUserPermission(user: {role:'ADMIN'|'OPERATOR'|'VIEWER';scannerOnly?:boolean}, permission: Permission) {
+  return user.scannerOnly ? permission === 'RECEPTION_QUEUE_SCAN' : hasPermission(user.role, permission);
 }
 
 export const requireAdmin = requireRole(['ADMIN']);

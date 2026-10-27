@@ -8,6 +8,8 @@ generator client {
 }
 
 model User {
+  scannerOnly Boolean @default(false)
+
   recordedExternalPayments Payment[] @relation("PaymentRecorder")
   deviceSessions AuthSession[]
   createdIncidents ReceptionIncident[] @relation("IncidentCreator")
@@ -950,4 +952,53 @@ model RefundRequest {
   @@unique([eventId, requestKey])
   @@index([eventId, registrationId])
   @@index([paymentId, status])
+}
+
+// Collaborative reception is opt-in; QR reads never mark attendance.
+model ReceptionQueue {
+  id String @id @default(uuid())
+  eventId String @unique
+  enabled Boolean @default(false)
+}
+model QueueStation {
+  id String @id @default(uuid())
+  eventId String
+  userId String
+  sessionId String @unique
+  label String
+  mode String @default("DIRECT")
+  leaseUntil DateTime
+  @@index([eventId, mode, leaseUntil])
+}
+model QueueDevice {
+  id String @id @default(uuid())
+  activeSessionId String? @unique
+  eventId String
+  stationId String
+  userId String
+  sessionId String
+  status String @default("REQUESTED")
+  codeHash String?
+  codeCipher String?
+  attempts Int @default(0)
+  expiresAt DateTime
+  leaseUntil DateTime
+  createdAt DateTime @default(now())
+  @@index([stationId, status])
+  @@index([sessionId, status])
+}
+model QueueEntry {
+  id String @id @default(uuid())
+  eventId String
+  registrationId String
+  stationId String
+  deviceId String?
+  state String @default("WAITING")
+  firstScannedAt DateTime @default(now())
+  lastScannedAt DateTime @default(now())
+  claimedBySessionId String?
+  claimedByUserId String?
+  claimUntil DateTime?
+  @@unique([eventId, registrationId])
+  @@index([eventId, state, firstScannedAt])
 }

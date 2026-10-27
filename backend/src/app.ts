@@ -1,3 +1,4 @@
+import queueRoutes from './modules/scanner/queue.routes.js';
 import walletRoutes from './modules/wallet/wallet.routes.js';
 import financeRoutes from './modules/finance/finance.routes.js';
 import scannerRoutes from './modules/scanner/scanner.routes.js';
@@ -121,6 +122,7 @@ app.use(ENV.API_PREFIX, realtimeMutations);
 
 // Rutas de módulos
 app.use(`${ENV.API_PREFIX}/events/:eventId/finance`, financeRoutes);
+app.use(`${ENV.API_PREFIX}/events/:eventId/reception-queue`, queueRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/scanner`, scannerRoutes);
 app.use(`${ENV.API_PREFIX}/auth`, authRoutes);
 app.use(`${ENV.API_PREFIX}/realtime`, realtimeRoutes);

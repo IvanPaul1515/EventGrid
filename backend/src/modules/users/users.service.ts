@@ -45,7 +45,7 @@ export class UsersService {
           id: true,
           email: true,
           fullName: true,
-          role: true,
+          role: true, scannerOnly: true,
           assignedEventId: true,
         accountStatus: true,
         staffArea: true,
@@ -82,7 +82,7 @@ export class UsersService {
         id: true,
         email: true,
         fullName: true,
-        role: true,
+        role: true, scannerOnly: true,
         assignedEventId: true,
         accountStatus: true,
         staffArea: true,
@@ -104,6 +104,7 @@ export class UsersService {
    * Crear un nuevo usuario administrativo u operador
    */
   static async createUser(input: CreateUserInput, actorUserId?: string) {
+    if(input.scannerOnly && (input.role !== 'OPERATOR' || !input.assignedEventId)) throw new BadRequestError('Escáner QR requiere base Operador y edición asignada.');
     await this.validateAssignment(input.assignedEventId);
     const existing = (await prisma.user.findMany({ select: { email: true } })).some(user => user.email.trim().toLowerCase() === input.email);
 
@@ -119,6 +120,7 @@ export class UsersService {
         email: input.email,
         fullName: input.fullName,
         role: input.role,
+        scannerOnly: input.scannerOnly,
         assignedEventId: input.assignedEventId,
         isActive: false,
         accountStatus: 'PENDING',
@@ -129,7 +131,7 @@ export class UsersService {
         id: true,
         email: true,
         fullName: true,
-        role: true,
+        role: true, scannerOnly: true,
         assignedEventId: true,
         accountStatus: true,
         staffArea: true,
