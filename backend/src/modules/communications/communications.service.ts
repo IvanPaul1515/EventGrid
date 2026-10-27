@@ -1,3 +1,4 @@
+import { WalletService } from '../wallet/wallet.service.js';
 import { recipientIneligibility } from './recipient-policy.js';
 import { responsiveEmailHtml } from '../../utils/emailDocument.js';
 import { safeCommunicationError } from '../../utils/communicationError.js';
@@ -1578,7 +1579,7 @@ export class CommunicationsService {
    * Renderizar plantilla sustituyendo variables oficiales (QA-08)
    */
   static async renderTemplateContent(
-    template: { subject: string; bodyHtml: string; bodyText?: string | null },
+    template: { code?: string; subject: string; bodyHtml: string; bodyText?: string | null },
     registration: any,
     overrides?: {
       customSubject?: string | null;
@@ -1594,7 +1595,7 @@ export class CommunicationsService {
     }
 
     const publicUrlBase = process.env.PUBLIC_APP_URL || 'https://eventgrid.app';
-    const qrUrl = `${publicUrlBase}/t/${qrToken}`;
+    const qrUrl = QrService.payload(qrToken);
 
     const qrBuffer = await QRCode.toBuffer(qrUrl, {
       width: 280,
@@ -1735,6 +1736,9 @@ export class CommunicationsService {
       : template.bodyHtml;
 
     let text = template.bodyText || '';
+
+    const walletButtonsHtml = template.code === 'DIGITAL_TICKET' ? await WalletService.emailButtons(registration) : '';
+    if (walletButtonsHtml) html += walletButtonsHtml;
 
     // Sustitución de variables
     for (const [key, val] of Object.entries(variables)) {

@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import crypto from 'crypto';
 
 export class QrService {
+  static payload(token: string) { return `${(process.env.PUBLIC_APP_URL || 'https://eventgrid.app').replace(/\/$/,'')}/t/${encodeURIComponent(token)}`; }
   /**
    * Generar o consultar código QR y entrada digital para una inscripción
    */
@@ -43,7 +44,7 @@ export class QrService {
     }
 
     // Contenido del QR: Token seguro no identificable con datos personales
-    const qrPayload = `https://eventgrid.app/t/${registration.qrCode}`;
+    const qrPayload = this.payload(registration.qrCode!);
 
     // Generar imagen QR en Base64 Data URL (alta resolución con margen para lectura rápida)
     const qrDataUrl = await QRCode.toDataURL(qrPayload, {

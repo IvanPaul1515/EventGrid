@@ -1,0 +1,23 @@
+import { Router } from 'express';
+import { randomBytes } from 'node:crypto';
+import { z } from 'zod';
+import { WalletService } from './wallet.service.js';
+import { authenticateToken } from '../../middleware/auth.js';
+import { requireAnyRole, requireAdmin } from '../../middleware/rbac.js';
+import { actionRateLimiter } from '../../middleware/rateLimiter.js';
+import { AppError } from '../../utils/errors.js';
+const router=Router();
+router.use((_req,res,next)=>{res.setHeader('Cache-Control','private, no-store');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Robots-Tag','noindex, nofollow');next();});
+const limited=actionRateLimiter(30),access=z.string().min(50).max(1500);
+router.get('/ticket',limited,(_req,res)=>{
+ const nonce=randomBytes(18).toString('base64');
+ res.setHeader('Content-Security-Policy',`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data: https:; connect-src 'self'; form-action 'self' https://pay.google.com; base-uri 'none'`);
+ res.type('html').send(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Entrada · EventGrid</title><p role="status">Consultando tu entrada…</p><script nonce="${nonce}">const access=new URLSearchParams(location.hash.slice(1)).get('access');history.replaceState(null,'',location.pathname);if(!access){document.querySelector('p').textContent='El enlace no está disponible.';}else{fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access})}).then(async r=>{if(!r.ok)throw Error();const html=await r.text();document.open();document.write(html);document.close();}).catch(()=>{document.querySelector('p').textContent='El enlace venció o la entrada no está disponible.';});}</script></html>`);
+});
+router.post('/ticket',limited,async(req,res,next)=>{try{const token=access.parse(req.body.access),reg=await WalletService.authorizeAccess(token);res.setHeader('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; form-action 'self' https://pay.google.com; base-uri 'none'");res.type('html').send(await WalletService.page(reg,token));}catch(e){next(e);}});
+for(const provider of ['apple','google'] as const)router.post('/'+provider,limited,async(req,res,next)=>{try{const reg=await WalletService.authorizeAccess(access.parse(req.body.access));if(provider==='apple'){const pass=await WalletService.apple(reg);res.type('application/vnd.apple.pkpass').setHeader('Content-Disposition','attachment; filename="entrada.pkpass"');res.send(pass);}else res.redirect(303,await WalletService.google(reg));}catch(e){next(e instanceof AppError?e:new AppError('No se pudo preparar el pase. Inténtalo más tarde.',503));}});
+router.use(authenticateToken,requireAnyRole);
+router.get('/:registrationId/options',async(req,res,next)=>{try{const reg=await WalletService.registration(z.string().uuid().parse(req.params.registrationId),req.user!);res.json({data:await WalletService.readiness(reg)});}catch(e){next(e);}});
+router.get('/:registrationId/google-class',requireAdmin,async(req,res,next)=>{try{const reg=await WalletService.registration(z.string().uuid().parse(req.params.registrationId),req.user!);res.json({data:WalletService.googleClass(reg)});}catch(e){next(e);}});
+for(const provider of ['apple','google'] as const)router.post('/:registrationId/'+provider,limited,async(req,res,next)=>{try{const reg=await WalletService.registration(z.string().uuid().parse(req.params.registrationId),req.user!);WalletService.assertEligible(reg);if(provider==='apple'){const pass=await WalletService.apple(reg);res.type('application/vnd.apple.pkpass').setHeader('Content-Disposition','attachment; filename="entrada.pkpass"');res.send(pass);}else res.json({data:{url:await WalletService.google(reg)}});}catch(e){next(e instanceof AppError?e:new AppError('No se pudo preparar el pase. Inténtalo más tarde.',503));}});
+export default router;
