@@ -31,6 +31,16 @@ export class RealtimeService {
     }
   }
 
+  static scannerStationsChanged(eventId: string, userId: string) {
+    // Discovery contains no station identifiers, codes or participant details.
+    for (const response of this.clients.get(eventId) || []) {
+      const identity = this.identities.get(response);
+      if (identity?.userId !== userId || !['ADMIN', 'OPERATOR'].includes(identity.role)) continue;
+      try { response.write(`event: message\ndata: ${JSON.stringify({ type: 'SCANNER_STATIONS_CHANGED', eventId, data: {} })}\n\n`); }
+      catch { this.removeClient(eventId, response); }
+    }
+  }
+
   static notifySession(sessionId: string) {
     for (const [response, identity] of this.identities) if (identity.sessionId === sessionId) {
       try { response.write(`event: message\ndata: ${JSON.stringify({ type: 'ACCESS_CHANGED', data: {} })}\n\n`); response.end(); } catch {}
