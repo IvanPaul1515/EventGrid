@@ -34,6 +34,7 @@ export const UpdateEventSettingsSchema = z.object({
 });
 
 export const CreateTicketTypeSchema = z.object({
+  includesTshirt: z.boolean().default(true),
   name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
   price: z.number().min(0, 'El precio no puede ser negativo'),
   description: z.string().nullable().optional(),

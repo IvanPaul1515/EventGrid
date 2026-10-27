@@ -239,6 +239,7 @@ model Registration {
 }
 
 model TicketType {
+  includesTshirt Boolean @default(true)
   defaultFor Event? @relation("OfficialTicket")
   id               String    @id @default(uuid())
   eventId          String
@@ -991,6 +992,8 @@ model QueueDevice {
   @@index([sessionId, status])
 }
 model QueueEntry {
+  validatedQrHash String?
+  selectedTshirtSize String?
   id String @id @default(uuid())
   eventId String
   registrationId String
