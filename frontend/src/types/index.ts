@@ -40,6 +40,7 @@ export interface EventSettings {
 }
 
 export interface TicketType {
+  includesTshirt?: boolean;
   id: string;
   eventId: string;
   name: string;
