@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import crypto from 'crypto';
 import { ENV } from '../../config/env.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
+import { ticketToken } from './qr-input.js';
 
 export class QrService {
   static payload(token: string) { return `${(process.env.PUBLIC_APP_URL || 'https://eventgrid.app').replace(/\/$/,'')}/t/${encodeURIComponent(token)}`; }
@@ -181,20 +182,9 @@ export class QrService {
    * REGLA: Nunca marca asistencia automáticamente. Valida y devuelve la ficha y el estado.
    */
   static async validateAndScan(codeOrToken: string, activeEventId?: string) {
-    let token = codeOrToken.trim();
-
-    // Extraer token si el escáner capturó la URL completa
-    if (token.includes('/t/')) {
-      const parts = token.split('/t/');
-      token = parts[parts.length - 1];
-    } else if (token.startsWith('{') && token.endsWith('}')) {
-      try {
-        const parsed = JSON.parse(token);
-        token = parsed.token || parsed.eg_token || token;
-      } catch {
-        // mantener token original
-      }
-    }
+    const parsed = ticketToken(codeOrToken);
+    if (!parsed.token) return { valid:false,status:parsed.pairing?'PAIRING_CODE':'INVALID_CODE',canCheckIn:false,registration:null,message:parsed.pairing?'Utiliza Escanear QR de vinculación.':'Entrada no válida.' };
+    const token = parsed.token;
 
     // Buscar inscripción por token seguro o por número de registro
     const registration = await prisma.registration.findFirst({

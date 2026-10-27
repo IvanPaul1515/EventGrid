@@ -962,6 +962,7 @@ model ReceptionQueue {
   enabled Boolean @default(false)
 }
 model QueueStation {
+  inviteTokenHash String? @unique
   inviteHash String? @unique
   inviteCipher String?
   inviteExpiresAt DateTime?
@@ -975,6 +976,8 @@ model QueueStation {
   @@index([eventId, mode, leaseUntil])
 }
 model QueueDevice {
+  invitationVerified Boolean @default(false)
+  deviceLabel String?
   id String @id @default(uuid())
   activeSessionId String? @unique
   eventId String
