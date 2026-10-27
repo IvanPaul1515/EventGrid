@@ -59,7 +59,8 @@ export class AttendanceController {
         parseResult.data.registrationId,
         operatorUserId,
         parseResult.data.tshirtSize,
-        parseResult.data.tshirtDelivered
+        parseResult.data.tshirtDelivered,
+        req.user!.sessionId
       );
 
       res.status(200).json({

@@ -1,31 +1,17 @@
-import { useDevicePresentation } from './useDevicePresentation';
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useEdition } from '../../context/EditionContext';
-import { useAuth } from '../../context/AuthContext';
-import { api } from '../../services/api';
-
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useScanner } from './ScannerContext';
 export function ScannerSuggestion() {
-  const { device } = useDevicePresentation();
-  const { currentEvent } = useEdition();
-  const { user, token } = useAuth();
-  const navigate = useNavigate();
-  const [visible, setVisible] = useState(false);
-  const key = `eventgrid:scanner-suggestion:${currentEvent?.id}:${token?.slice(-16)}`;
-  useEffect(() => {
-    let active = true; setVisible(false);
-    // A small screen only selects the presentation; the backend must report
-    // an authenticated, explicitly registered station for this account/edition.
-    if (!currentEvent || !['ADMIN', 'OPERATOR'].includes(user?.role || '') || device !== 'phone' || sessionStorage.getItem(key)) return;
-    api.get(`/events/${currentEvent.id}/scanner/stations`).then(response => {
-      if (active && response.data.data.length) setVisible(true);
-    }).catch(() => {}); // Optional suggestion never blocks normal EventGrid.
-    return () => { active = false; };
-  }, [currentEvent?.id, user?.role, key, device]);
-  if (!visible) return null;
-  const dismiss = () => { sessionStorage.setItem(key, 'dismissed'); setVisible(false); };
+  const { presentation, state, stations, connected, dismissed, dismissSuggestion, act } = useScanner();
+  const navigate = useNavigate(), { pathname } = useLocation();
+  if (state.station?.pc && state.link && state.link.status !== 'LINKED' && !['/reception','/attendance'].includes(pathname)) return <aside className="p-3 rounded-xl bg-card border border-border text-sm"><p>Solicitud de vinculación pendiente en tu estación.</p><button className="btn-primary" onClick={() => navigate('/reception')}>Revisar solicitud en Recepción rápida</button></aside>;
+  if (state.link?.status === 'LINKED' && !state.station?.pc && !['/reception','/attendance'].includes(pathname)) return <aside className="p-3 rounded-xl bg-card border border-border text-sm space-y-2" aria-label="Teléfono vinculado">
+    <p>Este teléfono está vinculado como escáner. La PC confirma las asistencias.</p>
+    <button className="btn-primary" onClick={() => navigate('/reception')}>Volver al escáner</button>
+    <button className="btn-secondary" onClick={() => void act('/' + state.link!.id + '/unlink')}>Desvincular y usar EventGrid normalmente</button>
+  </aside>;
+  if (presentation.device !== 'phone' || dismissed || !connected || state.link || !stations.length) return null;
   return <aside className="p-3 rounded-xl bg-card border border-border text-sm space-y-2" aria-label="Sugerencia de escáner vinculado">
-    <p>Tienes una estación de recepción disponible. ¿Quieres vincular este teléfono como escáner?</p>
-    <div className="flex flex-wrap gap-2"><button className="btn-primary" onClick={() => { dismiss(); navigate('/reception'); }}>Vincular</button><button className="btn-secondary" onClick={dismiss}>Continuar normalmente</button></div>
+    <p>Tienes una computadora disponible. ¿Deseas vincular este teléfono como escáner?</p>
+    <div className="flex flex-wrap gap-2"><button className="btn-primary" onClick={() => { dismissSuggestion(); navigate('/reception', { state: { openScannerLink: true } }); }}>Vincular como escáner</button><button className="btn-secondary" onClick={dismissSuggestion}>Continuar normalmente</button></div>
   </aside>;
 }

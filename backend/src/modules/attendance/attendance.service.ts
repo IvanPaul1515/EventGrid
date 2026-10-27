@@ -131,7 +131,8 @@ export class AttendanceService {
     registrationId: string,
     operatorUserId: string,
     tshirtSize?: string,
-    tshirtDelivered?: boolean
+    tshirtDelivered?: boolean,
+    sessionId?: string
   ) {
     // QA-06: Validar que la talla pertenezca a la edición
     const validTshirtSize = tshirtSize ? await InventoryService.validateSize(eventId, tshirtSize) : null;
@@ -211,6 +212,8 @@ export class AttendanceService {
 
     // QA-01, QA-02, QA-03: Ejecución atómica y condicional en transacción interactiva
     const updatedRegistration = await writeTransaction(async (tx) => {
+      const mobileLink = sessionId ? await tx.scannerLink.findFirst({ where: { eventId, mobileSessionId: sessionId, status: 'LINKED', mobileLeaseUntil: { gt: new Date() } } }) : null;
+      if (mobileLink && await tx.receptionStation.findFirst({ where: { id: mobileLink.stationId, activeLinkId: mobileLink.id, leaseUntil: { gt: new Date() } } })) throw new BadRequestError('El teléfono está en modo escáner vinculado. Confirme la asistencia desde la PC o desvincule para continuar normalmente.');
       if (await tx.registration.findFirst({ where: { id: registrationId, eventId, source: 'EXCEL_IMPORT', isCourtesy: false, ticketPrice: { lte: 0 } } })) throw new BadRequestError('Tarifa externa pendiente de conciliación.');
       if (await tx.courtesyRequest.findUnique({ where: { pendingRegistrationId: registrationId } })) throw new BadRequestError('Pendiente de autorización de cortesía.');
       let inventoryItem: any = null;

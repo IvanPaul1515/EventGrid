@@ -8,7 +8,10 @@ import { assignedEdition } from '../../middleware/editionAccess.js';
 import { QrService } from '../qr/qr.service.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 
-const lease = () => new Date(Date.now() + 45000);
+const lease = () => new Date(Date.now() + 90000);
+// A bounded reconnection window tolerates backgrounded mobile browsers. Session
+// expiry/revocation is still checked on every action; expired links never revive.
+const linkedLease = () => new Date(Date.now() + 10 * 60000);
 const digest = (id: string, code: string) => createHmac('sha256', ENV.JWT_SECRET).update(id + ':' + code).digest('hex');
 const key = () => createHash('sha256').update(ENV.JWT_SECRET).digest();
 function encrypt(code: string) { const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key(), iv); const body = Buffer.concat([cipher.update(code, 'utf8'), cipher.final()]); return Buffer.concat([iv, cipher.getAuthTag(), body]).toString('base64'); }
@@ -39,6 +42,7 @@ export class ScannerService {
     await this.authorize(user, eventId);
     return writeTransaction(async tx => {
       await this.session(tx, user.sessionId!, user.id);
+      if (await tx.scannerLink.findFirst({ where: { mobileSessionId: user.sessionId!, status: 'LINKED', mobileLeaseUntil: { gt: new Date() } } })) throw new ConflictError('Desvincule este teléfono antes de habilitar una estación PC.');
       const previous = await tx.receptionStation.findUnique({ where: { sessionId: user.sessionId! } });
       if (previous && previous.eventId !== eventId) await this.clear(tx, previous);
       return tx.receptionStation.upsert({ where: { sessionId: user.sessionId! }, create: { sessionId: user.sessionId!, userId: user.id, eventId, label, leaseUntil: lease() }, update: { eventId, label, leaseUntil: lease(), version: { increment: 1 } } });
@@ -49,12 +53,37 @@ export class ScannerService {
     if (station.activeReadingId) await tx.scannerReading.updateMany({ where: { id: station.activeReadingId, status: 'PENDING' }, data: { status: 'DISMISSED' } });
     await tx.receptionStation.update({ where: { id: station.id }, data: { activeLinkId: null, activeReadingId: null, busy: false, version: { increment: 1 } } });
   }
+  static async disable(user: AuthUser, eventId: string) {
+    await this.authorize(user, eventId);
+    return writeTransaction(async tx => {
+      await this.session(tx, user.sessionId!, user.id);
+      const station = await tx.receptionStation.findUnique({ where: { sessionId: user.sessionId! } });
+      if (station?.eventId === eventId) { await this.clear(tx, station); await tx.receptionStation.update({ where: { id: station.id }, data: { leaseUntil: new Date(0) } }); }
+      return { disabled: true };
+    });
+  }
   static async available(user: AuthUser, eventId: string) {
     await this.authorize(user, eventId);
-    const candidates = await prisma.receptionStation.findMany({ where: { eventId, userId: user.id, sessionId: { not: user.sessionId }, leaseUntil: { gt: new Date() }, activeLinkId: null }, select: { id: true, label: true, sessionId: true } });
-    const valid = [];
-    for (const station of candidates) { try { await this.session(prisma, station.sessionId, user.id); valid.push({ id: station.id, label: station.label }); } catch (e) { if (!(e instanceof UnauthorizedError)) throw e; } }
-    return valid;
+    return writeTransaction(async tx => {
+      await this.session(tx, user.sessionId!, user.id);
+      const candidates = await tx.receptionStation.findMany({ where: { eventId, userId: user.id, sessionId: { not: user.sessionId }, leaseUntil: { gt: new Date() } } });
+      const valid = [];
+      for (const station of candidates) {
+        try {
+          await this.session(tx, station.sessionId, user.id);
+          if (station.activeLinkId) {
+            const link = await tx.scannerLink.findUnique({ where: { id: station.activeLinkId } });
+            const alive = link && (link.status === 'LINKED' ? link.mobileLeaseUntil > new Date() : ['REQUESTED','APPROVED'].includes(link.status) && link.expiresAt > new Date());
+            let mobileValid = false;
+            if (alive) { try { await this.session(tx, link!.mobileSessionId, user.id); mobileValid = true; } catch (e) { if (!(e instanceof UnauthorizedError)) throw e; } }
+            if (alive && mobileValid) continue;
+            await this.clear(tx, station);
+          }
+          valid.push({ id: station.id, label: station.label });
+        } catch (e) { if (!(e instanceof UnauthorizedError)) throw e; }
+      }
+      return valid;
+    });
   }
   static async request(user: AuthUser, eventId: string, stationId: string) {
     await this.authorize(user, eventId);
@@ -64,13 +93,24 @@ export class ScannerService {
       if (station.sessionId === user.sessionId) throw new BadRequestError('Use otro dispositivo');
       if (station.activeLinkId) {
         const old = await tx.scannerLink.findUnique({ where: { id: station.activeLinkId } });
-        if (old && ((old.status === 'LINKED' && old.mobileLeaseUntil > new Date()) || (['REQUESTED', 'APPROVED'].includes(old.status) && old.expiresAt > new Date()))) throw new ConflictError('La estación ya tiene una vinculación. Desvincule primero.');
+        let active = Boolean(old && ((old.status === 'LINKED' && old.mobileLeaseUntil > new Date()) || (['REQUESTED', 'APPROVED'].includes(old.status) && old.expiresAt > new Date())));
+        if (active) { try { await this.session(tx, old!.mobileSessionId, user.id); } catch (e) { if (e instanceof UnauthorizedError) active = false; else throw e; } }
+        if (active) throw new ConflictError('La estación ya tiene una vinculación. Desvincule primero.');
         await this.clear(tx, station);
       }
-      const existing = await tx.scannerLink.findFirst({ where: { mobileSessionId: user.sessionId!, status: { in: ['REQUESTED', 'APPROVED', 'LINKED'] }, mobileLeaseUntil: { gt: new Date() } } });
+      const previousLinks = await tx.scannerLink.findMany({ where: { mobileSessionId: user.sessionId!, status: { in: ['REQUESTED', 'APPROVED', 'LINKED'] } } });
+      let existing = false;
+      for (const old of previousLinks) {
+        const oldStation = await tx.receptionStation.findUnique({ where: { id: old.stationId } });
+        let active = Boolean(oldStation?.activeLinkId === old.id && oldStation.leaseUntil > new Date() && (old.status === 'LINKED' ? old.mobileLeaseUntil > new Date() : old.expiresAt > new Date()));
+        if (active) { try { await this.session(tx, oldStation!.sessionId, user.id); } catch (e) { if (e instanceof UnauthorizedError) active = false; else throw e; } }
+        if (active) existing = true;
+        else if (oldStation?.activeLinkId === old.id) await this.clear(tx, oldStation);
+        else await tx.scannerLink.update({ where: { id: old.id }, data: { status: 'REVOKED', codeHash: null, codeCipher: null } });
+      }
       if (existing) throw new ConflictError('Este dispositivo ya tiene una vinculación');
       const code = String(randomInt(1000000)).padStart(6, '0');
-      const link = await tx.scannerLink.create({ data: { eventId, stationId, mobileSessionId: user.sessionId!, expiresAt: new Date(Date.now() + 90000), mobileLeaseUntil: lease() } });
+      const link = await tx.scannerLink.create({ data: { eventId, stationId, mobileSessionId: user.sessionId!, expiresAt: new Date(Date.now() + 90000), mobileLeaseUntil: linkedLease() } });
       await tx.scannerLink.update({ where: { id: link.id }, data: { codeHash: digest(link.id, code), codeCipher: encrypt(code) } });
       await tx.receptionStation.update({ where: { id: stationId }, data: { activeLinkId: link.id, version: { increment: 1 } } });
       return { id: link.id, status: link.status, expiresAt: link.expiresAt };
@@ -100,11 +140,12 @@ export class ScannerService {
   static async confirm(user: AuthUser, eventId: string, linkId: string, code: string) {
     await this.authorize(user, eventId);
     const result = await writeTransaction(async tx => {
-      const { link } = await this.linkFor(tx, user, eventId, linkId);
+      const { link, station } = await this.linkFor(tx, user, eventId, linkId);
       if (link.mobileSessionId !== user.sessionId) throw new ForbiddenError();
       if (link.status !== 'APPROVED' || link.expiresAt < new Date() || !link.codeHash || link.attempts >= 5) return false;
       const valid = timingSafeEqual(Buffer.from(link.codeHash, 'hex'), Buffer.from(digest(link.id, code), 'hex'));
-      await tx.scannerLink.update({ where: { id: linkId }, data: valid ? { status: 'LINKED', codeHash: null, codeCipher: null, mobileLeaseUntil: lease() } : { attempts: { increment: 1 }, ...(link.attempts === 4 ? { status: 'REVOKED', codeHash: null, codeCipher: null } : {}) } });
+      await tx.scannerLink.update({ where: { id: linkId }, data: valid ? { status: 'LINKED', codeHash: null, codeCipher: null, mobileLeaseUntil: linkedLease() } : { attempts: { increment: 1 }, ...(link.attempts === 4 ? { status: 'REVOKED', codeHash: null, codeCipher: null } : {}) } });
+      if (valid) await tx.receptionStation.update({ where: { id: station.id }, data: { leaseUntil: linkedLease() } });
       return valid;
     });
     // Throw outside the transaction so failed attempts remain committed.
@@ -117,10 +158,17 @@ export class ScannerService {
       await this.session(tx, user.sessionId!, user.id);
       let station = await tx.receptionStation.findUnique({ where: { sessionId: user.sessionId! } });
       let link: any;
+      if (station && (station.eventId !== eventId || station.leaseUntil <= new Date())) {
+        await this.clear(tx, station);
+        await tx.receptionStation.update({ where: { id: station.id }, data: { leaseUntil: new Date(0) } });
+        station = null;
+      }
+      const incompatible = await tx.scannerLink.findMany({ where: { mobileSessionId: user.sessionId!, eventId: { not: eventId }, status: { in: ['REQUESTED','APPROVED','LINKED'] } } });
+      for (const old of incompatible) { const oldStation = await tx.receptionStation.findUnique({ where: { id: old.stationId } }); if (oldStation?.activeLinkId === old.id) await this.clear(tx, oldStation); }
       const pc = station?.eventId === eventId;
       if (pc) {
         if (station!.activeLinkId && station!.leaseUntil < new Date()) await this.clear(tx, station);
-        station = await tx.receptionStation.update({ where: { id: station!.id }, data: { leaseUntil: lease(), busy } });
+        station = await tx.receptionStation.update({ where: { id: station!.id }, data: { leaseUntil: station!.activeLinkId ? linkedLease() : lease(), busy } });
         link = station.activeLinkId ? await tx.scannerLink.findUnique({ where: { id: station.activeLinkId } }) : null;
       } else {
         link = await tx.scannerLink.findFirst({ where: { eventId, mobileSessionId: user.sessionId!, status: { in: ['REQUESTED', 'APPROVED', 'LINKED'] } }, orderBy: { createdAt: 'desc' } });
@@ -130,14 +178,14 @@ export class ScannerService {
       if (link) {
         let valid = station.leaseUntil > new Date() && (link.status === 'LINKED' ? link.mobileLeaseUntil > new Date() : link.expiresAt > new Date()) && ['REQUESTED', 'APPROVED', 'LINKED'].includes(link.status);
         try { await this.linkFor(tx, user, eventId, link.id); } catch (e) { if (e instanceof UnauthorizedError || e instanceof ForbiddenError || e instanceof ConflictError) valid = false; else throw e; }
-        if (!valid) { await this.clear(tx, station); link = null; station = await tx.receptionStation.findUnique({ where: { id: station.id } }); }
-        else if (!pc) await tx.scannerLink.update({ where: { id: link.id }, data: { mobileLeaseUntil: lease() } });
+        if (!valid) { if (station.activeLinkId === link.id) await this.clear(tx, station); else await tx.scannerLink.update({ where: { id: link.id }, data: { status: 'REVOKED', codeHash: null, codeCipher: null } }); link = null; station = await tx.receptionStation.findUnique({ where: { id: station.id } }); }
+        else if (!pc) await tx.scannerLink.update({ where: { id: link.id }, data: { mobileLeaseUntil: linkedLease() } });
       }
       let reading = station?.activeReadingId ? await tx.scannerReading.findUnique({ where: { id: station.activeReadingId } }) : link ? await tx.scannerReading.findFirst({ where: { linkId: link.id }, orderBy: { createdAt: 'desc' } }) : null;
       if (reading?.registrationId && reading.status === 'PENDING') {
         const reg = await tx.registration.findUnique({ where: { id: reading.registrationId }, select: { attended: true, status: true } });
         if (reg?.attended || reg?.status === 'CANCELLED') {
-          reading = await tx.scannerReading.update({ where: { id: reading.id }, data: { status: reg.attended ? 'CONFIRMED' : 'REJECTED' } });
+          reading = await tx.scannerReading.update({ where: { id: reading.id }, data: { status: reg.attended ? 'CONFIRMED' : 'REJECTED', result: reg.attended ? 'Asistencia confirmada en la PC. Puedes leer la siguiente entrada.' : 'La entrada fue cancelada.' } });
           await tx.receptionStation.update({ where: { id: station!.id }, data: { activeReadingId: null, version: { increment: 1 } } });
         }
       }
