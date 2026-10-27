@@ -1,3 +1,4 @@
+import { ScannerProvider } from '../attendance/ScannerContext';
 import { ScannerSuggestion } from '../attendance/ScannerSuggestion';
 import React, { useState, Suspense, useLayoutEffect, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
@@ -17,7 +18,7 @@ export const Layout: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="app-viewport flex h-screen overflow-hidden bg-background">
+    <ScannerProvider><div className="app-viewport flex h-screen overflow-hidden bg-background">
       <Sidebar mobileOpen={mobileMenuOpen} setMobileOpen={setMobileMenuOpen} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} />
@@ -41,6 +42,6 @@ export const Layout: React.FC = () => {
           </div>
         </main>
       </div>
-    </div>
+    </div></ScannerProvider>
   );
 };
