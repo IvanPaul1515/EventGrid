@@ -442,12 +442,15 @@ export const SettingsPage: React.FC = () => {
   };
 
   // Guardar configuración de Recepción / T-shirts
+  const [allowOnsitePayments,setAllowOnsitePayments]=useState(false),[requirePaymentForEntry,setRequirePaymentForEntry]=useState(true),[eventTimeZone,setEventTimeZone]=useState('America/Santo_Domingo');
+  useEffect(()=>{setAllowOnsitePayments(currentEvent?.settings?.allowOnsitePayments===true);setRequirePaymentForEntry(currentEvent?.settings?.requirePaymentForEntry!==false);setEventTimeZone(currentEvent?.settings?.timeZone||'America/Santo_Domingo');},[currentEvent?.id,currentEvent?.settings]);
   const handleSaveReception = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentEvent) return;
     try {
       setSavingReception(true);
       await eventsService.updateSettings(currentEvent.id, {
+        allowOnsitePayments,requirePaymentForEntry,timeZone:eventTimeZone,
         tshirtSizesEnabled: tshirtEnabled,
         tshirtSizes: tshirtSizes,
       });
@@ -1206,6 +1209,7 @@ export const SettingsPage: React.FC = () => {
       {activeTab === 'reception' && (
         <div className="space-y-6 max-w-4xl">
           <form onSubmit={handleSaveReception} className="space-y-6">
+            <section className="rounded-2xl border border-border bg-card p-5 space-y-4"><h2 className="font-semibold">Reglas de recepción</h2><label className="flex gap-3 items-center"><input type="checkbox" checked={allowOnsitePayments} onChange={e=>setAllowOnsitePayments(e.target.checked)}/>Permitir cobros presenciales en recepción (no aplica a pagos de plataformas externas)</label><label className="flex gap-3 items-center"><input type="checkbox" checked={requirePaymentForEntry} onChange={e=>setRequirePaymentForEntry(e.target.checked)}/>Exigir pago confirmado para el ingreso</label><label className="block space-y-2">Zona horaria del evento<input className="input-field" value={eventTimeZone} onChange={e=>setEventTimeZone(e.target.value)} required/></label></section>
             <div className="p-6 rounded-2xl bg-card border border-border space-y-6 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-border">
                 <div className="space-y-1">

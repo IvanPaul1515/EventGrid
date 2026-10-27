@@ -81,6 +81,7 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
 
   const initAtt=React.useMemo(()=>{try{return readListNavigation(sessionStorage,navigationKey,attendanceFilters).filters;}catch{return {...attendanceFilters};}},[navigationKey]);
 
+  const [dateFrom,setDateFrom]=useState(initAtt.dateFrom),[dateTo,setDateTo]=useState(initAtt.dateTo),[tshirtDelivery,setTshirtDelivery]=useState(initAtt.tshirtDelivery);
   // Filtros y búsqueda
   const [search, setSearch] = useState<string>(initAtt.search || '');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ATTENDED' | 'PENDING'>(initAtt.statusFilter || 'ALL');
@@ -162,6 +163,7 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
       const res = await attendanceService.searchAndList({
         search: search.trim() || undefined,
         status: statusFilter,
+        dateFrom:dateFrom||undefined,dateTo:dateTo||undefined,tshirtDelivery:(tshirtDelivery||undefined) as any,
         page,
         limit: 20,
       });
@@ -177,9 +179,9 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
     } finally {
       if (version === requestVersion.current) setLoading(false);
     }
-  }, [currentEvent, search, statusFilter, page]);
+  }, [currentEvent, search, statusFilter, page,dateFrom,dateTo,tshirtDelivery]);
 
-  const navigationFilters=React.useMemo(()=>({search,statusFilter,page}),[search,statusFilter,page]);
+  const navigationFilters=React.useMemo(()=>({search,statusFilter,page,dateFrom,dateTo,tshirtDelivery}),[search,statusFilter,page,dateFrom,dateTo,tshirtDelivery]);
   useListNavigation(navigationKey,navigationFilters,loading,isDrawerOpen,queue.state.station?.mode!=='QUEUE');
 
   useEffect(() => {
@@ -266,6 +268,7 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
     try {
       await attendanceService.exportAttendance({
         status: statusFilter,
+        dateFrom:dateFrom||undefined,dateTo:dateTo||undefined,tshirtDelivery:(tshirtDelivery||undefined) as any,
         search: search.trim() || undefined,
       });
       showFeedback('success', 'Descarga Iniciada', 'El archivo Excel de asistencia se generó correctamente.');
@@ -279,20 +282,21 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
       ? Math.round((counters.attendedCount / counters.totalRegistrations) * 100)
       : 0;
 
-  if (hasRole(['ADMIN','OPERATOR']) && !queue.ready) return <AppLoadingScreen compact message="Recuperando modalidad de recepción..." />;
-  if (hasRole(['ADMIN','OPERATOR']) && !queue.connected && !queue.state.station) return <div className="scanner-ui rounded-2xl border border-border bg-card p-5 space-y-3"><p role="alert">No se pudo recuperar la modalidad de recepción. Comprueba la conexión.</p><button className="btn-primary" onClick={()=>void queue.refresh()}>Reintentar conexión</button></div>;
+  if (quick && hasRole(['ADMIN','OPERATOR']) && !queue.ready) return <AppLoadingScreen compact message="Recuperando modalidad de recepción..." />;
+  if (quick && hasRole(['ADMIN','OPERATOR']) && !queue.connected && !queue.state.station) return <div className="scanner-ui rounded-2xl border border-border bg-card p-5 space-y-3"><p role="alert">No se pudo recuperar la modalidad de recepción. Comprueba la conexión.</p><button className="btn-primary" onClick={()=>void queue.refresh()}>Reintentar conexión</button></div>;
 
   return (
     <div className={`space-y-6 max-w-7xl mx-auto ${quick?'[&_button]:min-h-11':''}`}>
-      {currentEvent && hasRole(['ADMIN','OPERATOR']) && <ReceptionQueuePanel drawerOpen={isDrawerOpen} onOpen={async id=>{const registration=await participantsService.getById(id);setSelectedRegistration(registration);setIsDrawerOpen(true);}} />}
-      {currentEvent && queue.state.station?.mode !== 'QUEUE' && hasRole(['ADMIN', 'OPERATOR']) && <LinkedScannerPanel onLinkedMode={setMobileLinked} eventId={currentEvent.id} busy={isDrawerOpen || isNewParticipantOpen || isOnsiteSaleOpen || isQrScanOpen} onRead={async id => {
+      {quick && currentEvent && hasRole(['ADMIN','OPERATOR']) && <ReceptionQueuePanel onSale={()=>setIsOnsiteSaleOpen(true)} drawerOpen={isDrawerOpen} onOpen={async id=>{const registration=await participantsService.getById(id);setSelectedRegistration(registration);setIsDrawerOpen(true);}} />}
+      {quick && currentEvent && queue.state.station?.mode !== 'QUEUE' && hasRole(['ADMIN', 'OPERATOR']) && <LinkedScannerPanel onLinkedMode={setMobileLinked} eventId={currentEvent.id} busy={isDrawerOpen || isNewParticipantOpen || isOnsiteSaleOpen || isQrScanOpen} onRead={async id => {
         const editionId = currentEvent.id;
         const registration = await participantsService.getById(id);
         if (activeEdition.current !== editionId) return;
         setSelectedRegistration(registration); setIsDrawerOpen(true);
       }} />}
-      {queue.state.station?.mode==='QUEUE'&&feedback&&<div role="status" className="scanner-ui rounded-2xl border border-primary/30 bg-primary/10 p-4 space-y-2"><h4 className="font-semibold">{feedback.title}</h4><p className="text-sm">{feedback.message}</p><button className="btn-secondary" onClick={()=>setFeedback(null)}>Siguiente participante</button></div>}
-      <div hidden={mobileLinked || queue.state.station?.mode==='QUEUE'} className="space-y-6">
+      {quick&&queue.state.station?.mode==='QUEUE'&&feedback&&<div role="status" className="scanner-ui rounded-2xl border border-primary/30 bg-primary/10 p-4 space-y-2"><h4 className="font-semibold">{feedback.title}</h4><p className="text-sm">{feedback.message}</p><button className="btn-secondary" onClick={()=>setFeedback(null)}>Siguiente participante</button></div>}
+      <div hidden={quick&&(mobileLinked || queue.state.station?.mode==='QUEUE')} className="space-y-6">
+      {!quick&&<section className="rounded-2xl border border-border bg-card p-4 space-y-3"><h2 className="font-semibold">Supervisión de asistencia</h2><div className="grid sm:grid-cols-3 gap-3"><label className="text-sm">Desde (fecha de ingreso)<input type="date" className="input-field" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPage(1);}}/></label><label className="text-sm">Hasta<input type="date" className="input-field" value={dateTo} onChange={e=>{setDateTo(e.target.value);setPage(1);}}/></label><label className="text-sm">Camisetas<select className="input-field" value={tshirtDelivery} onChange={e=>{setTshirtDelivery(e.target.value);if(e.target.value==='PENDING')setStatusFilter('ATTENDED');setPage(1);}}><option value="">Todas</option><option value="PENDING">Pendientes de entrega</option><option value="NOT_DELIVERED">No entregadas</option><option value="DELIVERED">Entregadas</option></select></label></div><p className="text-sm text-muted-foreground">Consulta el historial y el responsable del check-in. Para una entrega posterior, abre la ficha del participante.</p></section>}
       {!quick && <ReceptionOverview />}
       <ReceptionIncidentsPanel />
       <CourtesyRequestsPanel />
@@ -329,7 +333,7 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
 
         {/* Botones de Acción de Recepción */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {hasRole(['ADMIN', 'OPERATOR']) && (
+          {quick && hasRole(['ADMIN', 'OPERATOR']) && (
             <>
               <button
                 type="button"

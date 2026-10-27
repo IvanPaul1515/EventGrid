@@ -19,6 +19,7 @@ export interface AttendanceSearchResult {
 }
 
 export interface SearchAttendanceParams {
+  dateFrom?:string;dateTo?:string;tshirtDelivery?:'PENDING'|'NOT_DELIVERED'|'DELIVERED';
   search?: string;
   status?: 'ALL' | 'ATTENDED' | 'PENDING';
   page?: number;
@@ -92,7 +93,7 @@ export const attendanceService = {
     };
   },
 
-  async exportAttendance(params: { status?: string; search?: string } = {}): Promise<void> {
+  async exportAttendance(params: { status?: string; search?: string;dateFrom?:string;dateTo?:string;tshirtDelivery?:string } = {}): Promise<void> {
     const res = await api.get('/attendance/export', {
       params,
       responseType: 'blob',

@@ -777,6 +777,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                               <div className="flex items-center gap-1.5">
                                 <Shirt className="w-3.5 h-3.5 text-muted-foreground" />
                                 <span className="text-muted-foreground">Camiseta:</span>
+                                {registration.tshirtNonDeliveryReason&&!registration.tshirtDelivered&&<span className="text-xs text-amber-500" title={registration.tshirtNonDeliveryNotes||''}>{registration.tshirtDeliveryStatus==='NOT_DELIVERED'?'No entregada':'Pendiente'} · {registration.tshirtNonDeliveryReason}</span>}
                                 {registration.tshirtSize ? (
                                   <span className="px-2 py-0.5 rounded font-bold bg-primary/20 text-primary border border-primary/30">
                                     {registration.tshirtSize}

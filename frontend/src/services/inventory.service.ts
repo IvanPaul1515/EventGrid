@@ -1,6 +1,7 @@
 import { api } from './api';
 
 export interface TshirtInventoryItem {
+  physicalRemaining?:number;
   id: string;
   eventId: string;
   size: string;

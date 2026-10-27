@@ -5,6 +5,8 @@ import { PaymentMethod } from '../../types';
 import { CreditCard, X, DollarSign } from 'lucide-react';
 
 interface RecordPaymentModalProps {
+  requireMethodChoice?:boolean;
+  responsibleName?:string;
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (amount: number, paymentMethodId: string, notes?: string) => Promise<void>;
@@ -16,6 +18,8 @@ interface RecordPaymentModalProps {
 
 export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   isOpen,
+  requireMethodChoice=false,
+  responsibleName,
   onClose,
   onConfirm,
   participantName,
@@ -24,7 +28,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   paymentMethods,
 }) => {
   const [amount, setAmount] = useState<number>(balanceDue > 0 ? balanceDue : 0);
-  const [paymentMethodId, setPaymentMethodId] = useState<string>(paymentMethods[0]?.id || '');
+  const [paymentMethodId, setPaymentMethodId] = useState<string>(requireMethodChoice?'':paymentMethods[0]?.id || '');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +99,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             )}
           </div>
 
+          {responsibleName&&<p className="text-sm">Responsable: <strong>{responsibleName}</strong></p>}
           <div>
             <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">
               Monto a Abonar (RD$) *
@@ -119,6 +124,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               required
               className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             >
+              {requireMethodChoice&&<option value="" disabled>Seleccionar forma de pago</option>}
               {paymentMethods
                 .filter((pm) => !pm.name.toLowerCase().includes('cortes'))
                 .map((pm) => (
