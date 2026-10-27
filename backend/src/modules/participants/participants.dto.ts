@@ -65,6 +65,8 @@ export const OnsiteSaleSchema = z.object({
 });
 
 export const RecordPaymentSchema = z.object({
+  requestKey:z.string().uuid().optional(),
+  source:z.literal('RECEPTION_QUEUE').optional(),
   amount: z.number().finite().positive('El monto del abono debe ser mayor a 0'),
   paymentMethodId: z.string().min(1, 'Debe seleccionar el método de pago'),
   notes: z.string().optional().nullable(),

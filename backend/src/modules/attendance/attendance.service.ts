@@ -8,6 +8,7 @@ import { SearchAttendanceQuery } from './attendance.dto.js';
 import { participantNameIds } from '../../utils/participantSearch.js';
 import { createHash } from 'node:crypto';
 import { queueBlockReason, queueTshirts, validateQueueSize } from '../scanner/queue-tshirts.js';
+import {shirtDecision,ShirtDecision,supervisionFilters} from '../scanner/reception-operations.js';
 
 export class AttendanceService {
   /**
@@ -55,6 +56,7 @@ export class AttendanceService {
     } else if (status === 'PENDING') {
       where.attended = false;
     }
+    supervisionFilters(where,query,event?.settings?.timeZone||'America/Santo_Domingo');
 
     // Búsqueda rápida multi-campo
     if (search && search.trim()) {
@@ -135,7 +137,8 @@ export class AttendanceService {
     tshirtSize?: string,
     tshirtDelivered?: boolean,
     sessionId?: string,
-    queueEntryId?: string
+    queueEntryId?: string,
+    deliveryDecision?: ShirtDecision
   ) {
     // QA-06: Validar que la talla pertenezca a la edición
     const validTshirtSize = tshirtSize ? queueEntryId ? tshirtSize : await InventoryService.validateSize(eventId, tshirtSize) : null;
@@ -220,11 +223,15 @@ export class AttendanceService {
       if (actor?.scannerOnly) throw new BadRequestError('El perfil Escáner QR no confirma asistencia.');
       if (sessionId && await tx.queueDevice.findFirst({where:{eventId,sessionId,status:'LINKED',leaseUntil:{gt:new Date()}}})) throw new BadRequestError('Confirme desde la PC o desvincule el escáner.');
       const queued = await tx.queueEntry.findUnique({where:{eventId_registrationId:{eventId,registrationId}}});
+      const settings=await tx.eventSettings.findUnique({where:{eventId}});
+      const livePayment=await tx.registration.findUniqueOrThrow({where:{id:registrationId}});
+      if(settings?.requirePaymentForEntry===true&&!livePayment.isCourtesy&&Number(livePayment.balanceDue)>0)throw new BadRequestError('Esta edición exige pago confirmado antes del ingreso.');
+      const delivery=shirtDecision(deliveryDecision,alreadyDelivered||shouldDeliver);
       if (queueEntryId) {
         if (!queued || queued.id !== queueEntryId || queued.state !== 'CLAIMED' || queued.claimedBySessionId !== sessionId || !queued.claimUntil || queued.claimUntil <= new Date()) throw new BadRequestError('La reserva de atención venció o pertenece a otra estación. Vuelve a la cola.');
         const live = await tx.registration.findUniqueOrThrow({where:{id:registrationId},include:{ticketType:true}});
         const pending = await tx.courtesyRequest.findUnique({where:{pendingRegistrationId:registrationId}});
-        const reason = queueBlockReason(live,Boolean(pending));
+        const reason = queueBlockReason(live,Boolean(pending),settings?.requirePaymentForEntry!==false);
         if (reason) throw new BadRequestError(reason);
         if (queued.validatedQrHash && queued.validatedQrHash !== createHash('sha256').update(live.qrCode || '').digest('hex')) throw new BadRequestError('El QR fue revocado. Revisa la ficha completa.');
         if (live.tshirtDelivered && validTshirtSize && live.tshirtSize !== validTshirtSize) throw new BadRequestError('La camiseta ya fue entregada. Su ajuste requiere una operación autorizada.');
@@ -297,6 +304,7 @@ export class AttendanceService {
           attendedAt: now,
           attendedByUserId: operatorUserId,
           updatedByUserId: operatorUserId,
+          ...(!alreadyDelivered&&validTshirtSize?{tshirtDeliveryStatus:delivery.status,tshirtNonDeliveryReason:delivery.reason,tshirtNonDeliveryNotes:delivery.notes,tshirtDecisionAt:now,tshirtDecisionByUserId:operatorUserId}:{}),
           ...(validTshirtSize && !alreadyDelivered ? {
             tshirtSize: validTshirtSize,
             tshirtSizeUpdatedAt: now,
@@ -362,6 +370,7 @@ export class AttendanceService {
             tshirtSize: validTshirtSize || null,
             tshirtDelivered: alreadyDelivered || shouldDeliver,
             inventoryDeducted: shouldDeliver ? 1 : 0,
+            noDeliveryReason:!alreadyDelivered&&validTshirtSize?delivery.reason:null,noDeliveryNotes:!alreadyDelivered&&validTshirtSize?delivery.notes:null,deliveryStatus:alreadyDelivered?'DELIVERED':delivery.status,
             deliveryPending: Boolean(validTshirtSize && !shouldDeliver),
             attendedAt: now.toISOString(),
           }) as any,
@@ -415,7 +424,7 @@ export class AttendanceService {
   /**
    * Exportar lista de asistencia a archivo Excel (.xlsx)
    */
-  static async exportAttendance(eventId: string, status?: string, search?: string) {
+  static async exportAttendance(eventId: string, status?: string, search?: string,query:Partial<SearchAttendanceQuery>={}) {
     const event = await prisma.event.findUnique({
       where: { id: eventId },
       include: { settings: true },
@@ -425,6 +434,8 @@ export class AttendanceService {
 
     if (status === 'ATTENDED') where.attended = true;
     else if (status === 'PENDING') where.attended = false;
+    supervisionFilters(where,query,event?.settings?.timeZone||'America/Santo_Domingo');
+
 
     if (search && search.trim()) {
       const term = search.trim();

@@ -1,0 +1,11 @@
+ALTER TABLE "event_settings" ADD COLUMN "timeZone" TEXT NOT NULL DEFAULT 'America/Santo_Domingo';
+ALTER TABLE "event_settings" ADD COLUMN "allowOnsitePayments" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "event_settings" ADD COLUMN "requirePaymentForEntry" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "registrations" ADD COLUMN "tshirtDeliveryStatus" TEXT;
+ALTER TABLE "registrations" ADD COLUMN "tshirtNonDeliveryReason" TEXT;
+ALTER TABLE "registrations" ADD COLUMN "tshirtNonDeliveryNotes" TEXT;
+ALTER TABLE "registrations" ADD COLUMN "tshirtDecisionAt" TIMESTAMP(3);
+ALTER TABLE "registrations" ADD COLUMN "tshirtDecisionByUserId" TEXT;
+CREATE TABLE "QueueScanActivity" ("id" TEXT NOT NULL PRIMARY KEY,"eventId" TEXT NOT NULL,"userId" TEXT NOT NULL,"sessionId" TEXT NOT NULL,"deviceId" TEXT,"requestKey" TEXT NOT NULL,"eventDay" TEXT NOT NULL,"outcome" TEXT NOT NULL,"submitted" BOOLEAN NOT NULL DEFAULT false,"duplicate" BOOLEAN NOT NULL DEFAULT false,"registrationId" TEXT,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "QueueScanActivity_registrationId_fkey" FOREIGN KEY ("registrationId") REFERENCES "registrations"("id") ON DELETE SET NULL ON UPDATE CASCADE);
+CREATE UNIQUE INDEX "QueueScanActivity_eventId_userId_requestKey_key" ON "QueueScanActivity"("eventId","userId","requestKey");
+CREATE INDEX "QueueScanActivity_eventId_userId_eventDay_idx" ON "QueueScanActivity"("eventId","userId","eventDay");

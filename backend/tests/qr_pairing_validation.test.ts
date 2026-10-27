@@ -49,6 +49,13 @@ beforeEach(()=>{
 });
 
 describe('official ticket formats and queue validation, unit mocks',()=>{
+ it('reveals only the authorized name, organization and entry number on preview',async()=>{
+  vi.spyOn(Q,'readAccess').mockResolvedValue('station');
+  registration.participant={fullName:'Unit Participant',institution:'Unit Organization',email:'private@example.invalid',documentId:'private-id',phone:'private-phone'};
+  const result=await Q.preview(mobile,eventId,registration.qrCode,'device');
+  expect(result).toMatchObject({name:'Unit Participant',organization:'Unit Organization',number:'BC26-42'});
+  expect(JSON.stringify(result)).not.toContain('private');expect(result).not.toHaveProperty('payment');
+ });
  it.each(['eg_qr_unit42','https://eventgrid.app/t/eg_qr_unit42','https://eventgrid.app/t/eg_qr_unit42?download=1#ticket','https://eventgrid.app/t/eg%5Fqr%5Funit42/','/t/eg_qr_unit42?source=wallet',JSON.stringify({token:'eg_qr_unit42'}),JSON.stringify({eg_token:'https://eventgrid.app/t/eg_qr_unit42'})])('validates the complete official payload %s consistently in preview and read',async input=>{
   vi.spyOn(Q,'readAccess').mockResolvedValue('station');
   expect((await QrService.validateAndScan(input,eventId)).status).toBe('VALID');

@@ -12,7 +12,11 @@ export const RevertAttendanceSchema = z.object({
   reason: z.string().min(3, 'Debe especificar el motivo de la reversión (mínimo 3 caracteres)'),
 });
 
+const eventDate=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value=>{const d=new Date(value+'T00:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===value;},'Fecha inválida');
 export const SearchAttendanceQuerySchema = z.object({
+  dateFrom:eventDate.optional(),
+  dateTo:eventDate.optional(),
+  tshirtDelivery:z.enum(['PENDING','NOT_DELIVERED','DELIVERED']).optional(),
   search: z.string().optional(),
   status: z.enum(['ALL', 'ATTENDED', 'PENDING']).default('ALL'),
   page: z.coerce.number().int().min(1).default(1),

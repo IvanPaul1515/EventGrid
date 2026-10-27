@@ -96,7 +96,8 @@ export class AttendanceController {
       const buffer = await AttendanceService.exportAttendance(
         AttendanceController.getEventId(req),
         status,
-        search
+        search,
+        SearchAttendanceQuerySchema.parse(req.query)
       );
 
       res.setHeader(

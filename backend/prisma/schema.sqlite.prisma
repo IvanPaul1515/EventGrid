@@ -92,6 +92,9 @@ model Event {
 }
 
 model EventSettings {
+  timeZone String @default("America/Santo_Domingo")
+  allowOnsitePayments Boolean @default(false)
+  requirePaymentForEntry Boolean @default(true)
   paymentDeadlineAt DateTime?
   paymentInstructions String?
   paymentSupportContact String?
@@ -149,6 +152,12 @@ model Participant {
 }
 
 model Registration {
+  scanActivities QueueScanActivity[]
+  tshirtDeliveryStatus String?
+  tshirtNonDeliveryReason String?
+  tshirtNonDeliveryNotes String?
+  tshirtDecisionAt DateTime?
+  tshirtDecisionByUserId String?
   externalPaymentMethod String?
   financialReviews FinancialReview[]
   refunds RefundRequest[]
@@ -1020,4 +1029,22 @@ model QueuePairingPresence {
  sessionId String @unique
  expiresAt DateTime
  @@index([eventId, expiresAt])
+}
+
+model QueueScanActivity {
+ id String @id @default(uuid())
+ eventId String
+ userId String
+ sessionId String
+ deviceId String?
+ requestKey String
+ eventDay String
+ outcome String
+ submitted Boolean @default(false)
+ duplicate Boolean @default(false)
+ registrationId String?
+ registration Registration? @relation(fields:[registrationId],references:[id],onDelete:SetNull)
+ createdAt DateTime @default(now())
+ @@unique([eventId,userId,requestKey])
+ @@index([eventId,userId,eventDay])
 }
