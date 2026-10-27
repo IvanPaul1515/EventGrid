@@ -1,4 +1,5 @@
 import { seedBarcamp2026 } from './barcamp2026.js';
+import { seedDemoScanners } from '../src/modules/auth/demo-scanners.js';
 import { INITIAL_TSHIRT_INVENTORY } from '../src/modules/inventory/inventory.service.js';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
@@ -100,6 +101,7 @@ async function main() {
 
   // 2. Edición BarCamp RD 2026 (Activa)
   const event2026 = await seedBarcamp2026(prisma);
+  await seedDemoScanners(prisma, event2026.id, process.env.DEMO_QUICK_ACCESS === 'true');
 
   const newDemoSettings = process.env.DEMO_QUICK_ACCESS === 'true' && !await prisma.eventSettings.findUnique({ where: { eventId: event2026.id } });
   // Configuración visual BarCamp 2026
