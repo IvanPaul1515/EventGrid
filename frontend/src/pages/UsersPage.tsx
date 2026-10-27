@@ -59,12 +59,14 @@ export const UsersPage: React.FC = () => {
   // Formulario de creación
   const [createForm, setCreateForm] = useState({
     email: '',
+    scannerOnly: false,
     fullName: '',
     role: 'OPERATOR' as 'ADMIN' | 'OPERATOR' | 'VIEWER',
   });
 
   // Formulario de edición
   const [editForm, setEditForm] = useState({
+    scannerOnly: false,
     fullName: '',
     role: 'OPERATOR' as 'ADMIN' | 'OPERATOR' | 'VIEWER',
     isActive: true,
@@ -119,10 +121,12 @@ export const UsersPage: React.FC = () => {
         email: createForm.email.trim(),
         fullName: createForm.fullName.trim(),
         role: createForm.role,
+        scannerOnly: createForm.scannerOnly,
+        ...(createForm.scannerOnly ? {assignedEventId: currentEvent?.id} : {}),
       });
 
       setIsCreateModalOpen(false);
-      setCreateForm({ email: '', fullName: '', role: 'OPERATOR' });
+      setCreateForm({ email: '', fullName: '', role: 'OPERATOR', scannerOnly: false });
 
       setSuccessMsg(`Cuenta de ${res.user.fullName} creada, pendiente de activación. Selecciónela en la lista para autorizar su invitación.`);
       setTimeout(() => setSuccessMsg(null), 5000);
@@ -140,6 +144,7 @@ export const UsersPage: React.FC = () => {
     setSelectedUser(u);
     setEditForm({
       fullName: u.fullName,
+      scannerOnly: Boolean(u.scannerOnly),
       role: u.role,
       isActive: u.accountStatus === 'PENDING' ? false : u.isActive,
       staffArea: u.staffArea || '',
@@ -409,7 +414,7 @@ export const UsersPage: React.FC = () => {
                                 : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
                             }`}
                           >
-                            {u.role === 'ADMIN' ? 'Administrador' : u.role === 'OPERATOR' ? 'Operador' : 'Consulta'}
+                            {u.scannerOnly?'Escáner QR':u.role === 'ADMIN' ? 'Administrador' : u.role === 'OPERATOR' ? 'Operador' : 'Consulta'}
                           </span>
                         </td>
 
@@ -508,7 +513,7 @@ export const UsersPage: React.FC = () => {
                             : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
                         }`}
                       >
-                        {u.role}
+                        {u.scannerOnly?'Escáner QR':u.role}
                       </span>
                     </div>
 
@@ -624,7 +629,7 @@ export const UsersPage: React.FC = () => {
                 <label className="block text-xs font-semibold text-foreground mb-1">Rol en la Plataforma *</label>
                 <select aria-label="Rol"
                   value={createForm.role}
-                  onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as any })}
+                  onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as any, scannerOnly: false })}
                   className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary cursor-pointer font-medium"
                 >
                   <option value="OPERATOR">Operador (Check-in, Entregas y Registro)</option>
@@ -632,6 +637,7 @@ export const UsersPage: React.FC = () => {
                   <option value="VIEWER">Consulta</option>
                 </select>
               </div>
+<label className="flex items-center gap-3 rounded-xl border border-border p-3 text-sm"><input type="checkbox" disabled={createForm.role!=='OPERATOR'} checked={createForm.scannerOnly} onChange={e=>setCreateForm({...createForm,scannerOnly:e.target.checked})}/>Perfil restringido Escáner QR · edición actual</label>
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-border">
                 <button
                   type="button"
@@ -686,7 +692,7 @@ export const UsersPage: React.FC = () => {
                 <label className="block text-xs font-semibold text-foreground mb-1">Rol RBAC *</label>
                 <select
                   value={editForm.role}
-                  onChange={(e) => setEditForm({ ...editForm, role: e.target.value as any })}
+                  onChange={(e) => setEditForm({ ...editForm, role: e.target.value as any, scannerOnly: false })}
                   className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary cursor-pointer font-medium"
                 >
                   <option value="OPERATOR">Operador</option>
@@ -701,6 +707,7 @@ export const UsersPage: React.FC = () => {
                   {events.map(event => <option key={event.id} value={event.id}>{event.name} · {event.year}</option>)}
                 </select>
               </div>
+              <label className="flex items-center gap-3 rounded-xl border border-border p-3 text-sm"><input type="checkbox" disabled={editForm.role!=='OPERATOR'} checked={editForm.scannerOnly} onChange={e=>setEditForm({...editForm,scannerOnly:e.target.checked,assignedEventId:editForm.assignedEventId||currentEvent?.id||''})}/>Perfil restringido Escáner QR</label>
               <label className="block text-xs">Área del staff (opcional)<input value={editForm.staffArea} onChange={e => setEditForm({ ...editForm, staffArea: e.target.value })} className="mt-1 w-full p-2 rounded-xl bg-background border border-border" /></label>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border">

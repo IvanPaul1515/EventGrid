@@ -18,8 +18,8 @@ module.exports=async({api,base,eventId,accounts,firstToken='relay-test-ticket',s
   const [pc,phone]=pages;
   // PC dashboard advertises availability but remains a normal dashboard.
   await pc.goto(base+'/');await pc.getByTestId('dashboard-attendance').waitFor();
-  await phone.goto(base+'/');await phone.getByRole('dialog',{name:'Hay una computadora disponible'}).waitFor();
-  await phone.getByRole('button',{name:'Usar EventGrid normalmente',exact:true}).click();await phone.getByTestId('dashboard-attendance').waitFor();
+  await phone.goto(base+'/');await phone.getByRole('dialog',{name:'Computadora disponible'}).waitFor();
+  await phone.getByRole('button',{name:'Continuar normalmente',exact:true}).click();await phone.getByTestId('dashboard-attendance').waitFor();
   await phone.goto(base+'/reception');await panel(phone).getByRole('button',{name:'Vincular como escáner',exact:true}).click();
   await panel(phone).getByRole('button',{name:/Vincular a/}).first().click();
   // PC authorization must arrive even outside Reception.

@@ -1,5 +1,6 @@
 import { createContext, useContext, useCallback, useEffect, useRef, useState, ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useReceptionQueue } from './ReceptionQueueContext';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useEdition } from '../../context/EditionContext';
@@ -21,6 +22,7 @@ const stored = (key: string) => { try { return sessionStorage.getItem(key) === '
 export function ScannerProvider({ children }: { children: ReactNode }) {
   const { user, token } = useAuth(), { currentEvent } = useEdition(), { pathname } = useLocation();
   const presentation = useDevicePresentation();
+  const queue = useReceptionQueue();
   const [ready, setReady] = useState(false), [notice, setNotice] = useState('');
   const explicitUnlink = useRef(false);
   const [state, setState] = useState(empty), [stations, setStations] = useState<{ id: string; label: string }[]>([]);
@@ -35,7 +37,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true, running: Promise<void> | null = null, again = false, advertised = false;
     setReady(false); setNotice(''); setState(empty); setStations([]); setMessage(''); setDismissed(stored(key)); busy.current = !['/reception','/attendance'].includes(current.current.pathname);
-    if (!eventId || !token || !['ADMIN','OPERATOR'].includes(user?.role || '')) { setReady(true); refreshRef.current = async () => {}; return; }
+    if (user?.scannerOnly || queue.state.station?.mode === 'QUEUE' || !eventId || !token || !['ADMIN','OPERATOR'].includes(user?.role || '')) { setReady(true); refreshRef.current = async () => {}; return; }
     const load = (): Promise<void> => {
       if (!active) return Promise.resolve();
       if (running) { again = true; return running; }
@@ -80,7 +82,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
     const offline = () => setConnected(false);
     window.addEventListener('online', wake); window.addEventListener('offline', offline); document.addEventListener('visibilitychange', wake);
     return () => { active = false; clearInterval(timer); window.removeEventListener('online', wake); window.removeEventListener('offline', offline); document.removeEventListener('visibilitychange', wake); };
-  }, [eventId, token, user?.role, base, key]);
+  }, [eventId, token, user?.role, user?.scannerOnly, queue.state.station?.mode, base, key]);
   useRealtimeEvent(['SCANNER_CHANGED','SCANNER_STATIONS_CHANGED','RESYNC','CHECK_IN_CONFIRMED'], event => { if (event.type !== 'CHECK_IN_CONFIRMED' || snapshot.current.link) void refreshRef.current(); });
   const dismissSuggestion = () => { setDismissed(true); try { sessionStorage.setItem(key, 'dismissed'); } catch {} };
   const act = async (path: string, body: object = {}) => {

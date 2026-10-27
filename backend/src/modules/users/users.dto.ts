@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const CreateUserSchema = z.object({
+  scannerOnly: z.boolean().default(false),
   email: z.string().trim().email('Correo electrónico inválido').toLowerCase(),
   staffArea: z.string().trim().max(100).nullable().optional(),
   assignedEventId: z.string().uuid().nullable().optional(),
@@ -10,6 +11,7 @@ export const CreateUserSchema = z.object({
 });
 
 export const UpdateUserSchema = z.object({
+  scannerOnly: z.boolean().optional(),
   staffArea: z.string().trim().max(100).nullable().optional(),
   assignedEventId: z.string().uuid().nullable().optional(),
   fullName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').trim().optional(),

@@ -1,3 +1,5 @@
+import { ReceptionQueuePanel } from '../components/attendance/ReceptionQueuePanel';
+import { useReceptionQueue } from '../components/attendance/ReceptionQueueContext';
 import { LinkedScannerPanel } from '../components/attendance/LinkedScannerPanel';
 import { ReceptionIncidentsPanel } from '../components/attendance/ReceptionIncidentsPanel';
 import { ReceptionOverview } from '../components/attendance/ReceptionOverview';
@@ -50,6 +52,7 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
   const { currentEvent } = useEdition();
   const activeEdition = useRef(currentEvent?.id); activeEdition.current = currentEvent?.id;
   const { user, hasRole } = useAuth();
+  const queue = useReceptionQueue();
 
   // Estados de datos
   const [registrations, setRegistrations] = useState<Registration[]>([]);
@@ -289,7 +292,8 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
 
   return (
     <div className={`space-y-6 max-w-7xl mx-auto ${quick?'[&_button]:min-h-11':''}`}>
-      {currentEvent && hasRole(['ADMIN', 'OPERATOR']) && <LinkedScannerPanel onLinkedMode={setMobileLinked} eventId={currentEvent.id} busy={isDrawerOpen || isNewParticipantOpen || isOnsiteSaleOpen || isQrScanOpen} onRead={async id => {
+      {currentEvent && hasRole(['ADMIN','OPERATOR']) && <ReceptionQueuePanel drawerOpen={isDrawerOpen} onOpen={async id=>{const registration=await participantsService.getById(id);setSelectedRegistration(registration);setIsDrawerOpen(true);}} />}
+      {currentEvent && queue.state.station?.mode !== 'QUEUE' && hasRole(['ADMIN', 'OPERATOR']) && <LinkedScannerPanel onLinkedMode={setMobileLinked} eventId={currentEvent.id} busy={isDrawerOpen || isNewParticipantOpen || isOnsiteSaleOpen || isQrScanOpen} onRead={async id => {
         const editionId = currentEvent.id;
         const registration = await participantsService.getById(id);
         if (activeEdition.current !== editionId) return;

@@ -24,10 +24,10 @@ export function ScannerPrompts() {
   </ScannerDialog>;
   if (notice) return <p role="status" className="rounded-xl border border-border bg-card p-3 text-sm text-muted-foreground">{notice}</p>;
   if (presentation.device !== 'phone' || dismissed || !connected || link || !stations.length) return null;
-  return <ScannerDialog label="Hay una computadora disponible" onCancel={dismissSuggestion}>
-    <MonitorSmartphone className="w-10 h-10 text-primary" /><h2 className="text-xl font-bold">Hay una computadora disponible</h2>
-    <p className="text-sm text-muted-foreground">Hemos detectado una sesión de EventGrid en una computadora. ¿Cómo quieres utilizar este teléfono?</p>
+  return <ScannerDialog label="Computadora disponible" onCancel={dismissSuggestion}>
+    <MonitorSmartphone className="w-10 h-10 text-primary" /><h2 className="text-xl font-bold">Computadora disponible</h2>
+    <p className="text-sm text-muted-foreground">Hemos detectado una estación de recepción disponible. Puedes vincular este teléfono como escáner QR o seguir utilizando EventGrid normalmente.</p>
     {choosing && <div className="space-y-2">{stations.map(station => <button key={station.id} className="btn-secondary w-full" onClick={() => { dismissSuggestion(); navigate('/reception',{state:{openScannerLink:true}}); void act('/request',{stationId:station.id}); }}>Vincular a {station.label}</button>)}</div>}
-    <div className="grid gap-3"><button className="btn-primary" onClick={() => { if (stations.length > 1) setChoosing(true); else { dismissSuggestion(); navigate('/reception',{state:{openScannerLink:true}}); void act('/request',{stationId:stations[0].id}); } }}>Vincular como escáner</button><button className="btn-secondary" onClick={dismissSuggestion}>Usar EventGrid normalmente</button></div>
+    <div className="grid gap-3"><button className="btn-primary" onClick={() => { if (stations.length > 1) setChoosing(true); else { dismissSuggestion(); navigate('/reception',{state:{openScannerLink:true}}); void act('/request',{stationId:stations[0].id}); } }}>Vincular como escáner</button><button className="btn-secondary" onClick={dismissSuggestion}>Continuar normalmente</button></div>
   </ScannerDialog>;
 }

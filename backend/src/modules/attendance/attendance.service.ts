@@ -212,6 +212,16 @@ export class AttendanceService {
 
     // QA-01, QA-02, QA-03: Ejecución atómica y condicional en transacción interactiva
     const updatedRegistration = await writeTransaction(async (tx) => {
+      const actor = await tx.user.findUnique({where:{id:operatorUserId}});
+      if (actor?.scannerOnly) throw new BadRequestError('El perfil Escáner QR no confirma asistencia.');
+      if (sessionId && await tx.queueDevice.findFirst({where:{eventId,sessionId,status:'LINKED',leaseUntil:{gt:new Date()}}})) throw new BadRequestError('Confirme desde la PC o desvincule el escáner.');
+      const queued = await tx.queueEntry.findUnique({where:{eventId_registrationId:{eventId,registrationId}}});
+      if (queued && !['CONFIRMED','REJECTED'].includes(queued.state)) {
+        if (!sessionId) throw new BadRequestError('Inicie sesión nuevamente para atender esta entrada.');
+        const claimed = await tx.queueEntry.updateMany({where:{id:queued.id,OR:[{state:'WAITING'},{state:'CLAIMED',claimedBySessionId:sessionId},{state:'CLAIMED',claimUntil:{lte:new Date()}}]},data:{state:'CLAIMED',claimedBySessionId:sessionId,claimedByUserId:operatorUserId,claimUntil:new Date(Date.now()+90000)}});
+        if (!claimed.count) throw new BadRequestError('Este participante está siendo atendido en otra estación.');
+      }
+
       const mobileLink = sessionId ? await tx.scannerLink.findFirst({ where: { eventId, mobileSessionId: sessionId, status: 'LINKED', mobileLeaseUntil: { gt: new Date() } } }) : null;
       if (mobileLink && await tx.receptionStation.findFirst({ where: { id: mobileLink.stationId, activeLinkId: mobileLink.id, leaseUntil: { gt: new Date() } } })) throw new BadRequestError('El teléfono está en modo escáner vinculado. Confirme la asistencia desde la PC o desvincule para continuar normalmente.');
       if (await tx.registration.findFirst({ where: { id: registrationId, eventId, source: 'EXCEL_IMPORT', isCourtesy: false, ticketPrice: { lte: 0 } } })) throw new BadRequestError('Tarifa externa pendiente de conciliación.');
@@ -352,11 +362,13 @@ export class AttendanceService {
         },
       });
 
+      await tx.queueEntry.updateMany({where:{eventId,registrationId},data:{state:'CONFIRMED',claimUntil:null}});
       return updated!;
     });
 
     const counters = await this.getCounters(eventId);
 
+    RealtimeService.queueChanged(eventId);
     RealtimeService.emit(eventId, {
       type: 'CHECK_IN_CONFIRMED',
       data: {

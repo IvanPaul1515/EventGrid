@@ -12,7 +12,14 @@ export class RealtimeService {
   private static clients: Map<string, Set<Response>> = new Map();
   private static heartbeatInterval: NodeJS.Timeout | null = null;
   private static sequenceId = 0;
-  private static identities = new Map<Response, { userId: string; role: string; assignedEventId?: string | null; expiresAt?: number; sessionVersion?: number; sessionId?: string }>();
+  private static identities = new Map<Response, { scannerOnly?: boolean; userId: string; role: string; assignedEventId?: string | null; expiresAt?: number; sessionVersion?: number; sessionId?: string }>();
+  static queueChanged(eventId: string) {
+    for (const response of this.clients.get(eventId) || []) {
+      const identity = this.identities.get(response);
+      if (!identity || !['ADMIN','OPERATOR'].includes(identity.role)) continue;
+      try { response.write(`event: message\ndata: ${JSON.stringify({type:'RECEPTION_QUEUE_CHANGED',eventId,data:{}})}\n\n`); } catch { this.removeClient(eventId,response); }
+    }
+  }
   static changed(eventId: string, domains: string[]) { this.emit(eventId, { type: 'DATA_CHANGED', data: { domains } }); }
   static notifyAccess(userId: string) {
     for (const [response, identity] of this.identities) if (identity.userId === userId) {
@@ -59,7 +66,7 @@ export class RealtimeService {
     }
   }
 
-  static addClient(eventId: string, res: Response, identity?: { userId: string; role: string; assignedEventId?: string | null; expiresAt?: number; sessionVersion?: number; sessionId?: string }) {
+  static addClient(eventId: string, res: Response, identity?: { scannerOnly?: boolean; userId: string; role: string; assignedEventId?: string | null; expiresAt?: number; sessionVersion?: number; sessionId?: string }) {
     this.init();
     if (identity) this.identities.set(res, identity);
     if (!this.clients.has(eventId)) {
@@ -112,6 +119,7 @@ export class RealtimeService {
     for (const client of Array.from(eventClients)) {
       try {
         const identity = this.identities.get(client);
+        if (identity?.scannerOnly) continue;
         const visibleDomains = payload.data?.domains?.filter((domain: string) => (!['users', 'operations'].includes(domain) || identity?.role === 'ADMIN') && (domain !== 'courtesies' || identity?.role === 'ADMIN' || identity?.role === 'OPERATOR'));
         if (payload.type === 'DATA_CHANGED' && visibleDomains && !visibleDomains.length) continue;
         const safeMessage = payload.type === 'DATA_CHANGED' ? `id: ${this.sequenceId}\nevent: message\ndata: ${JSON.stringify({ ...payload, data: { domains: visibleDomains || [] } })}\n\n` : message;
@@ -126,12 +134,12 @@ export class RealtimeService {
     if (!this.clients.size) return;
     try {
       const identities = [...this.identities.values()];
-      const users = await prisma.user.findMany({ where: { id: { in: [...new Set(identities.map(identity => identity.userId))] } }, select: { id: true, role: true, assignedEventId: true, isActive: true, accountStatus: true, sessionVersion: true } });
+      const users = await prisma.user.findMany({ where: { id: { in: [...new Set(identities.map(identity => identity.userId))] } }, select: { scannerOnly: true, id: true, role: true, assignedEventId: true, isActive: true, accountStatus: true, sessionVersion: true } });
       const sessions = await prisma.authSession.findMany({ where: { id: { in: identities.flatMap(i => i.sessionId ? [i.sessionId] : []) } } });
       for (const identity of identities) {
         if (identity.sessionId) { const session = sessions.find(s => s.id === identity.sessionId); if (!session || session.revokedAt || session.expiresAt.getTime() <= Date.now()) { this.notifySession(identity.sessionId); continue; } }
         const user = users.find(item => item.id === identity.userId);
-        if (!user || !user.isActive || user.accountStatus === 'PENDING' || (identity.sessionVersion || 0) !== user.sessionVersion || user.role !== identity.role || user.assignedEventId !== identity.assignedEventId || (identity.expiresAt && Date.now() >= identity.expiresAt)) this.notifyAccess(identity.userId);
+        if (!user || !user.isActive || user.accountStatus === 'PENDING' || (identity.sessionVersion || 0) !== user.sessionVersion || user.role !== identity.role || Boolean(user.scannerOnly) !== Boolean(identity.scannerOnly) || user.assignedEventId !== identity.assignedEventId || (identity.expiresAt && Date.now() >= identity.expiresAt)) this.notifyAccess(identity.userId);
       }
     } catch {
       for (const [eventId, clients] of this.clients) for (const client of [...clients]) { client.end(); this.removeClient(eventId, client); }

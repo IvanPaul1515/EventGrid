@@ -2,11 +2,12 @@ import { DeviceSessionService } from '../modules/auth/device-session.service.js'
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { ENV } from '../config/env.js';
-import { UnauthorizedError } from '../utils/errors.js';
+import { ForbiddenError, UnauthorizedError } from '../utils/errors.js';
 import { enforceEditionAccess } from './editionAccess.js';
 import { prisma } from '../config/db.js';
 
 export interface AuthUser {
+  scannerOnly?: boolean;
   id: string;
   email: string;
   fullName: string;
@@ -62,7 +63,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
     // Verificar que el usuario continúe activo en la base de datos
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, email: true, fullName: true, role: true, assignedEventId: true, isActive: true, accountStatus: true, sessionVersion: true },
+      select: { id: true, email: true, fullName: true, scannerOnly: true, role: true, assignedEventId: true, isActive: true, accountStatus: true, sessionVersion: true },
     });
 
     if (user && (decoded.sessionVersion || 0) !== user.sessionVersion) return next(new UnauthorizedError('La sesión fue revocada. Inicie sesión nuevamente'));
@@ -77,11 +78,24 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       email: user.email,
       fullName: user.fullName,
       role: user.role as any,
+      scannerOnly: user.scannerOnly,
       assignedEventId: user.assignedEventId,
       sessionVersion: user.sessionVersion,
       expiresAt: session.expiresAt,
     };
 
+    if (user.scannerOnly) {
+      const path = new URL(req.originalUrl, 'http://localhost').pathname;
+      const prefix = ENV.API_PREFIX;
+      const relative = path.startsWith(prefix) ? path.slice(prefix.length) : '';
+      const allowed = /^(\/auth\/(me|logout|change-password))$/.test(relative) || /^(\/events\/[^/]+\/stream)$/.test(relative) && req.method === 'GET' || /^(\/events\/[^/]+\/reception-queue\/(state|stations|request|read|devices\/[^/]+\/(confirm|unlink)))$/.test(relative);
+      if (relative === '/events' && req.method === 'GET') {
+        if (!user.assignedEventId) throw new ForbiddenError('El perfil Escáner QR requiere edición asignada.');
+        const event = await prisma.event.findUnique({where:{id:user.assignedEventId},select:{id:true,name:true,year:true,slug:true,status:true,isDefault:true,startDate:true,endDate:true,settings:{select:{primaryColor:true,secondaryColor:true,logoUrl:true}}}});
+        return res.json({data:event?[event]:[]});
+      }
+      if (!allowed) throw new ForbiddenError('El perfil Escáner QR solo puede leer para una cola autorizada.');
+    }
     await enforceEditionAccess(req, res, next);
   } catch (error: any) {
     if (error.name === 'TokenExpiredError') {
