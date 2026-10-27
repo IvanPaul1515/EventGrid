@@ -1,4 +1,5 @@
-import { qrFeedback } from '../../utils/qrFeedback';
+import { qrFeedback, qrFailureStatus } from '../../utils/qrFeedback';
+import { finishQrCameraRelease } from '../../utils/qrCameraRelease';
 import '../attendance/scanner.css';
 import { inventoryService, TshirtInventoryItem } from '../../services/inventory.service';
 import { useRealtimeRefresh } from '../../context/RealtimeContext';
@@ -28,6 +29,7 @@ import {
 } from 'lucide-react';
 
 interface QrScanModalProps {
+  purpose?: 'TICKET' | 'PAIRING';
   allowManual?: boolean;
   onLinkedRead?: (token: string) => Promise<string>;
   isOpen: boolean;
@@ -39,6 +41,7 @@ interface QrScanModalProps {
 export const QrScanModal: React.FC<QrScanModalProps> = ({
   isOpen,
   allowManual = false,
+  purpose = 'TICKET',
   onClose,
   onAttendanceMarked,
   onLinkedRead,
@@ -178,7 +181,8 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
       setCameraLoading(false);
       cameraGeneration.current += 1;
       cameraQueue.current = cameraQueue.current.catch(() => {}).then(releaseCamera);
-      await cameraQueue.current;
+      await finishQrCameraRelease(cameraQueue.current,()=>{if(import.meta.env.DEV)console.warn('La cámara liberó sus pistas con un error de limpieza visual. La lectura decodificada se validará normalmente.');});
+      if (generation !== scanGeneration.current) return;
       if (linkedRead.current) {
         const message = await linkedRead.current(trimmed);
         if (generation === scanGeneration.current) { setScanResult(null); setCheckInSuccess(message); }
@@ -191,11 +195,11 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
       setSelectedTshirtSize(result.registration?.tshirtSize || null);
     } catch (err: any) {
       if (generation !== scanGeneration.current) return;
-      setNetworkFailure(true);
+      setNetworkFailure(!err.response);
       setScanResult({
         valid: false,
-        status: 'INVALID_CODE',
-        message: qrFeedback('NETWORK').message,
+        status: qrFailureStatus(err),
+        message: qrFeedback(qrFailureStatus(err)).message,
         canCheckIn: false,
       });
     } finally {
@@ -396,7 +400,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
 
   return createPortal(
     <div className="scanner-ui scanner-overlay mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-lg bg-card rounded-2xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden flex flex-col max-h-[92dvh] max-sm:max-h-full" role="dialog" aria-modal="true" aria-label="Escáner de entradas QR">
+      <div className="relative w-full max-w-lg bg-card rounded-2xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden flex flex-col max-h-[92dvh] max-sm:max-h-full" role="dialog" aria-modal="true" aria-label={purpose==='PAIRING'?'Escanear QR de vinculación':'Escáner de entradas QR'}>
         {/* Cabecera */}
         <div className="flex items-center justify-between p-3.5 sm:p-4 border-b border-border bg-card/60 shrink-0">
           <div className="flex items-center gap-2">
@@ -404,8 +408,8 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
               <QrCode className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-foreground text-sm leading-tight">Escáner de Entradas QR</h3>
-              <p className="text-[11px] text-muted-foreground leading-tight">{onLinkedRead ? 'Lectura para la PC · confirme la asistencia allí' : 'Control de asistencia y check-in'}</p>
+              <h3 className="font-bold text-foreground text-sm leading-tight">{purpose==='PAIRING'?'Escanear QR de vinculación':'Escáner de Entradas QR'}</h3>
+              <p className="text-[11px] text-muted-foreground leading-tight">{purpose==='PAIRING'?'Solo vinculación de dispositivos':onLinkedRead ? 'Lectura para la PC · confirme la asistencia allí' : 'Control de asistencia y check-in'}</p>
             </div>
           </div>
           <button

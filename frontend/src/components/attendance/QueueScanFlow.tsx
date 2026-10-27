@@ -2,29 +2,35 @@ import { useEffect, useRef, useState } from 'react';
 import { useReceptionQueue } from './ReceptionQueueContext';
 import { QrScanModal } from '../qr/QrScanModal';
 import { ScannerDialog } from './ScannerDialog';
+import { qrFailureStatus, qrFeedback } from '../../utils/qrFeedback';
+import { useEdition } from '../../context/EditionContext';
 
 export type QueueShirts = { enabled: boolean; delivered: boolean; sizes: { size: string; available: number }[] };
 export function QueueScanFlow({ isOpen, onClose, onResult, allowManual = false }: {
   isOpen: boolean; onClose: () => void; onResult: (result: any) => void; allowManual?: boolean;
 }) {
   const q = useReceptionQueue();
+  const {currentEvent}=useEdition();
   const [preview, setPreview] = useState<{token:string;number:string;shirts:QueueShirts}|null>(null);
   const [size, setSize] = useState(''), [error, setError] = useState(''), [sending, setSending] = useState(false);
   const lock = useRef(false), active = useRef(true);
+  const scope=useRef(0);
   useEffect(() => { active.current=true; return () => { active.current=false; }; }, []);
+  useEffect(()=>{scope.current++;setPreview(null);},[currentEvent?.id,q.state.device?.id]);
   const send = async () => {
     if (!preview || lock.current) return;
     lock.current=true;setSending(true);setError('');
     try { const result = await q.read(preview.token, size || undefined); if(active.current){setPreview(null);onResult(result);} }
-    catch(e:any) { if(active.current)setError(e.response?.data?.message || 'No se pudo confirmar el envío. Puedes reintentar; la cola evita duplicados.'); }
+    catch(e:any) { if(active.current)setError(qrFeedback(qrFailureStatus(e)).title); }
     finally { lock.current=false;if(active.current)setSending(false); }
   };
   return <>
-    <QrScanModal isOpen={isOpen} onClose={onClose} allowManual={allowManual} onLinkedRead={async token => {
+    <QrScanModal isOpen={isOpen} onClose={()=>{scope.current++;onClose();}} allowManual={allowManual} onLinkedRead={async token => {
+      const requestScope=scope.current;
       try {
         const result=await q.preview(token);
-        if(active.current){onClose();if(result.status==='VALID'){setError('');setSize(result.selectedTshirtSize||'');setPreview({token,number:result.number,shirts:result.shirts});}else onResult(result);}
-      } catch { if(active.current){onClose();onResult({status:'REJECTED',result:'NETWORK'});} }
+        if(active.current&&requestScope===scope.current){onClose();if(result.status==='VALID'){setError('');setSize(result.selectedTshirtSize||'');setPreview({token,number:result.number,shirts:result.shirts});}else onResult(result);}
+      } catch(e:any) { if(active.current&&requestScope===scope.current){onClose();onResult({status:'REJECTED',result:qrFailureStatus(e)});} }
       return 'Validación procesada';
     }}/>
     {preview&&<ScannerDialog label="Enviar a recepción" onCancel={sending?undefined:()=>setPreview(null)}>

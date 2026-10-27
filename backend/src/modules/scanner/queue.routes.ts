@@ -13,7 +13,9 @@ route('post','/policy',(r,e)=>Q.configure(r.user,e,z.boolean().parse(r.body.enab
 route('post','/station',(r,e)=>{const b=z.object({label:z.string().trim().min(2).max(60),mode:z.enum(['DIRECT','QUEUE']),confirmed:z.boolean().default(false)}).parse(r.body);return Q.station(r.user,e,b.label,b.mode,b.confirmed);});
 route('post','/discoverable',(r,e)=>Q.advertise(r.user,e,z.boolean().parse(r.body.active)));
 route('post','/invite',(r,e)=>Q.invite(r.user,e));
-route('post','/join',(r,e)=>Q.join(r.user,e,z.string().trim().regex(/^[a-fA-F0-9]{10}$/).parse(r.body.code)));
+route('post','/invite/revoke',(r,e)=>Q.revokeInvite(r.user,e));
+router.post('/join',actionRateLimiter(10,60000));
+route('post','/join',(r,e)=>{const b=z.object({code:z.string().trim().min(8).max(200),deviceLabel:z.string().trim().min(1).max(60).optional()}).parse(r.body);return Q.join(r.user,e,b.code,b.deviceLabel);});
 route('post','/request',(r,e)=>Q.request(r.user,e,uuid.parse(r.body.stationId)));
 route('post','/devices/:id/decide',(r,e)=>Q.decide(r.user,e,uuid.parse(r.params.id),z.boolean().parse(r.body.approve)));
 route('post','/devices/:id/confirm',(r,e)=>Q.confirm(r.user,e,uuid.parse(r.params.id),z.string().regex(/^\d{6}$/).parse(r.body.code)));

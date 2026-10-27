@@ -130,6 +130,7 @@ describe('queue scan selection and compact confirmation, unit mocks only',()=>{
   mocks.db.queueDevice.findUnique.mockImplementation(async()=>d);
   mocks.db.queueDevice.findUniqueOrThrow.mockImplementation(async()=>d);
   mocks.db.queueDevice.update.mockImplementation(async({data}:any)=>Object.assign(d,data));
+  mocks.db.queueDevice.updateMany.mockImplementation(async({data}:any)=>{Object.assign(d,data);return {count:1};});
   await expect(Q.confirm(phone,'event',d.id,'123456')).rejects.toThrow();
   await Q.decide(operator,'event',d.id,true);
   expect(await Q.confirm(phone,'event',d.id,'123456')).toEqual({status:'LINKED'});
