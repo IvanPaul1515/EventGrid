@@ -1,3 +1,4 @@
+import walletRoutes from './modules/wallet/wallet.routes.js';
 import financeRoutes from './modules/finance/finance.routes.js';
 import scannerRoutes from './modules/scanner/scanner.routes.js';
 import { personnelRoutes } from './modules/users/personnel.routes.js';
@@ -62,6 +63,16 @@ app.use(
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );
+
+// Wallet pages are served by the API itself. Keep their same-origin POSTs
+// scoped here without widening CORS for the rest of the application.
+app.use(`${ENV.API_PREFIX}/wallet`, cors({
+  credentials: true,
+  origin: (origin, callback) => {
+    let walletOrigin = ''; try { const url = new URL(process.env.WALLET_PUBLIC_BASE_URL || ''); if (url.protocol === 'https:') walletOrigin = url.origin; } catch {}
+    callback(null, !origin || ENV.CORS_ORIGIN.includes(origin) || origin === walletOrigin || ENV.NODE_ENV !== 'production');
+  },
+}), express.json({ limit: '8kb' }), express.urlencoded({ extended: false, limit: '8kb' }), cookieParser(), walletRoutes);
 
 // CORS configurado para admitir los orígenes permitidos
 app.use(

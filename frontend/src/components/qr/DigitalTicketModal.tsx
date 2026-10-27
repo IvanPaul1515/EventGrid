@@ -1,3 +1,4 @@
+import { WalletButtons } from './WalletButtons';
 import React, { useState, useEffect } from 'react';
 import { qrService } from '../../services/qr.service';
 import { QrTicketData } from '../../types';
@@ -141,7 +142,7 @@ export const DigitalTicketModal: React.FC<DigitalTicketModalProps> = ({
             const pStatus = reg.paymentStatus;
             const isAttended = Boolean(reg.attended);
             const attAt = reg.attendedAt;
-            const qrToken = ticketData.token || (ticketData as any).qrToken || '';
+
 
             return (
               <div className="space-y-5">
@@ -158,7 +159,7 @@ export const DigitalTicketModal: React.FC<DigitalTicketModalProps> = ({
                   className="bg-card rounded-3xl border border-border p-6 shadow-xl relative overflow-hidden print:border-black print:text-black print:bg-white"
                 >
                   {/* Franja de Color Superior con Degradado Oficial BarCamp */}
-                  <div className="absolute top-0 left-0 right-0 h-2.5 bg-gradient-to-r from-[#ED2917] via-[#D61211] to-[#BA1513] print:bg-black" />
+                  <div className="absolute top-0 left-0 right-0 h-2.5 bg-primary print:bg-black" style={{backgroundColor:(ticketData as any).ticket?.primaryColor||'var(--primary)'}} />
 
                   {/* Encabezado del Evento con Logo Oficial */}
                   <div className="flex items-start justify-between gap-4 border-b border-border/80 pb-4 pt-2">
@@ -251,11 +252,8 @@ export const DigitalTicketModal: React.FC<DigitalTicketModalProps> = ({
                         className="w-48 h-48 object-contain"
                       />
                     </div>
-                    <p className="text-[11px] font-mono font-semibold text-muted-foreground mt-3 tracking-widest text-center">
-                      TOKEN: <strong className="text-foreground">{qrToken}</strong>
-                    </p>
                     <p className="text-[11px] text-muted-foreground text-center mt-1 max-w-xs">
-                      Presente este código QR en el módulo de recepción o escanee con la app de Check-in.
+                      Presenta este QR en la recepción del evento.
                     </p>
                   </div>
 
@@ -278,6 +276,7 @@ export const DigitalTicketModal: React.FC<DigitalTicketModalProps> = ({
 
                 {/* Botones de Acción (Ocultos al imprimir) */}
                 <div className="space-y-3 print:hidden">
+                  <WalletButtons registrationId={registrationId} revision={ticketData.generatedAt} />
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={handlePrint}

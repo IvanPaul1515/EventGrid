@@ -47,7 +47,7 @@ module.exports = async ({api,base,eventId,accounts,firstToken='relay-test-ticket
   await panel(phone).getByRole('button',{name:'Confirmar vinculación',exact:true}).waitFor();
   await panel(phone).getByRole('textbox',{name:'Código mostrado en la PC'}).fill(code);
   await panel(phone).getByRole('button',{name:'Confirmar vinculación',exact:true}).click();
-  await panel(phone).getByRole('button',{name:'Leer QR para la PC',exact:true}).waitFor();
+  await panel(phone).getByRole('button',{name:'Leer QR',exact:true}).waitFor();
   const untouched=desktop===pc?pc2:pc;
   await panel(phone2).getByRole('button',{name:/Vincular a/}).last().waitFor();
   await panel(phone2).getByRole('button',{name:/Vincular a/}).last().click();
@@ -56,21 +56,23 @@ module.exports = async ({api,base,eventId,accounts,firstToken='relay-test-ticket
   await secondDialog.getByRole('button',{name:'Autorizar',exact:true}).click();
   await panel(phone2).getByRole('textbox',{name:'Código mostrado en la PC'}).fill(secondCode);
   await panel(phone2).getByRole('button',{name:'Confirmar vinculación',exact:true}).click();
-  await panel(phone2).getByRole('button',{name:'Leer QR para la PC',exact:true}).waitFor();
-  // SPA unmounts must not unlink either device or stop its heartbeat.
-  for(const p of [desktop,phone]){await p.locator('a[href="/"]').first().evaluate(a=>a.click());await p.waitForURL(url=>url.pathname==='/');}
-  await phone.getByRole('complementary',{name:'Teléfono vinculado'}).waitFor();
+  await panel(phone2).getByRole('button',{name:'Leer QR',exact:true}).waitFor();
+  // The linked phone is a focused workspace; route attempts return to reception.
+  assert.equal(await phone.locator('a[href="/participants"]').count(),0);
+  assert.equal(await panel(phone).getByRole('button').count(),2);
+  await desktop.locator('a[href="/"]').first().evaluate(a=>a.click());await desktop.waitForURL(url=>url.pathname==='/');
+  await phone.goto(base+'/participants');await phone.waitForURL(url=>url.pathname==='/reception');
+  await phone.getByRole('heading',{name:'Escáner móvil',exact:true}).waitFor();
   await desktop.locator('a[href="/reception"]').first().evaluate(a=>a.click());
-  await phone.getByRole('button',{name:'Volver al escáner',exact:true}).click();
-  await panel(phone).getByRole('button',{name:'Leer QR para la PC',exact:true}).waitFor();
+  await panel(phone).getByRole('button',{name:'Leer QR',exact:true}).waitFor();
   await phone.reload();await desktop.reload();
-  await panel(phone).getByRole('button',{name:'Leer QR para la PC',exact:true}).waitFor();
-  await contexts[1].setOffline(true);await phone.getByText(/Sin conexión con la estación/).waitFor();
+  await panel(phone).getByRole('button',{name:'Leer QR',exact:true}).waitFor();
+  await contexts[1].setOffline(true);await phone.getByRole('heading',{name:/Sin conexión|Conexión con la PC/}).waitFor();
   await contexts[1].setOffline(false);
-  await panel(phone).getByRole('button',{name:'Leer QR para la PC',exact:true}).waitFor();
+  await panel(phone).getByRole('button',{name:'Leer QR',exact:true}).waitFor();
   assert.equal(automaticUnlinks,0);
   const before=await untouched.evaluate(()=>window.__scannerEvents.length);
-  await panel(phone).getByRole('button',{name:'Leer QR para la PC',exact:true}).click();
+  await panel(phone).getByRole('button',{name:'Leer QR',exact:true}).click();
   if(!syntheticCamera){
     await phone.getByRole('button',{name:'Lector USB / Manual',exact:true}).click();
     await phone.getByPlaceholder('Escanee con lector USB o pegue el enlace/token...').fill(firstToken);
@@ -90,7 +92,7 @@ module.exports = async ({api,base,eventId,accounts,firstToken='relay-test-ticket
   assert((await desktop.url()).endsWith('/reception'));
   assert.equal(await phone.getByPlaceholder('Escanee con lector USB o pegue el enlace/token...').count(),0);
   await phone.reload();await desktop.reload();
-  await panel(phone).getByRole('button',{name:'Leer QR para la PC',exact:true}).click();
+  await panel(phone).getByRole('button',{name:'Leer QR',exact:true}).click();
   await phone.getByRole('button',{name:'Lector USB / Manual',exact:true}).click();
   await phone.getByPlaceholder('Escanee con lector USB o pegue el enlace/token...').fill(secondToken);
   await phone.getByRole('button',{name:'Validar',exact:true}).click();
@@ -101,11 +103,14 @@ module.exports = async ({api,base,eventId,accounts,firstToken='relay-test-ticket
   assert.equal(automaticUnlinks,0);
   // Accepted relay closes the scan surface and releases camera before PC confirmation.
   assert.equal(await phone.getByPlaceholder('Escanee con lector USB o pegue el enlace/token...').count(),0);
-  await panel(phone).getByRole('button',{name:'Desvincular y usar EventGrid normalmente',exact:true}).click();
+  await panel(phone).getByRole('button',{name:'Desvincular',exact:true}).click();
+  const unlinked=phone.waitForResponse(r=>r.url().endsWith('/unlink')&&r.request().method()==='POST');
+  await phone.getByRole('dialog',{name:'Desvincular escáner',exact:true}).getByRole('button',{name:'Desvincular',exact:true}).click();
+  assert.equal((await unlinked).status(),200);
   await panel(phone).getByRole('button',{name:'Vincular teléfono a una PC',exact:true}).waitFor();
   assert.equal(await phone.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   for(const page of pages)assert(!(await page.url()).includes('/login'));
   assert.deepEqual(errors,[]);
-  return {browserSessions:4,mobileWidths:[390,390],role:accounts[0].user.role,mobileOpenedFirst:true,discoveryWithoutReload:true,dismissalRespected:true,moduleNavigationPreservesLink:true,bothDevicesReloaded:true,temporaryNetworkRecovery:true,twoConfirmedReads:true,targetedDelivery:true,noAutomaticCheckIn:true,manualPCConfirmation:true,reloadResumesReading:true,twoSimultaneousLinks:true,unlinkWithoutLogout:true,cameraInput:syntheticCamera?'synthetic WebRTC video decoded by the real scanner':'manual token',cameraReleasedAfterRead:syntheticCamera,physicalCamera:false};
+  return {browserSessions:4,mobileWidths:[390,390],role:accounts[0].user.role,dedicatedMobileWorkspace:true,onlyTwoPrimaryActions:true,routeEscapePrevented:true,mobileOpenedFirst:true,discoveryWithoutReload:true,dismissalRespected:true,moduleNavigationPreservesLink:true,bothDevicesReloaded:true,temporaryNetworkRecovery:true,twoConfirmedReads:true,targetedDelivery:true,noAutomaticCheckIn:true,manualPCConfirmation:true,reloadResumesReading:true,twoSimultaneousLinks:true,unlinkWithoutLogout:true,cameraInput:syntheticCamera?'synthetic WebRTC video decoded by the real scanner':'manual token',cameraReleasedAfterRead:syntheticCamera,physicalCamera:false};
  } finally {for(const c of contexts)await c.close();await browser.close();if(cameraFile)fs.unlinkSync(cameraFile);}
 };
