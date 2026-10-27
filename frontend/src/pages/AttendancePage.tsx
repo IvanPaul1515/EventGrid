@@ -511,6 +511,7 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
                 )}
               </div>
               <p className="text-xs mt-0.5 leading-relaxed">{feedback.message}</p>
+              {quick && feedback.type === 'success' && <button className="btn-secondary mt-2" onClick={() => { setFeedback(null); setIsDrawerOpen(false); setSelectedRegistration(null); setSearch(''); searchInputRef.current?.focus(); }}>Siguiente participante</button>}
             </div>
           </div>
           <button
@@ -814,6 +815,11 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
         registration={selectedRegistration}
         isOpen={isDrawerOpen}
         paymentMethods={paymentMethods}
+        onCheckInSuccess={quick ? message => {
+          setIsDrawerOpen(false); setSelectedRegistration(null); setSearch(''); setPage(1);
+          showFeedback('success', 'Asistencia registrada correctamente', message);
+          requestAnimationFrame(() => searchInputRef.current?.focus());
+        } : undefined}
         onClose={() => setIsDrawerOpen(false)}
         onEdit={(reg) => {
           setRegistrationToEdit(reg);
@@ -868,7 +874,7 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
         onClose={() => setIsQrScanOpen(false)}
         onAttendanceMarked={async () => {
           setIsQrScanOpen(false);
-          showFeedback('success', 'Asistencia confirmada', 'La llegada se registró correctamente. Puede continuar en Control de asistencia.');
+          showFeedback('success', 'Asistencia confirmada', quick ? 'La llegada se registró correctamente. Puede atender al siguiente participante.' : 'La llegada se registró correctamente.');
           await fetchAttendance();
         }}
         onOpenParticipantDetail={async (reg) => {

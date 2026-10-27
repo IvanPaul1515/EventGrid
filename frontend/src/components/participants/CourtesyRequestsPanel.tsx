@@ -8,6 +8,8 @@ type Courtesy = {
     id: string;
     status: string;
     reason: string;
+    exceptionType?: string;
+    agreementReference?: string;
     decisionReason?: string;
     createdAt: string;
     event: {
@@ -85,7 +87,7 @@ export const CourtesyRequestsPanel: React.FC = () => {
       {rows.map(r => <div key={r.id} className="border-t border-border pt-3 space-y-2 text-sm">
         <p className="font-semibold">{r.registration.participant.fullName} · {r.registration.registrationNumber}</p>
         <p>{r.event.name} · {r.requestedBy.fullName} · {new Date(r.createdAt).toLocaleString()}</p>
-        <p className="break-words">{r.reason}</p><p role="status">{labels[r.status] || r.status}{r.decidedBy ? ` · ${r.decidedBy.fullName}` : ''}</p>
+        <p className="break-words">{r.exceptionType || 'COURTESY'} · {r.reason}{r.agreementReference ? ` · Acuerdo: ${r.agreementReference}` : ''}</p><p role="status">{labels[r.status] || r.status}{r.decidedBy ? ` · ${r.decidedBy.fullName}` : ''}</p>
         {r.status === 'APPROVED' && <button type="button" className="text-primary" onClick={() => navigate('/reception', { state: { registrationId: r.registration.id } })}>Retomar registro</button>}
         {r.decisionReason && <p>{r.decisionReason}</p>}
         {user.role === 'ADMIN' && r.status === 'PENDING' && <div className="flex flex-wrap items-center gap-2">

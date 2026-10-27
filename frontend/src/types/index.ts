@@ -110,6 +110,10 @@ export interface Participant {
 }
 
 export interface Payment {
+  channel?: string;
+  externalMethod?: string;
+  externalReference?: string;
+  recordedByUser?: { id: string; fullName: string; email: string };
   id: string;
   registrationId: string;
   amount: number;
@@ -408,6 +412,7 @@ export interface EmailLog {
 }
 
 export interface FinancialSummary {
+  reconciliation?: { confirmedPayments: number; externalPayments: number; onsitePayments: number; legacyUnattributed: number; refunded: number; netAccredited: number; netDefinition: string };
   currencySymbol: string;
   currencyCode: string;
   totalRegistrations: number;

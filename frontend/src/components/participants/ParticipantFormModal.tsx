@@ -63,6 +63,8 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   const [isCourtesy, setIsCourtesy] = useState(false);
   const [courtesyAuthorizedBy, setCourtesyAuthorizedBy] = useState('');
   const [courtesyReason, setCourtesyReason] = useState('');
+  const [exceptionType, setExceptionType] = useState('COURTESY');
+  const [agreementReference, setAgreementReference] = useState('');
   const [paymentMethodId, setPaymentMethodId] = useState<string>('');
   const [salesResponsibleId, setSalesResponsibleId] = useState<string>('');
   const [status, setStatus] = useState<string>('PENDING');
@@ -272,7 +274,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
     if (requestCourtesy && user?.role === 'OPERATOR') {
       try {
         if (courtesyReason.trim().length < 3) throw new Error('Indique un motivo de al menos 3 caracteres.');
-        const response = await api.post('/participants/courtesy-requests', { requestKey: requestKey.current, reason: courtesyReason.trim(), ...(registrationToEdit ? { registrationId: registrationToEdit.id } : { registration: { ...payload, isCourtesy: false, amountPaid: 0, totalAmount: 0, status: 'PENDING' } }) });
+        const response = await api.post('/participants/courtesy-requests', { requestKey: requestKey.current, reason: courtesyReason.trim(), exceptionType, agreementReference: agreementReference.trim() || undefined, ...(registrationToEdit ? { registrationId: registrationToEdit.id } : { registration: { ...payload, isCourtesy: false, amountPaid: 0, totalAmount: 0, status: 'PENDING' } }) });
         setRequestSent(true);
         setRequestMessage(response.data.data?.status === 'APPROVED' ? 'Cortesía aprobada.' : response.data.data?.status === 'REJECTED' ? 'Cortesía rechazada.' : 'Solicitud enviada. Pendiente de autorización.');
         window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
@@ -589,6 +591,10 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
             </label>
             <p className="text-xs text-muted-foreground">La cortesía requiere autorización administrativa. No registra un pago ni una entrega de efectivo.</p>
             {requestCourtesy && <p className="text-xs text-muted-foreground">{firstName} {lastName} · {email} · {currentEvent?.name}. El registro seguirá pendiente con la tarifa oficial hasta que un administrador decida desde su sesión. No se registrará un pago.{registrationToEdit ? ' Esta acción solo envía la solicitud; no guarda cambios de datos personales.' : ''}</p>}
+            {requestCourtesy && <div className="space-y-2">
+              <label className="block text-sm">Tipo de excepción<select className="input-field text-base" value={exceptionType} onChange={e => setExceptionType(e.target.value)}><option value="COURTESY">Cortesía</option><option value="SPONSOR">Patrocinador</option><option value="GUEST">Invitado</option><option value="AGREEMENT">Acuerdo</option></select></label>
+              <label className="block text-sm">Referencia del acuerdo (si aplica)<input className="input-field text-base" value={agreementReference} maxLength={250} onChange={e => setAgreementReference(e.target.value)} /></label>
+            </div>}
             {(isCourtesy || requestCourtesy) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-amber-500/20">
                 {user?.role === 'ADMIN' && <div>

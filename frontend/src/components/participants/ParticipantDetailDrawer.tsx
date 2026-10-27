@@ -335,10 +335,9 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));
       setPendingTshirtSize(null);
 
-      setFeedbackMsg({
-        type: 'success',
-        text: `¡Asistencia confirmada para ${p.fullName}!${tshirtDelivered ? ' Camiseta entregada y descontada de inventario.' : ''}`,
-      });
+      const message = `Asistencia registrada correctamente: ${p.fullName}.${tshirtDelivered ? ' Camiseta entregada y descontada de inventario.' : ''}`;
+      setFeedbackMsg({ type: 'success', text: message });
+      onCheckInSuccess?.(message);
     } catch (err: any) {
       setFeedbackMsg({
         type: 'error',
@@ -1376,9 +1375,10 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                         <div>
                           <span className="font-bold text-foreground">
                             RD$ {Number(pm.amount).toFixed(2)}
+                            <span className="block text-[10px] font-normal break-all">Pago: {pm.id}</span>
                           </span>
                           <span className="text-muted-foreground text-[10px] block">
-                            {pm.paymentMethod?.name || 'Pago'} •{' '}
+                            {pm.externalMethod || pm.paymentMethod?.name || 'Pago'} •{' '}
                             {new Date(pm.createdAt).toLocaleString('es-DO', {
                               hour: '2-digit',
                               minute: '2-digit',
@@ -1388,7 +1388,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                           </span>
                         </div>
                         <span className="text-[10px] text-muted-foreground">
-                          {pm.receivedByUser?.fullName || 'Recepción'}
+                          {pm.channel === 'EXTERNAL' ? 'Pago externo · Universidad' : pm.channel === 'LEGACY' ? 'Histórico sin atribuir' : pm.receivedByUser?.fullName || 'Sin receptor registrado'}
                         </span>
                       </div>
                     ))}
