@@ -27,24 +27,51 @@ export class ReceptionQueueService {
   const current=await this.access(user,eventId,true);if(current.role!=='ADMIN')throw new ForbiddenError();
   const result=await writeTransaction(async tx=>{const policy=await tx.receptionQueue.upsert({where:{eventId},create:{eventId,enabled},update:{enabled}});if(!enabled)await tx.queueDevice.updateMany({where:{eventId,status:{in:['REQUESTED','APPROVED','LINKED']}},data:{status:'REVOKED',activeSessionId:null,codeHash:null,codeCipher:null}});return policy;});this.hint(eventId);return result;
  }
- static async station(user:AuthUser,eventId:string,label:string,mode:string){
+ static async station(user:AuthUser,eventId:string,label:string,mode:string,confirmed=false){
   await this.access(user,eventId,true);
   if(await prisma.queueDevice.findFirst({where:{sessionId:user.sessionId!,status:'LINKED',leaseUntil:{gt:new Date()}}}))throw new ConflictError('Desvincule este teléfono antes de gestionar una estación.');
-  if(mode==='QUEUE'&&!(await prisma.receptionQueue.findUnique({where:{eventId}}))?.enabled)throw new ConflictError('Un administrador debe habilitar la cola de esta edición.');
   if(mode==='QUEUE'){
    const direct=await prisma.receptionStation.findUnique({where:{sessionId:user.sessionId!}});
    if(direct?.activeLinkId)throw new ConflictError('Desvincule el escáner directo antes de activar la cola.');
    if(direct)await ScannerService.disable(user,eventId);
   }
-  const result=await writeTransaction(tx=>tx.queueStation.upsert({where:{sessionId:user.sessionId!},create:{eventId,userId:user.id,sessionId:user.sessionId!,label,mode,leaseUntil:lease()},update:{eventId,label,mode,leaseUntil:lease()}}));
-  if(mode!=='QUEUE')await writeTransaction(tx=>tx.queueDevice.updateMany({where:{stationId:result.id,status:{in:['REQUESTED','APPROVED','LINKED']}},data:{status:'REVOKED',codeHash:null,codeCipher:null,activeSessionId:null}}));
-  this.hint(eventId);return result;
+  const result=await writeTransaction(async tx=>{
+   const previous=await tx.queueStation.findUnique({where:{sessionId:user.sessionId!}});
+   if(previous?.mode==='QUEUE'&&(mode!=='QUEUE'||previous.eventId!==eventId)){
+    const links=await tx.queueDevice.count({where:{stationId:previous.id,status:{in:['REQUESTED','APPROVED','LINKED']},leaseUntil:{gt:new Date()}}});
+    const claims=await tx.queueEntry.count({where:{claimedBySessionId:user.sessionId!,state:'CLAIMED',claimUntil:{gt:new Date()}}});
+    if((links||claims)&&!confirmed)throw new ConflictError('Confirma el cambio: se desvincularán los escáneres de esta estación y se liberará su atención, sin borrar la cola.');
+    await tx.queueDevice.updateMany({where:{stationId:previous.id,status:{in:['REQUESTED','APPROVED','LINKED']}},data:{status:'REVOKED',codeHash:null,codeCipher:null,activeSessionId:null}});
+    await tx.queueEntry.updateMany({where:{claimedBySessionId:user.sessionId!,state:'CLAIMED'},data:{state:'WAITING',claimedBySessionId:null,claimedByUserId:null,claimUntil:null}});
+   }
+   return tx.queueStation.upsert({where:{sessionId:user.sessionId!},create:{eventId,userId:user.id,sessionId:user.sessionId!,label,mode,leaseUntil:lease()},update:{eventId,label,mode,leaseUntil:lease(),...(mode!=='QUEUE'?{inviteHash:null,inviteCipher:null,inviteExpiresAt:null}:{})}});
+  });this.hint(eventId);return result;
  }
  static async stations(user:AuthUser,eventId:string){
-  await this.access(user,eventId);if(!(await prisma.receptionQueue.findUnique({where:{eventId}}))?.enabled)return [];
+  await this.access(user,eventId);
   const rows=await prisma.queueStation.findMany({where:{eventId,mode:'QUEUE',leaseUntil:{gt:new Date()},sessionId:{not:user.sessionId}},select:{id:true,label:true,sessionId:true,userId:true}});
   const available=[];for(const row of rows){try{const s=await ScannerService.session(prisma,row.sessionId,row.userId),allowed=await assignedEdition(s.user);if(hasUserPermission(s.user,'RECEPTION_QUEUE_MANAGE')&&(!allowed||allowed===eventId))available.push({id:row.id,label:row.label});}catch{}}
   return available;
+ }
+ static async advertise(user:AuthUser,eventId:string,active:boolean){
+  await this.access(user,eventId);
+  await writeTransaction(tx=>tx.queuePairingPresence.upsert({where:{sessionId:user.sessionId!},create:{eventId,userId:user.id,sessionId:user.sessionId!,expiresAt:active?new Date(Date.now()+90000):new Date(0)},update:{eventId,expiresAt:active?new Date(Date.now()+90000):new Date(0)}}));this.hint(eventId);return {available:active};
+ }
+ static async invite(user:AuthUser,eventId:string){
+  await this.access(user,eventId,true);
+  const station=await prisma.queueStation.findUnique({where:{sessionId:user.sessionId!}});
+  if(!station||station.eventId!==eventId||station.mode!=='QUEUE')throw new ForbiddenError('Activa Recepción por cola en esta estación.');
+  const code=randomBytes(5).toString('hex').toUpperCase(),expiresAt=new Date(Date.now()+120000);
+  const inviteHash=createHmac('sha256',ENV.JWT_SECRET).update('station:'+eventId+':'+code).digest('hex');
+  await writeTransaction(tx=>tx.queueStation.update({where:{id:station.id},data:{inviteHash,inviteCipher:seal(code),inviteExpiresAt:expiresAt}}));
+  this.hint(eventId);return {code,expiresAt,label:station.label};
+ }
+ static async join(user:AuthUser,eventId:string,code:string){
+  await this.access(user,eventId);
+  const inviteHash=createHmac('sha256',ENV.JWT_SECRET).update('station:'+eventId+':'+code.trim().toUpperCase()).digest('hex');
+  const station=await prisma.queueStation.findFirst({where:{eventId,mode:'QUEUE',inviteHash,inviteExpiresAt:{gt:new Date()},leaseUntil:{gt:new Date()}}});
+  if(!station)throw new BadRequestError('Invitación incorrecta o vencida. Solicita un nuevo código a la estación.');
+  return this.request(user,eventId,station.id);
  }
  static async request(user:AuthUser,eventId:string,stationId:string){
   await this.access(user,eventId);if(!(await this.stations(user,eventId)).some(s=>s.id===stationId))throw new ForbiddenError('Estación no disponible.');
@@ -92,7 +119,7 @@ export class ReceptionQueueService {
  static async state(user:AuthUser,eventId:string){
   const current=await this.access(user,eventId);
   await writeTransaction(tx=>tx.queueDevice.updateMany({where:{eventId,status:{in:['REQUESTED','APPROVED']},expiresAt:{lte:new Date()}},data:{status:'EXPIRED',codeHash:null,codeCipher:null,activeSessionId:null}}));
-  const policy=await prisma.receptionQueue.findUnique({where:{eventId}});
+
   let station=await prisma.queueStation.findUnique({where:{sessionId:user.sessionId!}});
   if(station?.eventId!==eventId)station=null;
   if(station&&!current.scannerOnly)station=await writeTransaction(tx=>tx.queueStation.update({where:{id:station!.id},data:{leaseUntil:lease()}}));
@@ -101,18 +128,24 @@ export class ReceptionQueueService {
   let own=await prisma.queueDevice.findFirst({where:{sessionId:user.sessionId!,eventId,status:{in:['REQUESTED','APPROVED','LINKED']},leaseUntil:{gt:new Date()}},orderBy:{createdAt:'desc'}});
   let activeStation=null;
   if(own){const ownId=own.id;try{const checked=await this.device(user,eventId,ownId);activeStation={id:checked.station.id,label:checked.station.label};if(own.status!=='LINKED'&&own.expiresAt<new Date())own=null;else await writeTransaction(tx=>tx.queueDevice.update({where:{id:own!.id},data:{leaseUntil:lease()}}));}catch{const staleId=ownId;await writeTransaction(tx=>tx.queueDevice.updateMany({where:{id:staleId,status:{in:['REQUESTED','APPROVED','LINKED']}},data:{status:'REVOKED',activeSessionId:null,codeHash:null,codeCipher:null}}));own=null;}}
-  return {enabled:policy?.enabled||false,station:station?{id:station.id,label:station.label,mode:station.mode}:null,devices:pending,device:own?{id:own.id,status:own.status,expiresAt:own.expiresAt,station:activeStation}:null};
+  const availableDevices=[];
+  if(station?.mode==='QUEUE'&&!current.scannerOnly){
+   const presences=await prisma.queuePairingPresence.findMany({where:{eventId,expiresAt:{gt:new Date()},sessionId:{not:user.sessionId}},take:200});
+   const activeLinks=await prisma.queueDevice.findMany({where:{eventId,status:{in:['REQUESTED','APPROVED','LINKED']},leaseUntil:{gt:new Date()}}});
+   for(const presence of presences){if(activeLinks.some(d=>d.sessionId===presence.sessionId))continue;try{const session=await ScannerService.session(prisma,presence.sessionId,presence.userId),allowed=await assignedEdition(session.user);if(!allowed||allowed===eventId)availableDevices.push({id:presence.id,name:session.user.fullName});}catch{}}
+  }
+  return {enabled:Boolean(own||station?.mode==='QUEUE'),station:station?{id:station.id,label:station.label,mode:station.mode}:null,availableDevices,invitation:station?.mode==='QUEUE'&&station.inviteCipher&&station.inviteExpiresAt&&station.inviteExpiresAt>new Date()?{code:open(station.inviteCipher),expiresAt:station.inviteExpiresAt}:null,devices:pending,device:own?{id:own.id,status:own.status,expiresAt:own.expiresAt,station:activeStation}:null};
  }
  static async submit(user:AuthUser,eventId:string,token:string,deviceId?:string){
   await this.access(user,eventId);
-  if(!(await prisma.receptionQueue.findUnique({where:{eventId}}))?.enabled)throw new ConflictError('Cola deshabilitada.');
+
   let stationId:string;
   if(deviceId){const {device,station}=await this.device(user,eventId,deviceId);if(device.status!=='LINKED'||device.leaseUntil<new Date())throw new ForbiddenError();stationId=station.id;}
   else{await this.access(user,eventId,true);const station=await prisma.queueStation.findUnique({where:{sessionId:user.sessionId!}});if(!station||station.eventId!==eventId||station.mode!=='QUEUE')throw new ForbiddenError();stationId=station.id;}
   const qr=await QrService.validateAndScan(token,eventId);
   if(!qr.valid||!qr.canCheckIn||!qr.registration)return {status:'REJECTED',result:qr.status};
   const result=await writeTransaction(async tx=>{
-   if(!(await tx.receptionQueue.findUnique({where:{eventId}}))?.enabled)throw new ConflictError('Cola deshabilitada.');
+
    if(deviceId){
     const live=await tx.queueDevice.findFirst({where:{id:deviceId,eventId,sessionId:user.sessionId!,status:'LINKED',leaseUntil:{gt:new Date()}}});
     if(!live)throw new ForbiddenError('Vinculación revocada o vencida.');

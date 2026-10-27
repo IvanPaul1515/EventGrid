@@ -961,6 +961,9 @@ model ReceptionQueue {
   enabled Boolean @default(false)
 }
 model QueueStation {
+  inviteHash String? @unique
+  inviteCipher String?
+  inviteExpiresAt DateTime?
   id String @id @default(uuid())
   eventId String
   userId String
@@ -1001,4 +1004,14 @@ model QueueEntry {
   claimUntil DateTime?
   @@unique([eventId, registrationId])
   @@index([eventId, state, firstScannedAt])
+}
+
+// A device is visible only after voluntarily entering scanner pairing.
+model QueuePairingPresence {
+ id String @id @default(uuid())
+ eventId String
+ userId String
+ sessionId String @unique
+ expiresAt DateTime
+ @@index([eventId, expiresAt])
 }

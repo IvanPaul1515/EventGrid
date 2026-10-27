@@ -88,7 +88,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       const path = new URL(req.originalUrl, 'http://localhost').pathname;
       const prefix = ENV.API_PREFIX;
       const relative = path.startsWith(prefix) ? path.slice(prefix.length) : '';
-      const allowed = /^(\/auth\/(me|logout|change-password))$/.test(relative) || /^(\/events\/[^/]+\/stream)$/.test(relative) && req.method === 'GET' || /^(\/events\/[^/]+\/reception-queue\/(state|stations|request|read|devices\/[^/]+\/(confirm|unlink)))$/.test(relative);
+      const allowed = /^(\/auth\/(me|logout|change-password))$/.test(relative) || /^(\/events\/[^/]+\/stream)$/.test(relative) && req.method === 'GET' || /^(\/events\/[^/]+\/reception-queue\/(state|stations|discoverable|join|request|read|devices\/[^/]+\/(confirm|unlink)))$/.test(relative);
       if (relative === '/events' && req.method === 'GET') {
         if (!user.assignedEventId) throw new ForbiddenError('El perfil Escáner QR requiere edición asignada.');
         const event = await prisma.event.findUnique({where:{id:user.assignedEventId},select:{id:true,name:true,year:true,slug:true,status:true,isDefault:true,startDate:true,endDate:true,settings:{select:{primaryColor:true,secondaryColor:true,logoUrl:true}}}});
