@@ -1,0 +1,40 @@
+{
+  "status": "PASS_LOCAL_REHEARSAL",
+  "engine": "PostgreSQL 18.6 (PGlite 0.5.12) on wasm32-unknown-emscripten, compiled by emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 3.1.74 (1092ec30a3fb1d46b1782ff1b4db5094d3d06ae5), 32-bit",
+  "engineKind": "embedded PostgreSQL WASM (PGlite), not Render PostgreSQL 16 or Prisma network runtime",
+  "checks": [
+    "all 40 SQLite tables copied and every source field compared",
+    "exact session version, credential hash/ciphertext, disabled SMTP, fare, nullable cycle and reserved counter preserved",
+    "same snapshot is idempotent without duplicate participants or payments",
+    "counter advances to 121, never to max-visible-registration + 1",
+    "modified target is detected on repeat, never silently overwritten",
+    "partial API export rejected before any insert",
+    "additive migration history has all current tables and columns"
+  ],
+  "sourceTables": 40,
+  "sourceRows": 15,
+  "migrationChainMissingTables": [],
+  "migrationChainMissingColumns": [],
+  "noProductionAccess": true,
+  "qa": {
+    "testsPassed": 134,
+    "testsSkipped": 0,
+    "browserSessionsSSE": 13,
+    "linkedScannerPCs": 2,
+    "linkedScannerEmulatedPhones": 2,
+    "financialUIEmulatedWidth": 390,
+    "concurrentOperators": [
+      5,
+      10,
+      20
+    ],
+    "frontendBuild": "PASS",
+    "backendTypes": "PASS",
+    "sqliteSchema": "PASS",
+    "postgresSchema": "PASS",
+    "migrationChainColumnsIndexesForeignKeysEnums": "PASS",
+    "physicalDeviceCameraTested": false,
+    "actualEmailsSent": 0,
+    "productionDataImported": false
+  }
+}
