@@ -1,3 +1,5 @@
+import {useListNavigation,useListNavigationScope} from '../hooks/useListNavigation';
+import {attendanceFilters,readListNavigation} from '../utils/listNavigation';
 import { ReceptionQueuePanel } from '../components/attendance/ReceptionQueuePanel';
 import { AppLoadingScreen } from '../components/common/AppLoadingScreen';
 import { useReceptionQueue } from '../components/attendance/ReceptionQueueContext';
@@ -50,6 +52,10 @@ import {
 } from 'lucide-react';
 
 export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
+  const scope=useListNavigationScope(quick?'reception':'attendance');
+  return <AttendanceContent key={scope||'pending'} quick={quick} navigationKey={scope}/>;
+};
+const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = ({quick,navigationKey}) => {
   const { currentEvent } = useEdition();
   const activeEdition = useRef(currentEvent?.id); activeEdition.current = currentEvent?.id;
   const { user, hasRole } = useAuth();
@@ -73,16 +79,7 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
 
-  // Recuperar estado persistente en sesión
-  const getInitialAttFilters = () => {
-    try {
-      const saved = sessionStorage.getItem('eventgrid_attendance_filters');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  };
-  const initAtt = getInitialAttFilters();
+  const initAtt=React.useMemo(()=>{try{return readListNavigation(sessionStorage,navigationKey,attendanceFilters).filters;}catch{return {...attendanceFilters};}},[navigationKey]);
 
   // Filtros y búsqueda
   const [search, setSearch] = useState<string>(initAtt.search || '');
@@ -123,7 +120,7 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
 
   // Enfocar buscador al cargar
   useEffect(() => {
-    searchInputRef.current?.focus();
+    searchInputRef.current?.focus({preventScroll:true});
   }, []);
 
   // Monitoreo del estado de conexión con el servidor
@@ -182,17 +179,8 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
     }
   }, [currentEvent, search, statusFilter, page]);
 
-  // Persistir estado de filtros de asistencia en sessionStorage
-  useEffect(() => {
-    sessionStorage.setItem(
-      'eventgrid_attendance_filters',
-      JSON.stringify({ search, statusFilter, page })
-    );
-  }, [search, statusFilter, page]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [currentEvent?.id]);
+  const navigationFilters=React.useMemo(()=>({search,statusFilter,page}),[search,statusFilter,page]);
+  useListNavigation(navigationKey,navigationFilters,loading,isDrawerOpen,queue.state.station?.mode!=='QUEUE');
 
   useEffect(() => {
     fetchAttendance();

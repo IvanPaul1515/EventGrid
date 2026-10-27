@@ -1,3 +1,5 @@
+import {useListNavigation,useListNavigationScope} from '../hooks/useListNavigation';
+import {participantFilters,readListNavigation} from '../utils/listNavigation';
 import { CommunicationHistory } from '../components/communications/CommunicationHistory';
 import { useCommunicationBadges } from '../components/communications/useCommunicationBadges';
 import { formatEmailStatus } from '../utils/emailFormatters';
@@ -45,19 +47,14 @@ import {
 } from 'lucide-react';
 
 export const ParticipantsPage: React.FC = () => {
+  const scope=useListNavigationScope('participants');
+  return <ParticipantsContent key={scope||'pending'} navigationKey={scope}/>;
+};
+const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationKey}) => {
   const { currentEvent } = useEdition();
   const { hasRole } = useAuth();
 
-  // Recuperar estado persistente en sesión para navegación fluida
-  const getInitialFilters = () => {
-    try {
-      const saved = sessionStorage.getItem('eventgrid_participants_filters');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  };
-  const init = getInitialFilters();
+  const init=React.useMemo(()=>{try{return readListNavigation(sessionStorage,navigationKey,participantFilters).filters;}catch{return {...participantFilters};}},[navigationKey]);
 
   // Datos y paginación
   const [registrations, setRegistrations] = useState<Registration[]>([]);
@@ -178,18 +175,8 @@ export const ParticipantsPage: React.FC = () => {
     }
   }, [currentEvent, page, limit, search, paymentMethodId, salesResponsibleId, status, isCourtesyFilter, sortBy, sortOrder]);
 
-  // Persistir filtros en sessionStorage para no perder contexto durante navegación
-  useEffect(() => {
-    sessionStorage.setItem(
-      'eventgrid_participants_filters',
-      JSON.stringify({ page, limit, search, paymentMethodId, salesResponsibleId, status, isCourtesyFilter, sortBy, sortOrder })
-    );
-  }, [page, limit, search, paymentMethodId, salesResponsibleId, status, isCourtesyFilter, sortBy, sortOrder]);
-
-  // Al cambiar de edición (no durante navegación), restablecer página a 1
-  useEffect(() => {
-    setPage(1);
-  }, [currentEvent?.id]);
+  const navigationFilters=React.useMemo(()=>({page,limit,search,paymentMethodId,salesResponsibleId,status,isCourtesyFilter,sortBy,sortOrder}),[page,limit,search,paymentMethodId,salesResponsibleId,status,isCourtesyFilter,sortBy,sortOrder]);
+  useListNavigation(navigationKey,navigationFilters,loading,isDetailOpen);
 
   useEffect(() => {
     fetchParticipants();
