@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 
 interface QrScanModalProps {
+  allowManual?: boolean;
   onLinkedRead?: (token: string) => Promise<string>;
   isOpen: boolean;
   onClose: () => void;
@@ -37,6 +38,7 @@ interface QrScanModalProps {
 
 export const QrScanModal: React.FC<QrScanModalProps> = ({
   isOpen,
+  allowManual = false,
   onClose,
   onAttendanceMarked,
   onLinkedRead,
@@ -416,7 +418,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
         </div>
 
         {/* Selector de Modo: Cámara vs Lector Externo/Manual */}
-        {!onLinkedRead && <div className="px-4 pt-3 shrink-0">
+        {(!onLinkedRead || allowManual) && <div className="px-4 pt-3 shrink-0">
           <div className="grid grid-cols-2 p-1 rounded-xl bg-muted/60 border border-border text-xs font-semibold">
             <button
               type="button"
@@ -531,7 +533,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
           )}
 
           {/* MODO 2: LECTOR USB EXTERNO O ENTRADA MANUAL */}
-          {!onLinkedRead && scanMode === 'manual' && (
+          {(!onLinkedRead || allowManual) && scanMode === 'manual' && (
             <div className="space-y-3">
               <form onSubmit={handleScanSubmit} className="space-y-2.5">
                 <label className="block text-xs font-bold text-foreground uppercase tracking-wider">

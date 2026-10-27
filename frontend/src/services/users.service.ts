@@ -1,6 +1,7 @@
 import { api } from './api';
 
 export interface UserItem {
+  scannerOnly?: boolean;
   staffMembers?: { id: string; eventId: string; firstName: string; lastName: string }[];
   id: string;
   email: string;
@@ -28,6 +29,7 @@ export interface ListUsersResponse {
 }
 
 export interface CreateUserData {
+  scannerOnly?: boolean;
   email: string;
   staffArea?: string | null;
   accountStatus?: string;
@@ -38,6 +40,7 @@ export interface CreateUserData {
 }
 
 export interface UpdateUserData {
+  scannerOnly?: boolean;
   staffArea?: string | null;
   accountStatus?: string;
   assignedEventId?: string | null;

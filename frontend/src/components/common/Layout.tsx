@@ -1,3 +1,7 @@
+import { QueueSuggestion } from '../attendance/QueueSuggestion';
+import { QueueAuthorizationDialog } from '../attendance/QueueAuthorizationDialog';
+import { ReceptionQueueProvider, useReceptionQueue } from '../attendance/ReceptionQueueContext';
+import { useAuth } from '../../context/AuthContext';
 import { useEdition } from '../../context/EditionContext';
 import { ScannerProvider, useScanner } from '../attendance/ScannerContext';
 import { ScannerSuggestion } from '../attendance/ScannerSuggestion';
@@ -11,8 +15,12 @@ import { ConnectionBanner } from './ConnectionBanner';
 
 const LinkedScannerWorkspace = React.lazy(() => import('../attendance/LinkedScannerPanel').then(module => ({ default: module.LinkedScannerPanel })));
 
+const QueueScannerWorkspace = React.lazy(() => import('../attendance/QueueScannerWorkspace').then(m => ({ default: m.QueueScannerWorkspace })));
+
 const LayoutContent: React.FC = () => {
   const { state, ready, presentation } = useScanner();
+  const queue = useReceptionQueue();
+  const { user } = useAuth();
   const { currentEvent } = useEdition();
   const { pathname } = useLocation();
   const scrollRef = useRef<HTMLElement>(null);
@@ -22,7 +30,9 @@ const LayoutContent: React.FC = () => {
   }, [pathname]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  if (presentation.device === 'phone' && !ready) return <AppLoadingScreen message="Recuperando sesión del escáner..." />;
+  if ((presentation.device==='phone' || user?.scannerOnly) && !queue.ready) return <AppLoadingScreen message="Recuperando recepción..." />;
+  if (user?.scannerOnly || queue.state.device || queue.scannerOpen) return <div className="app-viewport bg-background text-foreground overflow-y-auto">{pathname !== '/reception' && <Navigate to="/reception" replace />}<Suspense fallback={<AppLoadingScreen message="Recuperando escáner de recepción..." />}><QueueScannerWorkspace /></Suspense></div>;
+  if (presentation.device === 'phone'  && !ready) return <AppLoadingScreen message="Recuperando sesión del escáner..." />;
   if (state.link?.status === 'LINKED' && !state.station?.pc && currentEvent) return <div className="app-viewport min-h-screen bg-background text-foreground overflow-y-auto"><main className="scanner-workspace max-w-lg mx-auto p-4 sm:p-6 pb-safe-content">
     {pathname !== '/reception' && <Navigate to="/reception" replace />}
     <Suspense fallback={<AppLoadingScreen compact message="Preparando cámara..." />}><LinkedScannerWorkspace eventId={currentEvent.id} busy={false} onRead={async () => {}} onLinkedMode={() => {}} /></Suspense>
@@ -35,7 +45,8 @@ const LayoutContent: React.FC = () => {
         <ConnectionBanner />
         <main ref={scrollRef} data-app-scroll className="flex-1 overflow-y-auto p-3.5 sm:p-6 md:p-8 bg-background pb-safe-content">
           <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
-            <ScannerSuggestion />
+            <QueueAuthorizationDialog />
+            {queue.state.station?.mode!=='QUEUE'&&(queue.stations.length>0&&presentation.device==='phone'?<QueueSuggestion key={currentEvent?.id} />:<ScannerSuggestion />)}
             <ErrorBoundary key={pathname}>
               <div className="spa-content-area">
                 <Suspense
@@ -56,4 +67,4 @@ const LayoutContent: React.FC = () => {
   );
 };
 
-export const Layout: React.FC = () => <ScannerProvider><LayoutContent /></ScannerProvider>;
+export const Layout: React.FC = () => <ReceptionQueueProvider><ScannerProvider><LayoutContent /></ScannerProvider></ReceptionQueueProvider>;
