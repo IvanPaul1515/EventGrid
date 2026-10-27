@@ -1,4 +1,5 @@
 import { ReceptionQueuePanel } from '../components/attendance/ReceptionQueuePanel';
+import { AppLoadingScreen } from '../components/common/AppLoadingScreen';
 import { useReceptionQueue } from '../components/attendance/ReceptionQueueContext';
 import { LinkedScannerPanel } from '../components/attendance/LinkedScannerPanel';
 import { ReceptionIncidentsPanel } from '../components/attendance/ReceptionIncidentsPanel';
@@ -290,6 +291,9 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
       ? Math.round((counters.attendedCount / counters.totalRegistrations) * 100)
       : 0;
 
+  if (hasRole(['ADMIN','OPERATOR']) && !queue.ready) return <AppLoadingScreen compact message="Recuperando modalidad de recepción..." />;
+  if (hasRole(['ADMIN','OPERATOR']) && !queue.connected && !queue.state.station) return <div className="scanner-ui rounded-2xl border border-border bg-card p-5 space-y-3"><p role="alert">No se pudo recuperar la modalidad de recepción. Comprueba la conexión.</p><button className="btn-primary" onClick={()=>void queue.refresh()}>Reintentar conexión</button></div>;
+
   return (
     <div className={`space-y-6 max-w-7xl mx-auto ${quick?'[&_button]:min-h-11':''}`}>
       {currentEvent && hasRole(['ADMIN','OPERATOR']) && <ReceptionQueuePanel drawerOpen={isDrawerOpen} onOpen={async id=>{const registration=await participantsService.getById(id);setSelectedRegistration(registration);setIsDrawerOpen(true);}} />}
@@ -299,7 +303,8 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
         if (activeEdition.current !== editionId) return;
         setSelectedRegistration(registration); setIsDrawerOpen(true);
       }} />}
-      <div hidden={mobileLinked} className="space-y-6">
+      {queue.state.station?.mode==='QUEUE'&&feedback&&<div role="status" className="scanner-ui rounded-2xl border border-primary/30 bg-primary/10 p-4 space-y-2"><h4 className="font-semibold">{feedback.title}</h4><p className="text-sm">{feedback.message}</p><button className="btn-secondary" onClick={()=>setFeedback(null)}>Siguiente participante</button></div>}
+      <div hidden={mobileLinked || queue.state.station?.mode==='QUEUE'} className="space-y-6">
       {!quick && <ReceptionOverview />}
       <ReceptionIncidentsPanel />
       <CourtesyRequestsPanel />
@@ -487,7 +492,7 @@ export const AttendancePage: React.FC<{quick?:boolean}> = ({quick=false}) => {
       </div>
 
       {/* Banner de Feedback / Confirmación Visual */}
-      {feedback && (
+      {feedback && queue.state.station?.mode!=='QUEUE' && (
         <div
           className={`p-4 rounded-2xl border flex items-start justify-between gap-3 shadow-lg animate-in fade-in zoom-in-95 duration-200 ${
             feedback.type === 'success'

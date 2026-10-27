@@ -35,7 +35,7 @@ const fixture = await vi.hoisted(async () => {
 });
 it.runIf(process.env.EVENTGRID_QUEUE_BROWSER==='true')('integrates two desks and two restricted scanners through HTTP SSE and real QR decoding',async()=>{
  await reset();
- const accounts=await Promise.all(['queue-admin@example.invalid','queue-op2@example.invalid','queue-scanner@example.invalid','queue-scanner2@example.invalid'].map(email=>AuthService.login(email,password)));
+ const accounts=await Promise.all(['queue-op@example.invalid','queue-op2@example.invalid','queue-scanner@example.invalid','queue-scanner2@example.invalid'].map(email=>AuthService.login(email,password)));
  for(let i=1;i<=2;i++){
   const p=await prisma.participant.create({data:{firstName:'Queue Browser',lastName:i===1?'First':'Second',fullName:i===1?'Queue Browser First':'Queue Browser Second',email:`queue-browser-${i}@example.invalid`}});
   await prisma.registration.create({data:{eventId,participantId:p.id,registrationNumber:'QB-'+i,qrCode:'queue-browser-'+i,status:'CONFIRMED',isCourtesy:true}});
@@ -82,7 +82,7 @@ beforeAll(async()=>{
  registrationId=(await prisma.registration.create({data:{eventId,participantId:p.id,registrationNumber:'QUEUE-QA',qrCode:'queue-qa-token',status:'CONFIRMED',isCourtesy:true}})).id;
 });
 afterAll(async()=>{await prisma.$disconnect();if(fixture.previous===undefined)delete process.env.DATABASE_URL;else process.env.DATABASE_URL=fixture.previous;});
-async function reset(){await prisma.queueEntry.deleteMany();await prisma.queueDevice.deleteMany();await prisma.queueStation.deleteMany();await prisma.receptionQueue.deleteMany();await prisma.registration.update({where:{id:registrationId},data:{attended:false,attendedAt:null,status:'CONFIRMED'}});await Q.configure(admin,eventId,true);}
+async function reset(){await prisma.queueEntry.deleteMany();await prisma.queueDevice.deleteMany();await prisma.queueStation.deleteMany();await prisma.queuePairingPresence.deleteMany();await prisma.receptionQueue.deleteMany();await prisma.registration.update({where:{id:registrationId},data:{attended:false,attendedAt:null,status:'CONFIRMED'}});}
 async function link(mobile=scanner,owner=op,stationId?:string){
  const s=stationId?{id:stationId}:await Q.station(owner,eventId,'QA station','QUEUE');
  const d=await Q.request(mobile,eventId,s.id);
@@ -91,9 +91,11 @@ async function link(mobile=scanner,owner=op,stationId?:string){
  await Q.confirm(mobile,eventId,d.id,code);return d;
 }
 describe('collaborative reception, isolated SQLite and no mail',()=>{
- it('is opt-in and requires administration for policy, preserving Consulta',async()=>{
+ it('lets operators select independent station modes without administration, preserving Consulta',async()=>{
   await expect(Q.configure(op,eventId,true)).rejects.toThrow();await expect(Q.configure(viewer,eventId,true)).rejects.toThrow();
-  await expect(Q.station(op,eventId,'QA','QUEUE')).rejects.toThrow();await reset();
+  await reset();await Q.station(op,eventId,'Operator queue','QUEUE');await Q.station(op2,eventId,'Operator direct','DIRECT');
+  expect((await Q.state(op,eventId)).station?.mode).toBe('QUEUE');expect((await Q.state(op2,eventId)).station?.mode).toBe('DIRECT');
+  await Q.submit(op,eventId,'queue-qa-token');expect(await prisma.queueEntry.count()).toBe(1);
  });
  it('supports different accounts and multiple scanners, with explicit approval and private codes',async()=>{
   await reset();const s=await Q.station(op,eventId,'PC multi','QUEUE');
@@ -153,6 +155,26 @@ describe('collaborative reception, isolated SQLite and no mail',()=>{
   expect((await prisma.registration.findUniqueOrThrow({where:{id:registrationId}})).attended).toBe(false);
   expect(await prisma.auditLog.count({where:{entityId:registrationId,action:'UPDATE'}})).toBeGreaterThan(0);
   await Q.claim(op2,eventId,e.id);expect((await Q.list(op2,eventId))[0].mine).toBe(true);
+ });
+ it('uses station invitations only to request pairing; still requires approval and the separate temporary code',async()=>{
+  await reset();await Q.station(op,eventId,'Invite desk','QUEUE');const invite=await Q.invite(op,eventId);
+  await expect(Q.join(scanner,otherId,invite.code)).rejects.toThrow();
+  const d=await Q.join(scanner,eventId,invite.code);await expect(Q.confirm(scanner,eventId,d.id,'000000')).rejects.toThrow();
+  await Q.decide(op,eventId,d.id,true);const code=(await Q.state(op,eventId)).devices[0].code!;await Q.confirm(scanner,eventId,d.id,code);
+  await prisma.queueStation.update({where:{sessionId:op.sessionId!},data:{inviteExpiresAt:new Date(0)}});await expect(Q.join(scanner2,eventId,invite.code)).rejects.toThrow();
+  await expect(Q.invite(scanner,eventId)).rejects.toThrow();
+ });
+ it('only shows volunteered, authorized pairing sessions as available devices',async()=>{
+  await reset();await Q.station(op,eventId,'Discovery desk','QUEUE');expect((await Q.state(op,eventId)).availableDevices).toHaveLength(0);
+  await Q.advertise(scanner,eventId,true);expect((await Q.state(op,eventId)).availableDevices.map(d=>d.name)).toContain(scanner.fullName);
+  await Q.advertise(scanner,eventId,false);expect((await Q.state(op,eventId)).availableDevices).toHaveLength(0);
+  await expect(Q.advertise(viewer,eventId,true)).rejects.toThrow();await expect(Q.advertise(scanner,otherId,true)).rejects.toThrow();
+ });
+ it('confirms mode changes and only revokes incompatible own links and claims, preserving other desks and queue entries',async()=>{
+  await reset();const a=await link(scanner,op),b=await link(scanner2,op2);await Q.submit(scanner,eventId,'queue-qa-token',a.id);const entry=(await Q.list(op,eventId))[0];await Q.claim(op,eventId,entry.id);
+  await expect(Q.station(op,eventId,'Own direct','DIRECT')).rejects.toThrow('Confirma');
+  await Q.station(op,eventId,'Own direct','DIRECT',true);expect((await prisma.queueDevice.findUniqueOrThrow({where:{id:a.id}})).status).toBe('REVOKED');expect((await prisma.queueDevice.findUniqueOrThrow({where:{id:b.id}})).status).toBe('LINKED');
+  expect((await Q.state(op2,eventId)).station?.mode).toBe('QUEUE');expect((await Q.list(op2,eventId))[0].state).toBe('WAITING');expect(await prisma.queueEntry.count()).toBe(1);
  });
  it('adds queue tables to an existing isolated SQLite without losing registration history',async()=>{
   const fs=await import('node:fs'),os=await import('node:os'),path=await import('node:path'),{execFileSync}=await import('node:child_process'),{PrismaClient}=await import('@prisma/client');
