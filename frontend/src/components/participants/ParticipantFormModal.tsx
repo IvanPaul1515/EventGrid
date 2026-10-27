@@ -571,15 +571,16 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
               </label>
               <select
                 value={status}
+                disabled={loading || registrationToEdit?.status === 'CANCELLED'}
                 onChange={(e) => setStatus(e.target.value)}
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="CONFIRMED">Inscripción confirmada</option>
                 <option value="PENDING">Inscripción pendiente</option>
 
-                <option value="CANCELLED">Cancelado</option>
+                {registrationToEdit?.status === 'CANCELLED' && <option value="CANCELLED">Cancelado</option>}
               </select>
-              <p className="text-[11px] text-muted-foreground mt-1">La confirmación corresponde a la inscripción. El estado de pago se calcula con los abonos; la asistencia solo se registra mediante check-in.</p>
+              <p className="text-[11px] text-muted-foreground mt-1">La confirmación corresponde a la inscripción. El pago se calcula con los abonos; la asistencia requiere check-in. Cancelar o reactivar requiere la acción administrativa de la ficha.</p>
             </div>
           </div>
 
