@@ -330,7 +330,7 @@ export interface QrTicketData {
 
 export interface QrScanResult {
   valid: boolean;
-  status: 'VALID' | 'ALREADY_CHECKED_IN' | 'CANCELLED' | 'EDITION_MISMATCH' | 'REVOKED' | 'INVALID_CODE';
+  status: 'VALID' | 'ALREADY_CHECKED_IN' | 'CANCELLED' | 'EDITION_MISMATCH' | 'REVOKED' | 'INVALID_CODE' | 'PAIRING_CODE' | 'NETWORK' | 'SCANNER_UNLINKED' | 'SESSION_EXPIRED' | 'ACCESS_DENIED' | 'SERVER_ERROR' | 'REQUEST_ERROR';
   message: string;
   canCheckIn: boolean;
   registration?: Registration;

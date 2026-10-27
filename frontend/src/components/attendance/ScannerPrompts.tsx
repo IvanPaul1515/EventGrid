@@ -4,16 +4,19 @@ import { MonitorSmartphone, ShieldCheck, Loader2 } from 'lucide-react';
 import { useScanner } from './ScannerContext';
 import { useEdition } from '../../context/EditionContext';
 import { ScannerDialog } from './ScannerDialog';
+import { useReceptionQueue } from './ReceptionQueueContext';
 
 export function ScannerPrompts() {
   const { presentation, notice, state, stations, connected, dismissed, dismissSuggestion, pending, message, act } = useScanner();
   const { currentEvent } = useEdition();
+  const queue=useReceptionQueue();
   const navigate = useNavigate();
   const [now, setNow] = useState(Date.now());
   const [choosing, setChoosing] = useState(false);
   const link = state.link;
   useEffect(() => { if (!link || link.status === 'LINKED') return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [link?.id, link?.status]);
   const seconds = link ? Math.max(0, Math.ceil((Date.parse(link.expiresAt) - now) / 1000)) : 0;
+  if(queue.state.station?.mode==='QUEUE'||queue.state.device||queue.scannerOpen)return null;
   if (state.station?.pc && link && link.status !== 'LINKED') return <ScannerDialog label="Autorizar escáner">
     <ShieldCheck className="w-9 h-9 text-primary" /><h2 className="text-xl font-bold">Nuevo dispositivo solicita vinculación</h2>
     <dl className="text-sm space-y-2"><div><dt className="text-muted-foreground">Cuenta</dt><dd>{link.user}</dd></div><div><dt className="text-muted-foreground">Dispositivo</dt><dd>Dispositivo solicitante · escáner móvil</dd></div><div><dt className="text-muted-foreground">Estación</dt><dd>{state.station.label}</dd></div><div><dt className="text-muted-foreground">Edición</dt><dd>{currentEvent?.name}</dd></div></dl>
