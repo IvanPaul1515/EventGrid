@@ -12,4 +12,3 @@ export function DemoScannerButtons({ loading, onSelect }: {
   ))}</>;
 }
 import React from 'react';
-

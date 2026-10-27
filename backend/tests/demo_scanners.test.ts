@@ -79,6 +79,10 @@ describe('isolated demo scanner accounts and quick access', () => {
     expect((await request(app).post('/demo-login').send({ role: 'SCANNER_1' })).status).toBe(404);
     expect(mocks.login).not.toHaveBeenCalled();
   });
+  it('keeps production quick access disabled when the flag is absent', async () => {
+    vi.stubEnv('DEMO_QUICK_ACCESS', undefined);
+    expect((await request(app).get('/demo-access')).body.enabled).toBe(false);
+  });
   it.each([
     { id: 'someone-else', role: 'OPERATOR', scannerOnly: true, assignedEventId: 'demo' },
     { id: DEMO_SCANNERS.SCANNER_1.id, role: 'ADMIN', scannerOnly: false, assignedEventId: 'demo' },
@@ -94,5 +98,12 @@ describe('isolated demo scanner accounts and quick access', () => {
     expect(html).toContain('Escáner QR 1'); expect(html).toContain('Escáner QR 2');
     const disabled = renderToStaticMarkup(React.createElement(DemoScannerButtons, { loading: true, onSelect: vi.fn() }));
     expect(disabled.match(/disabled=""/g)).toHaveLength(2);
+  });
+  it('each button dispatches its own demo profile', () => {
+    const onSelect = vi.fn();
+    const component = DemoScannerButtons({ loading: false, onSelect });
+    const buttons = component.props.children;
+    buttons[0].props.onClick(); buttons[1].props.onClick();
+    expect(onSelect.mock.calls).toEqual([['SCANNER_1'], ['SCANNER_2']]);
   });
 });
