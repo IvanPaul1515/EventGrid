@@ -10,7 +10,7 @@ import { recordCourtesyRequest, courtesyAudit } from './courtesy.policy.js';
 import { auditCourtesy, authorizeCourtesy } from './registrationPolicy.js';
 import { actionRateLimiter } from '../../middleware/rateLimiter.js';
 const router = Router({ mergeParams: true });
-const requestSchema = z.object({ requestKey: z.string().uuid(), reason: z.string().trim().min(3).max(1000), registrationId: z.string().optional(), registration: CreateRegistrationSchema.optional() }).refine(x => Boolean(x.registrationId) !== Boolean(x.registration), 'Indique una inscripción o los datos del participante.');
+const requestSchema = z.object({ requestKey: z.string().uuid(), exceptionType: z.enum(['COURTESY','SPONSOR','GUEST','AGREEMENT']).default('COURTESY'), agreementReference: z.string().trim().max(250).optional(), reason: z.string().trim().min(3).max(1000), registrationId: z.string().optional(), registration: CreateRegistrationSchema.optional() }).refine(x => Boolean(x.registrationId) !== Boolean(x.registration), 'Indique una inscripción o los datos del participante.');
 const include = { registration: { select: { id: true, registrationNumber: true, participant: { select: { fullName: true } } } }, requestedBy: { select: { id: true, fullName: true } }, decidedBy: { select: { id: true, fullName: true } }, event: { select: { name: true } } };
 router.use(requireOperatorOrAdmin);
 router.get('/', async (req, res, next) => {
@@ -29,7 +29,7 @@ router.post('/', actionRateLimiter(40), async (req, res, next) => {
         const data = requestSchema.parse(req.body), eventId = req.eventId!, userId = req.user!.id;
         if (data.registration) {
             const input = { ...data.registration, isCourtesy: false, courtesyAuthorizedBy: null, courtesyReason: null, ticketTypeId: null, paymentMethodId: null, amountPaid: 0, totalAmount: 0, isVerified: false, status: 'PENDING' as const };
-            await ParticipantsService.create(eventId, input, userId, { key: data.requestKey, reason: data.reason });
+            await ParticipantsService.create(eventId, input, userId, { key: data.requestKey, reason: data.reason, exceptionType: data.exceptionType, agreementReference: data.agreementReference });
         }
         else
             await writeTransaction(async (tx) => {
@@ -42,7 +42,7 @@ router.post('/', actionRateLimiter(40), async (req, res, next) => {
                 const registration = await tx.registration.findFirst({ where: { id: data.registrationId!, eventId } });
                 if (!registration)
                     throw new NotFoundError('Inscripción fuera de esta edición.');
-                await recordCourtesyRequest(tx, eventId, registration, userId, data.reason, data.requestKey);
+                await recordCourtesyRequest(tx, eventId, registration, userId, data.reason, data.requestKey, data);
             });
         const result = await prisma.courtesyRequest.findFirst({ where: { eventId, requestedByUserId: userId, ...(data.registrationId ? { registrationId: data.registrationId } : { requestKey: data.requestKey }) }, include, orderBy: { createdAt: 'desc' } });
         res.status(201).json({ message: 'Solicitud enviada. Pendiente de autorización.', data: result });
@@ -73,7 +73,7 @@ router.post('/:requestId/decision', requireAdmin, actionRateLimiter(120), async 
                 await tx.registration.update({ where: { id: r.id }, data: { isCourtesy: true, courtesyAuthorizedBy: approval.name, courtesyUserId: approval.id, courtesyReason: approval.reason, courtesyDate: approval.date, ticketPrice: 0, amountPaid: 0, balanceDue: 0, totalAmount: 0, paymentStatus: 'COURTESY', paymentMethodId: null, salesResponsibleId: null, status: 'CONFIRMED', isVerified: true, updatedByUserId: req.user!.id } });
                 await auditCourtesy(tx, request.eventId, r.id, req.user!.id, approval);
             }
-            await courtesyAudit(tx, req.user!.id, request.registrationId, { action: 'DECIDE_COURTESY', requestId: request.id, status: input.decision, reason: input.reason || null, requestedByUserId: request.requestedByUserId, decidedByUserId: req.user!.id });
+            await courtesyAudit(tx, req.user!.id, request.registrationId, { action: 'DECIDE_COURTESY', requestId: request.id, status: input.decision, reason: input.reason || null, requestedByUserId: request.requestedByUserId, decidedByUserId: req.user!.id, exceptionType: request.exceptionType, agreementReference: request.agreementReference });
             return tx.courtesyRequest.findUniqueOrThrow({ where: { id: request.id }, include });
         });
         res.json({ message: data.status === 'APPROVED' ? 'Cortesía aprobada' : 'Cortesía rechazada', data });

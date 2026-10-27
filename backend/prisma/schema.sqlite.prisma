@@ -8,6 +8,7 @@ generator client {
 }
 
 model User {
+  recordedExternalPayments Payment[] @relation("PaymentRecorder")
   deviceSessions AuthSession[]
   createdIncidents ReceptionIncident[] @relation("IncidentCreator")
   assignedIncidents ReceptionIncident[] @relation("IncidentAssignee")
@@ -44,6 +45,8 @@ model User {
 }
 
 model Event {
+  financialReviews FinancialReview[]
+  refunds RefundRequest[]
   receptionIncidents ReceptionIncident[]
   defaultTicketTypeId String? @unique
   defaultTicketType TicketType? @relation("OfficialTicket", fields: [defaultTicketTypeId], references: [id], onDelete: Restrict)
@@ -87,6 +90,9 @@ model Event {
 }
 
 model EventSettings {
+  paymentDeadlineAt DateTime?
+  paymentInstructions String?
+  paymentSupportContact String?
   id                 String   @id @default(uuid())
   eventId            String   @unique
   primaryColor       String   @default("#e11d48")
@@ -141,6 +147,19 @@ model Participant {
 }
 
 model Registration {
+  externalPaymentMethod String?
+  financialReviews FinancialReview[]
+  refunds RefundRequest[]
+  organizationRnc String?
+  participantCategory String?
+  waitlistState String?
+  importOriginalData String?
+  paymentFullReported String?
+  lastExternalSyncAt DateTime?
+  cancelledAt DateTime?
+  cancelledByUserId String?
+  cancellationReason String?
+  cancellationType String?
   externalPaymentStatus String?
   externalReference String?
   externalPlatform String?
@@ -256,6 +275,14 @@ model PaymentMethod {
 }
 
 model Payment {
+  recordedByUserId String?
+  recordedByUser User? @relation("PaymentRecorder", fields: [recordedByUserId], references: [id], onDelete: SetNull)
+  externalMethod String?
+  refunds RefundRequest[]
+  channel String @default("ONSITE")
+  idempotencyKey String? @unique
+  externalReference String?
+  sourceBatchId String?
   id               String   @id @default(uuid())
   registrationId   String
   amount           Float    @default(0.0)
@@ -306,6 +333,8 @@ model CustomFieldDefinition {
 }
 
 model ImportBatch {
+  contentHash String?
+  @@unique([eventId, contentHash])
   id               String   @id @default(uuid())
   eventId          String
   importedByUserId String
@@ -759,6 +788,8 @@ model InvitationDispatch {
 
 // Additive workflow: pending requests never settle a registration or create a payment.
 model CourtesyRequest {
+  exceptionType String @default("COURTESY")
+  agreementReference String?
   id                  String @id @default(uuid())
   eventId             String
   registrationId      String
@@ -869,4 +900,54 @@ model ScannerReading {
   result String
   createdAt DateTime @default(now())
   @@unique([linkId, requestKey])
+}
+
+model FinancialReview {
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  registration Registration? @relation(fields: [registrationId], references: [id], onDelete: SetNull)
+  id String @id @default(uuid())
+  eventId String
+  registrationId String?
+  sourceBatchId String?
+  code String
+  reason String
+  evidence String?
+  fingerprint String
+  status String @default("OPEN")
+  createdByUserId String
+  resolvedByUserId String?
+  resolution String?
+  createdAt DateTime @default(now())
+  resolvedAt DateTime?
+  @@unique([eventId, fingerprint])
+  @@index([eventId, status])
+}
+model RefundRequest {
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  id String @id @default(uuid())
+  eventId String
+  registrationId String
+  paymentId String
+  requestKey String
+  status String @default("REQUESTED")
+  channel String
+  amount Float
+  approvedAmount Float @default(0)
+  refundedAmount Float @default(0)
+  reason String
+  decisionReason String?
+  reference String?
+  method String?
+  requestedByUserId String
+  decidedByUserId String?
+  confirmedByUserId String?
+  version Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  refundedAt DateTime?
+  @@unique([eventId, requestKey])
+  @@index([eventId, registrationId])
+  @@index([paymentId, status])
 }

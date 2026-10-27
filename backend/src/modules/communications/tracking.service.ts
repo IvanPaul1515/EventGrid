@@ -25,9 +25,17 @@ export function communicationProjection(eventId: string, operator: boolean) {
   )`;
 }
 const validEmail = Prisma.sql `p.email LIKE '%_@_%._%' AND p.email NOT LIKE '% %'`;
-const eligible = Prisma.sql `r.status = 'CONFIRMED' AND r."isDemo" = false AND ${validEmail}`;
+const eligible = Prisma.sql `r.status = 'CONFIRMED' AND r."isDemo" = false AND (r."isCourtesy"=true OR (r."paymentStatus"='PAID' AND r."balanceDue"<=0 AND r."amountPaid">0)) AND NOT EXISTS (SELECT 1 FROM courtesy_requests cr WHERE cr."registrationId"=r.id AND cr.status='PENDING') AND ${validEmail}`;
 const ticketAccepted = Prisma.sql `EXISTS (SELECT 1 FROM communications c WHERE c."registrationId" = r.id AND c."templateCode" = 'DIGITAL_TICKET' AND c.status IN ${accepted})`;
-const toDate = (v: unknown) => v == null ? null : new Date(typeof v === 'bigint' ? Number(v) : v as any).toISOString();
+export function communicationTimestamp(v: unknown): string | null {
+    if (v == null) return null;
+    // SQLite aggregate/subquery expressions may return milliseconds as text.
+    const input = typeof v === 'bigint' || (typeof v === 'string' && /^-?\d{11,16}$/.test(v)) ? Number(v) : v;
+    const date = new Date(input as any);
+    if (!Number.isFinite(date.getTime())) { console.warn('Communication tracking contains an invalid timestamp.'); return null; }
+    return date.toISOString();
+}
+const toDate = communicationTimestamp;
 function safeRecord(row: any, admin: boolean) {
     return { ...row, date: toDate(row.date), attempts: Number(row.attempts || 0),
         errorMessage: safeCommunicationError(row.errorMessage, admin) };
@@ -51,7 +59,7 @@ export class CommunicationTracking {
             for (const [from, to] of Object.entries({ 'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n', 'Á': 'a', 'É': 'e', 'Í': 'i', 'Ó': 'o', 'Ú': 'u', 'Ü': 'u', 'Ñ': 'n' }))
                 name = Prisma.sql `REPLACE(${name},${from},${to})`;
             const tokens = normalizeName(search.trim()).split(' ').filter(Boolean).slice(0, 20).map(token => Prisma.sql `LOWER(${name}) LIKE ${'%' + escape(token) + '%'} ESCAPE '!'`);
-            conditions.push(Prisma.sql `(LOWER(p.email) LIKE ${term} ESCAPE '!' OR LOWER(r."registrationNumber") LIKE ${term} ESCAPE '!' OR LOWER(COALESCE(p."documentId",'')) LIKE ${term} ESCAPE '!' OR (${Prisma.join(tokens, ' AND ')}))`);
+            conditions.push(Prisma.sql `(LOWER(p.email) LIKE ${term} ESCAPE '!' OR LOWER(r."registrationNumber") LIKE ${term} ESCAPE '!' OR LOWER(COALESCE(r."externalReference",'')) LIKE ${term} ESCAPE '!' OR LOWER(COALESCE(p."documentId",'')) LIKE ${term} ESCAPE '!' OR (${Prisma.join(tokens, ' AND ')}))`);
         }
         const hasStatus = (statuses: Prisma.Sql) => Prisma.sql `EXISTS (SELECT 1 FROM communications c WHERE c."registrationId"=r.id AND c.status IN ${statuses})`;
         const filters: Record<string, Prisma.Sql> = {
@@ -106,7 +114,7 @@ export class CommunicationTracking {
             pending: count(['PREPARED', 'PENDING', 'DEFERRED']), processing: count(['PROCESSING']), failed: count(['FAILED', 'REJECTED', 'BLOCKED']),
             uncertain: count(['UNKNOWN_DELIVERY_STATUS']), simulated: count(['SIMULATED']), uniqueContacted: Number(contacted[0].total),
             missingDigital: Number(coverage[0].missing || 0), invalidExcluded: Number(coverage[0].invalid || 0),
-            missingDefinition: 'Participantes confirmados, no demo, con correo de formato válido y sin entrada digital aceptada por el proveedor.',
+            missingDefinition: 'Participantes confirmados con pago completo o cortesía aprobada, no demo, con correo de formato válido y sin entrada digital aceptada por el proveedor.',
             distribution, templates: templates.map(x => ({ ...x, count: Number(x.count) })), days: days.reverse().map(x => ({ ...x, count: Number(x.count) })), recent: recent.map(r => safeRecord(r, !operator)) };
     }
 }

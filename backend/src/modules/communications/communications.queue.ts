@@ -1,3 +1,4 @@
+import { recipientIneligibility } from './recipient-policy.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { mailFailureMessage, uncertainMailFailure } from '../../utils/mailFailure.js';
@@ -294,6 +295,11 @@ export class EmailQueueWorker {
           // Procesar los ítems reclamados
           await Promise.all(
             claimedItems.map(async (item) => {
+              if (item.registrationId) {
+                const current = await prisma.registration.findUnique({ where: { id: item.registrationId }, include: { refunds: true, courtesyRequests: { select: { status: true } } } });
+                const blocked = !current || current.eventId !== job.eventId ? 'Inscripción no disponible en esta edición.' : recipientIneligibility(current, job.templateCode || '');
+                if (blocked) { await prisma.emailBatchItem.update({ where: { id: item.id }, data: { status: 'FAILED', errorMessage: blocked } }); return; }
+              }
               const email = item.recipientEmail.trim();
 
               if (!email || !email.includes('@')) {

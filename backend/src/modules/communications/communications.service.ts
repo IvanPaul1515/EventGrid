@@ -1,3 +1,4 @@
+import { recipientIneligibility } from './recipient-policy.js';
 import { responsiveEmailHtml } from '../../utils/emailDocument.js';
 import { safeCommunicationError } from '../../utils/communicationError.js';
 import { uncertainMailFailure, mailFailureMessage } from '../../utils/mailFailure.js';
@@ -22,6 +23,8 @@ import QRCode from 'qrcode';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+
+const emailText = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
 
 export class CommunicationsService {
   private static customTransporterFactory: ((config: any) => any) | null = null;
@@ -1483,6 +1486,15 @@ export class CommunicationsService {
     bodyText: 'Hola {{participantName}}, la inscripción {{registrationNumber}} para {{eventName}} ha sido cancelada.',
     variables: ['participantName', 'eventName', 'registrationNumber', 'messageContent'],
   }
+  , ...[
+    { code: 'PAYMENT_REMINDER', name: 'Recordatorio de pago', title: 'Tu inscripción tiene un saldo pendiente', copy: 'Completa el pago por los canales oficiales de la universidad. Este aviso no confirma un pago.' },
+    { code: 'NONPAYMENT_CANCELLATION', name: 'Anulación por impago', title: 'Entrada anulada por impago', copy: 'La entrada fue anulada después de la revisión administrativa del plazo de pago. El QR ya no permite acceder.' },
+    { code: 'VOLUNTARY_CANCELLATION', name: 'Cancelación voluntaria', title: 'Cancelación de tu entrada', copy: 'Se registró la cancelación de tu entrada. Una cancelación no implica que se haya realizado una devolución.' },
+    { code: 'REFUND_REQUESTED_NOTICE', name: 'Solicitud de reembolso recibida', title: 'Solicitud de reembolso recibida', copy: 'La solicitud está pendiente de revisión administrativa. No se ha confirmado una devolución de dinero.' },
+    { code: 'REFUND_APPROVED_NOTICE', name: 'Reembolso aprobado', title: 'Reembolso aprobado, pendiente de gestión', copy: 'La administración aprobó la solicitud. La aprobación no significa que el dinero ya haya sido devuelto.' },
+    { code: 'REFUND_PENDING_NOTICE', name: 'Reembolso pendiente de devolución', title: 'Devolución pendiente de confirmación', copy: 'La devolución está pendiente de ejecución o confirmación por su canal de origen. El dinero todavía no figura como devuelto en EventGrid.' },
+    { code: 'REFUND_NOTICE', name: 'Devolución confirmada', title: 'Devolución registrada', copy: 'La administración registró una devolución efectivamente realizada por el canal de origen. EventGrid registra la operación y no ejecuta transferencias.' },
+  ].map(t => ({ code: t.code, name: t.name, subject: t.title + ' — {{eventName}} · {{registrationNumber}}', bodyHtml: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;line-height:1.6;border-top:4px solid {{primaryColor}}"><table role="presentation"><tr>{{eventLogoHtml}}</tr></table><h1 style="font-size:22px">${t.title}</h1><p>Hola {{participantName}},</p><p>${t.copy}</p><p>{{eventName}} · Entrada {{registrationNumber}} · Referencia externa: {{externalReference}}</p>${t.code === 'PAYMENT_REMINDER' ? '<p>Saldo pendiente: {{currencySymbol}} {{balanceDue}}</p><p>Fecha límite: {{paymentDeadline}}</p><p>{{paymentInstructions}}</p>' : ''}${t.code === 'REFUND_NOTICE' ? '<p>Importe devuelto: {{currencySymbol}} {{refundAmount}} · Método: {{refundMethod}} · Referencia: {{refundReference}}</p>' : ''}<p>Contacto: {{paymentSupportContact}}</p><p>{{messageContent}}</p></div>`, bodyText: t.title + ' · {{eventName}} · {{registrationNumber}}. ' + t.copy, variables: ['participantName','eventName','registrationNumber','externalReference','balanceDue','currencySymbol','paymentDeadline','paymentInstructions','paymentSupportContact','refundAmount','refundMethod','refundReference','messageContent'] }))
   ];
 
   /**
@@ -1677,6 +1689,13 @@ export class CommunicationsService {
       ticketPrice: Number(registration.ticketPrice ?? registration.totalAmount ?? 0).toFixed(2),
       amountPaid: Number(registration.amountPaid ?? registration.totalAmount ?? 0).toFixed(2),
       balanceDue: Number(registration.balanceDue || 0).toFixed(2),
+      externalReference: emailText(registration.externalReference || 'No disponible'),
+      paymentDeadline: registration.event?.settings?.paymentDeadlineAt ? new Date(registration.event.settings.paymentDeadlineAt).toLocaleString('es-DO', { timeZone: 'America/Santo_Domingo' }) : 'No configurada',
+      paymentInstructions: emailText(registration.event?.settings?.paymentInstructions || 'Consulta los canales oficiales de pago de la universidad.'),
+      paymentSupportContact: emailText(registration.event?.settings?.paymentSupportContact || 'Administración del evento'),
+      refundAmount: (registration.refunds || []).filter((r: any) => r.status === 'REFUNDED').reduce((n: number, r: any) => n + Number(r.refundedAmount), 0).toFixed(2),
+      refundReference: (registration.refunds || []).filter((r: any) => r.status === 'REFUNDED').map((r: any) => emailText(r.reference)).filter(Boolean).join(', ') || 'No disponible',
+      refundMethod: (registration.refunds || []).filter((r: any) => r.status === 'REFUNDED').map((r: any) => emailText(r.method)).filter(Boolean).join(', ') || 'No disponible',
       currencySymbol,
       scheduleHtml,
       qrUrl,
@@ -1830,6 +1849,8 @@ export class CommunicationsService {
         where: { id: input.registrationId },
         include: {
           participant: true,
+          refunds: true,
+          courtesyRequests: { select: { status: true } },
           ticketType: true,
           event: { include: { settings: true } },
         },
@@ -1842,6 +1863,8 @@ export class CommunicationsService {
         where: { eventId: input.eventId, status: { not: 'CANCELLED' } },
         include: {
           participant: true,
+          refunds: true,
+          courtesyRequests: { select: { status: true } },
           ticketType: true,
           event: { include: { settings: true } },
         },
@@ -1887,6 +1910,8 @@ export class CommunicationsService {
       };
     }
 
+    if (input.registrationId && input.templateCode === 'DIGITAL_TICKET') { const blocked = recipientIneligibility(registration, input.templateCode); if (blocked) throw new BadRequestError(blocked); }
+
     // QA-24: Buscar plantilla con prioridad estricta de edición
     const template = await this.findTemplate(input.templateCode, input.eventId);
     if (!template) {
@@ -1924,12 +1949,16 @@ export class CommunicationsService {
       where: { id: input.registrationId },
       include: {
         participant: true,
+        refunds: true,
+        courtesyRequests: { select: { status: true } },
         ticketType: true,
         event: { include: { settings: true } },
       },
     });
 
     if (!registration) throw new NotFoundError('Inscripción no encontrada');
+    const ineligible = recipientIneligibility(registration, input.templateCode);
+    if (ineligible) throw new BadRequestError(ineligible);
     if (input.expectedRecipientEmail && input.expectedRecipientEmail.trim() !== registration.participant.email.trim()) throw new BadRequestError('El correo del participante cambió. Actualiza la vista previa antes de enviar.');
 
     // QA-07: Si eventId no venía en el payload, usar el de la inscripción
@@ -2176,7 +2205,7 @@ export class CommunicationsService {
     // Construir filtro de destinatarios elegibles
     const where: any = {
       eventId: input.eventId,
-      status: { not: 'CANCELLED' }, // QA-09: Excluir cancelados por defecto
+      ...(['INSCRIPTION_CANCELLED','CANCELLATION','NONPAYMENT_CANCELLATION','VOLUNTARY_CANCELLATION','REFUND_REQUESTED_NOTICE','REFUND_APPROVED_NOTICE','REFUND_PENDING_NOTICE','REFUND_NOTICE'].includes(input.templateCode) ? {} : { status: { not: 'CANCELLED' } }),
     };
 
     // Excluir registros demo salvo que la edición esté en modo demo
@@ -2223,6 +2252,8 @@ export class CommunicationsService {
       where,
       include: {
         participant: true,
+        refunds: true,
+        courtesyRequests: { select: { status: true } },
         ticketType: true,
         event: { include: { settings: true } },
       },
@@ -2259,6 +2290,7 @@ export class CommunicationsService {
     const registrations: typeof rawRegistrations = [];
 
     for (const r of rawRegistrations) {
+      if (recipientIneligibility(r, input.templateCode)) continue;
       const email = r.participant.email?.trim().toLowerCase();
       if (!email || !email.includes('@')) continue;
 
@@ -2595,6 +2627,8 @@ export class CommunicationsService {
       where: baseWhere,
       include: {
         participant: true,
+        refunds: true,
+        courtesyRequests: { select: { status: true } },
         ticketType: true,
       },
       orderBy: { createdAt: 'asc' },
@@ -2646,9 +2680,10 @@ export class CommunicationsService {
       const email = reg.participant?.email?.trim().toLowerCase();
       const pName = reg.participant?.fullName || 'Participante';
 
-      if (reg.status === 'CANCELLED') {
-        cancelledCount++;
-        excludedRecipients.push({ registrationId: reg.id, fullName: pName, email: email || 'Sin correo', reason: 'Inscripción cancelada' });
+      const ineligible = recipientIneligibility(reg, effectiveTemplateCode);
+      if (ineligible) {
+        if (reg.status === 'CANCELLED') cancelledCount++;
+        excludedRecipients.push({ registrationId: reg.id, fullName: pName, email: email || 'Sin correo', reason: ineligible });
         continue;
       }
 
@@ -2904,6 +2939,13 @@ export class CommunicationsService {
       PAYMENT_CONFIRMATION: 'Confirmación de pago',
       PENDING_BALANCE: 'Balance pendiente',
       INSCRIPTION_CANCELLED: 'Inscripción cancelada',
+      PAYMENT_REMINDER: 'Recordatorio de pago',
+      NONPAYMENT_CANCELLATION: 'Anulación por impago',
+      VOLUNTARY_CANCELLATION: 'Cancelación voluntaria',
+      REFUND_REQUESTED_NOTICE: 'Solicitud de reembolso',
+      REFUND_APPROVED_NOTICE: 'Reembolso aprobado',
+      REFUND_PENDING_NOTICE: 'Pendiente de devolución',
+      REFUND_NOTICE: 'Devolución confirmada',
       GENERAL_ANNOUNCEMENT: 'Anuncio general',
       CUSTOM: 'Mensaje personalizado',
     };

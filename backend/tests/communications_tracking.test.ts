@@ -1,3 +1,4 @@
+import { communicationTimestamp } from '../src/modules/communications/tracking.service.js';
 import { beforeAll, afterAll, describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
@@ -35,7 +36,7 @@ beforeAll(async()=>{
  await prisma.eventSettings.create({data:{eventId}});
  otherId=(await prisma.event.create({data:{slug:'other-tracking',name:'Other',year:2025,startDate:new Date(),endDate:new Date()}})).id;
  for(const role of ['ADMIN','OPERATOR','VIEWER']){const user=await prisma.user.create({data:{email:role+'@tracking.invalid',fullName:role,role,assignedEventId:role==='ADMIN'?null:eventId,passwordHash:'unused'}});tokens[role]=jwt.sign({id:user.id},'isolated-courtesy-test');}
- for(let i=0;i<5;i++){const p=await prisma.participant.create({data:{firstName:'Ana María',lastName:'Gómez Pérez '+i,fullName:'Ana María Gómez Pérez '+i,email:i===4?'invalid-address':'ana'+i+'@example.invalid',documentId:'QA-DOC-'+i}});regs.push((await prisma.registration.create({data:{eventId,participantId:p.id,registrationNumber:'QA-'+i,qrCode:crypto.randomUUID(),status:i===3?'PENDING':'CONFIRMED',ticketPrice:1750,balanceDue:1750,isCourtesy:i===2}})).id);}
+ for(let i=0;i<5;i++){const p=await prisma.participant.create({data:{firstName:'Ana María',lastName:'Gómez Pérez '+i,fullName:'Ana María Gómez Pérez '+i,email:i===4?'invalid-address':'ana'+i+'@example.invalid',documentId:'QA-DOC-'+i}});regs.push((await prisma.registration.create({data:{eventId,participantId:p.id,registrationNumber:'QA-'+i,qrCode:crypto.randomUUID(),status:i===3?'PENDING':'CONFIRMED',ticketPrice:1750,balanceDue:i===3?1750:0,amountPaid:i===2||i===3?0:1750,paymentStatus:i===2?'COURTESY':i===3?'PENDING':'PAID',isCourtesy:i===2}})).id);}
  provider=vi.spyOn(CommunicationsService,'createTransporter').mockImplementation(()=>{throw Error('No provider allowed in read-only QA');});
 });
 beforeEach(async()=>{await prisma.emailBatchItem.deleteMany();await prisma.emailBatchJob.deleteMany();await prisma.emailLog.deleteMany();});
@@ -56,7 +57,7 @@ describe('communication tracking, isolated real SQLite',()=>{
  });
  it('filters persisted states, missing digital eligibility, courtesy and unpaid participants in the database',async()=>{
   await log(regs[0],'DELIVERED');await log(regs[1],'UNKNOWN_DELIVERY_STATUS');await log(regs[2],'PROCESSING');
-  const expected:any={NONE:2,DIGITAL:1,ACCEPTED:1,UNCERTAIN:1,PENDING:1,MISSING_DIGITAL:2,COURTESY:1,CONFIRMED:4,UNPAID:5};
+  const expected:any={NONE:2,DIGITAL:1,ACCEPTED:1,UNCERTAIN:1,PENDING:1,MISSING_DIGITAL:2,COURTESY:1,CONFIRMED:4,UNPAID:1};
   for(const [filter,total] of Object.entries(expected)){const r=await requestApi('/tracking/participants?filter='+filter);expect(r.status,r.text).toBe(200);expect(r.body.pagination.total,filter).toBe(total);}
  });
  it('scopes all readers to the edition and operator digital-ticket capability without leaking raw provider errors',async()=>{
@@ -104,4 +105,12 @@ describe('communication tracking, isolated real SQLite',()=>{
  it('does not retry uncertain messages from an operator session, even with resend flags',async()=>{
   await log(regs[0],'UNKNOWN_DELIVERY_STATUS');const r=await postApi('/send','OPERATOR',{eventId,registrationId:regs[0],templateCode:'DIGITAL_TICKET',forceResend:true,confirmedResend:true,resendReason:'unsafe retry'});expect(r.status).toBe(403);expect(await prisma.emailLog.count()).toBe(1);
  });
+});
+
+it('normalizes SQLite millisecond strings and PostgreSQL date values in tracking projections',()=>{
+ const milliseconds=1760000000000;
+ expect(communicationTimestamp(String(milliseconds))).toBe(new Date(milliseconds).toISOString());
+ expect(communicationTimestamp(BigInt(milliseconds))).toBe(new Date(milliseconds).toISOString());
+ expect(communicationTimestamp(new Date(milliseconds))).toBe(new Date(milliseconds).toISOString());
+ expect(communicationTimestamp(null)).toBeNull();
 });

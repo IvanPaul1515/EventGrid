@@ -9,7 +9,7 @@ const location=JSON.parse(fs.readFileSync(root+'/fixture-location.json','utf8'))
 const db=await PGlite.create();const chain=await PGlite.create();const checks=[];
 try{
 await db.exec(sql);
-const result=await rehearse(db,manifest,file);assert.equal(result.tables,38);checks.push('all 38 SQLite tables copied and every source field compared');
+const result=await rehearse(db,manifest,file);const expectedTables=Object.keys(JSON.parse(fs.readFileSync(manifest,'utf8')).tables).length;assert.equal(result.tables,expectedTables);checks.push(`all ${result.tables} SQLite tables copied and every source field compared`);
 assert.equal((await db.query('SELECT current FROM registration_sequences')).rows[0].current,120);
 assert.equal((await db.query('SELECT "sessionVersion" FROM users')).rows[0].sessionVersion,7);
 assert.equal((await db.query('SELECT "isEnabled" FROM email_configs')).rows[0].isEnabled,false);
@@ -24,6 +24,7 @@ const tables=async pg=>(await pg.query("SELECT tablename FROM pg_tables WHERE sc
 const fullTables=await tables(db),chainTables=await tables(chain),missing=fullTables.filter(t=>!chainTables.includes(t)&&t!=='_eventgrid_rehearsal_receipt');
 const cols=async pg=>(await pg.query("SELECT table_name,column_name,data_type FROM information_schema.columns WHERE table_schema='public'")).rows;
 const fullCols=await cols(db),oldCols=await cols(chain),missingColumns=fullCols.filter(c=>chainTables.includes(c.table_name)&&!oldCols.some(x=>x.table_name===c.table_name&&x.column_name===c.column_name)).map(c=>c.table_name+'.'+c.column_name);
+assert.deepEqual(missing,[]);assert.deepEqual(missingColumns,[]);checks.push('additive migration history has all current tables and columns');
 const report={status:'PASS_LOCAL_REHEARSAL',engine:(await db.query('SELECT version() AS v')).rows[0].v,engineKind:'embedded PostgreSQL WASM (PGlite), not Render PostgreSQL 16 or Prisma network runtime',checks,sourceTables:result.tables,sourceRows:result.rows,migrationChainMissingTables:missing,migrationChainMissingColumns:missingColumns,noProductionAccess:true};fs.writeFileSync(root+'/rehearsal-result.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
 }finally{await db.close();await chain.close();}
 

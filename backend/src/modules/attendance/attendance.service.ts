@@ -65,6 +65,7 @@ export class AttendanceService {
       const orClauses: any[] = [
         { participantId: { in: await participantNameIds(prisma, eventId, term) } },
         { registrationNumber: { contains: term } },
+        { externalReference: { contains: term } },
         { qrCode: { contains: term } },
         { participant: { firstName: { contains: term } } },
         { participant: { lastName: { contains: term } } },
@@ -153,6 +154,7 @@ export class AttendanceService {
 
     const now = new Date();
 
+    if (await prisma.registration.findFirst({ where: { id: registrationId, eventId, source: 'EXCEL_IMPORT', isCourtesy: false, ticketPrice: { lte: 0 } } })) throw new BadRequestError('Tarifa externa pendiente de conciliación.');
     if (await prisma.courtesyRequest.findUnique({ where: { pendingRegistrationId: registrationId } })) throw new BadRequestError('Pendiente de autorización de cortesía. Consulte el resultado antes de confirmar ingreso.');
 
     if (registration.status === 'CANCELLED') {
@@ -209,6 +211,7 @@ export class AttendanceService {
 
     // QA-01, QA-02, QA-03: Ejecución atómica y condicional en transacción interactiva
     const updatedRegistration = await writeTransaction(async (tx) => {
+      if (await tx.registration.findFirst({ where: { id: registrationId, eventId, source: 'EXCEL_IMPORT', isCourtesy: false, ticketPrice: { lte: 0 } } })) throw new BadRequestError('Tarifa externa pendiente de conciliación.');
       if (await tx.courtesyRequest.findUnique({ where: { pendingRegistrationId: registrationId } })) throw new BadRequestError('Pendiente de autorización de cortesía.');
       let inventoryItem: any = null;
 
@@ -397,6 +400,7 @@ export class AttendanceService {
       where.OR = [
         { participantId: { in: await participantNameIds(prisma, eventId, term) } },
         { registrationNumber: { contains: term } },
+        { externalReference: { contains: term } },
         { participant: { firstName: { contains: term } } },
         { participant: { lastName: { contains: term } } },
         { participant: { fullName: { contains: term } } },
@@ -461,6 +465,7 @@ export class AttendanceService {
     const [paymentsToday, registrationsToday] = await Promise.all([
       prisma.payment.findMany({
         where: {
+          channel: 'ONSITE',
           registration: { eventId, ...isDemoFilter },
           createdAt: {
             gte: startOfDay,
