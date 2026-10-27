@@ -46,6 +46,7 @@ const LayoutContent: React.FC = () => {
         <main ref={scrollRef} data-app-scroll className="flex-1 overflow-y-auto p-3.5 sm:p-6 md:p-8 bg-background pb-safe-content">
           <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
             <QueueAuthorizationDialog />
+            {presentation.device==='phone'&&!user?.scannerOnly&&<div className="scanner-ui"><button className="btn-secondary w-full sm:w-auto" onClick={()=>queue.setScannerOpen(true)}>Entrar como escáner QR</button></div>}
             {queue.state.station?.mode!=='QUEUE'&&(queue.stations.length>0&&presentation.device==='phone'?<QueueSuggestion key={currentEvent?.id} />:<ScannerSuggestion />)}
             <ErrorBoundary key={pathname}>
               <div className="spa-content-area">

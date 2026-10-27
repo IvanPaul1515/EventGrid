@@ -5,7 +5,7 @@ import {useRealtimeEvent} from '../../context/RealtimeContext';
 import {api} from '../../services/api';
 type Device={id:string;status:string;expiresAt:string;station:{id:string;label:string}};
 export type QueueRow={id:string;registrationId:string;name:string;number:string;state:string;scannedAt:string;station:string;mine:boolean};
-type Snapshot={enabled:boolean;station:{id:string;label:string;mode:string}|null;devices:{id:string;name:string;status:string;expiresAt:string;code?:string}[];device:Device|null};
+type Snapshot={invitation?:{code:string;expiresAt:string}|null;availableDevices?:{id:string;name:string}[];enabled:boolean;station:{id:string;label:string;mode:string}|null;devices:{id:string;name:string;status:string;expiresAt:string;code?:string}[];device:Device|null};
 const empty:Snapshot={enabled:false,station:null,devices:[],device:null};
 type Value={state:Snapshot;stations:{id:string;label:string}[];rows:QueueRow[];connected:boolean;pending:boolean;error:string;ready:boolean;scannerOpen:boolean;setScannerOpen:(v:boolean)=>void;refresh:()=>Promise<void>;act:(path:string,body?:object)=>Promise<any>;read:(token:string)=>Promise<any>};
 const Context=createContext<Value|null>(null);
