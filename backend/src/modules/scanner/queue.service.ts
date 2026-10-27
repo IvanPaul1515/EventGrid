@@ -9,6 +9,8 @@ import { ForbiddenError, ConflictError, BadRequestError } from '../../utils/erro
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { hasUserPermission } from '../../middleware/rbac.js';
 import { assignedEdition } from '../../middleware/editionAccess.js';
+import { queueTshirts, validateQueueSize, queueBlockReason } from './queue-tshirts.js';
+import { AttendanceService } from '../attendance/attendance.service.js';
 const key=()=>createHash('sha256').update('queue:'+ENV.JWT_SECRET).digest();
 const hash=(id:string,code:string)=>createHmac('sha256',ENV.JWT_SECRET).update('queue:'+id+':'+code).digest('hex');
 function seal(code:string){const iv=randomBytes(12),c=createCipheriv('aes-256-gcm',key(),iv);return Buffer.concat([iv,c.update(code),c.final(),c.getAuthTag()]).toString('base64');}
@@ -134,14 +136,26 @@ export class ReceptionQueueService {
    const activeLinks=await prisma.queueDevice.findMany({where:{eventId,status:{in:['REQUESTED','APPROVED','LINKED']},leaseUntil:{gt:new Date()}}});
    for(const presence of presences){if(activeLinks.some(d=>d.sessionId===presence.sessionId))continue;try{const session=await ScannerService.session(prisma,presence.sessionId,presence.userId),allowed=await assignedEdition(session.user);if(!allowed||allowed===eventId)availableDevices.push({id:presence.id,name:session.user.fullName});}catch{}}
   }
-  return {enabled:Boolean(own||station?.mode==='QUEUE'),station:station?{id:station.id,label:station.label,mode:station.mode}:null,availableDevices,invitation:station?.mode==='QUEUE'&&station.inviteCipher&&station.inviteExpiresAt&&station.inviteExpiresAt>new Date()?{code:open(station.inviteCipher),expiresAt:station.inviteExpiresAt}:null,devices:pending,device:own?{id:own.id,status:own.status,expiresAt:own.expiresAt,station:activeStation}:null};
+  const lastDevice=!own?await prisma.queueDevice.findFirst({where:{eventId,sessionId:user.sessionId!,status:{in:['REVOKED','EXPIRED']}},orderBy:{createdAt:'desc'},select:{status:true}}):null;
+  return {lastDeviceStatus:lastDevice?.status||null,enabled:Boolean(own||station?.mode==='QUEUE'),station:station?{id:station.id,label:station.label,mode:station.mode}:null,availableDevices,invitation:station?.mode==='QUEUE'&&station.inviteCipher&&station.inviteExpiresAt&&station.inviteExpiresAt>new Date()?{code:open(station.inviteCipher),expiresAt:station.inviteExpiresAt}:null,devices:pending,device:own?{id:own.id,status:own.status,expiresAt:own.expiresAt,station:activeStation}:null};
  }
- static async submit(user:AuthUser,eventId:string,token:string,deviceId?:string){
+ static async readAccess(user:AuthUser,eventId:string,deviceId?:string){
   await this.access(user,eventId);
-
   let stationId:string;
   if(deviceId){const {device,station}=await this.device(user,eventId,deviceId);if(device.status!=='LINKED'||device.leaseUntil<new Date())throw new ForbiddenError();stationId=station.id;}
   else{await this.access(user,eventId,true);const station=await prisma.queueStation.findUnique({where:{sessionId:user.sessionId!}});if(!station||station.eventId!==eventId||station.mode!=='QUEUE')throw new ForbiddenError();stationId=station.id;}
+  return stationId;
+ }
+ static async preview(user:AuthUser,eventId:string,token:string,deviceId?:string){
+  await this.readAccess(user,eventId,deviceId);
+  const qr=await QrService.validateAndScan(token,eventId);
+  if(!qr.valid||!qr.canCheckIn||!qr.registration)return {status:'REJECTED',result:qr.status};
+  const existing=await prisma.queueEntry.findUnique({where:{eventId_registrationId:{eventId,registrationId:qr.registration.id}}});
+  if(existing)return {status:'QUEUED',number:qr.registration.registrationNumber,result:'Esta entrada ya está en cola'};
+  return {status:'VALID',number:qr.registration.registrationNumber,shirts:await queueTshirts(prisma,eventId,qr.registration),selectedTshirtSize:qr.registration.tshirtSize};
+ }
+ static async submit(user:AuthUser,eventId:string,token:string,deviceId?:string,selectedTshirtSize?:string){
+  const stationId=await this.readAccess(user,eventId,deviceId);
   const qr=await QrService.validateAndScan(token,eventId);
   if(!qr.valid||!qr.canCheckIn||!qr.registration)return {status:'REJECTED',result:qr.status};
   const result=await writeTransaction(async tx=>{
@@ -152,13 +166,17 @@ export class ReceptionQueueService {
    }
    const liveStation=await tx.queueStation.findFirst({where:{id:stationId,eventId,mode:'QUEUE',leaseUntil:{gt:new Date()}}});
    if(!liveStation)throw new ForbiddenError('Estación deshabilitada o desconectada.');
-   const reg=await tx.registration.findUniqueOrThrow({where:{id:qr.registration!.id}});
+   const reg=await tx.registration.findUniqueOrThrow({where:{id:qr.registration!.id},include:{ticketType:true}});
    if(reg.eventId!==eventId)throw new ForbiddenError();
    if(reg.attended)return {status:'REJECTED',result:'ALREADY_CHECKED_IN'};
    if(reg.status==='CANCELLED')return {status:'REJECTED',result:'CANCELLED'};
    if(reg.qrCode!==qr.registration!.qrCode)return {status:'REJECTED',result:'REVOKED'};
+   const previous=await tx.queueEntry.findUnique({where:{eventId_registrationId:{eventId,registrationId:reg.id}}});
+   if(previous)return {status:'QUEUED',result:'Esta entrada ya está en cola',number:reg.registrationNumber};
+   const shirts=await queueTshirts(tx,eventId,reg);
+   validateQueueSize(shirts,selectedTshirtSize);
    const id=randomUUID();
-   const entry=await tx.queueEntry.upsert({where:{eventId_registrationId:{eventId,registrationId:reg.id}},create:{id,eventId,registrationId:reg.id,stationId,deviceId},update:{lastScannedAt:new Date()}});
+   const entry=await tx.queueEntry.upsert({where:{eventId_registrationId:{eventId,registrationId:reg.id}},create:{id,eventId,registrationId:reg.id,stationId,deviceId,selectedTshirtSize:selectedTshirtSize||null,validatedQrHash:createHash('sha256').update(reg.qrCode||'').digest('hex')},update:{lastScannedAt:new Date()}});
    return {status:'QUEUED',result:entry.id===id?'Entrada validada':'Esta entrada ya está en cola',number:reg.registrationNumber};
   });this.hint(eventId);return result;
  }
@@ -169,13 +187,14 @@ export class ReceptionQueueService {
    const active=await tx.queueEntry.findMany({where:{eventId,state:{in:['WAITING','CLAIMED','INCIDENT']}},orderBy:{firstScannedAt:'asc'},take:1000});
    const recent=await tx.queueEntry.findMany({where:{eventId,state:{in:['CONFIRMED','REJECTED']}},orderBy:{lastScannedAt:'desc'},take:20});
    const entries=[...active,...recent];
-   const registrations=await tx.registration.findMany({where:{id:{in:entries.map(e=>e.registrationId)},eventId},select:{id:true,registrationNumber:true,attended:true,status:true,participant:{select:{fullName:true}}}});
+   const registrations=await tx.registration.findMany({where:{id:{in:entries.map(e=>e.registrationId)},eventId},select:{id:true,registrationNumber:true,attended:true,status:true,tshirtSize:true,tshirtDelivered:true,ticketType:{select:{includesTshirt:true}},participant:{select:{fullName:true}}}});
+   const settings=await tx.eventSettings.findUnique({where:{eventId},select:{tshirtSizesEnabled:true}});
    const stations=await tx.queueStation.findMany({where:{id:{in:[...new Set(entries.map(e=>e.stationId))]}},select:{id:true,label:true}});
    const rows=[];for(let e of entries){
     const reg=registrations.find(r=>r.id===e.registrationId);
    const state=!reg?'INCIDENT':reg.attended?'CONFIRMED':reg.status==='CANCELLED'?'REJECTED':e.state==='CLAIMED'&&(!e.claimUntil||e.claimUntil<=new Date())?'WAITING':e.state;
     if(e.state!==state)e=await tx.queueEntry.update({where:{id:e.id},data:{state,...(state==='WAITING'?{claimedBySessionId:null,claimedByUserId:null,claimUntil:null}:{})}});
-    const station=stations.find(s=>s.id===e.stationId);rows.push({id:e.id,registrationId:e.registrationId,name:reg?.participant.fullName||'Entrada por revisar',number:reg?.registrationNumber||'Sin registro',scannedAt:e.firstScannedAt,state:e.state,station:station?.label||'Recepción',mine:e.claimedBySessionId===user.sessionId});
+    const station=stations.find(s=>s.id===e.stationId);rows.push({id:e.id,registrationId:e.registrationId,name:reg?.participant.fullName||'Entrada por revisar',number:reg?.registrationNumber||'Sin registro',scannedAt:e.firstScannedAt,state:e.state,station:station?.label||'Recepción',mine:e.claimedBySessionId===user.sessionId,selectedTshirtSize:reg?.attended||reg?.tshirtDelivered?reg.tshirtSize:e.selectedTshirtSize||reg?.tshirtSize,tshirtDelivered:reg?.tshirtDelivered||false,tshirtIncluded:Boolean(settings?.tshirtSizesEnabled&&reg?.ticketType?.includesTshirt!==false)});
    }return rows;
   });
  }
@@ -188,6 +207,22 @@ export class ReceptionQueueService {
    if(!updated.count)throw new ConflictError('Este participante está siendo atendido en otra estación.');
    return {registrationId:reg.id,claimUntil:release?null:until};
   });this.hint(eventId);return result;
+ }
+ static async details(user:AuthUser,eventId:string,id:string){
+  await this.access(user,eventId,true);
+  const entry=await prisma.queueEntry.findFirst({where:{id,eventId}});if(!entry)throw new ForbiddenError();
+  const reg=await prisma.registration.findUniqueOrThrow({where:{id:entry.registrationId},include:{ticketType:true,participant:{select:{fullName:true}}}});
+  if(reg.eventId!==eventId)throw new ForbiddenError();
+  const pending=await prisma.courtesyRequest.findUnique({where:{pendingRegistrationId:reg.id}});
+  const blockedReason=queueBlockReason(reg,Boolean(pending))||(entry.validatedQrHash&&entry.validatedQrHash!==createHash('sha256').update(reg.qrCode||'').digest('hex')?'El QR fue revocado. Revisa la ficha completa.':null);
+  return {registrationId:reg.id,name:reg.participant.fullName,number:reg.registrationNumber,canCheckIn:!blockedReason,blockedReason,selectedTshirtSize:entry.selectedTshirtSize||reg.tshirtSize,shirts:await queueTshirts(prisma,eventId,reg)};
+ }
+ static async complete(user:AuthUser,eventId:string,id:string,size?:string,delivered=false){
+  const detail=await this.details(user,eventId,id);
+  if(!detail.canCheckIn)throw new BadRequestError(detail.blockedReason!);
+  if(delivered){validateQueueSize(detail.shirts,size);if(!detail.shirts.enabled)throw new BadRequestError('Esta entrada no incluye camiseta.');}
+  if(size)validateQueueSize(detail.shirts,size);
+  return AttendanceService.checkIn(eventId,detail.registrationId,user.id,size,delivered,user.sessionId,id);
  }
  static async incident(user:AuthUser,eventId:string,id:string,reason:string){
   await this.access(user,eventId,true);

@@ -4,10 +4,10 @@ import {useEdition} from '../../context/EditionContext';
 import {useRealtimeEvent} from '../../context/RealtimeContext';
 import {api} from '../../services/api';
 type Device={id:string;status:string;expiresAt:string;station:{id:string;label:string}};
-export type QueueRow={id:string;registrationId:string;name:string;number:string;state:string;scannedAt:string;station:string;mine:boolean};
-type Snapshot={invitation?:{code:string;expiresAt:string}|null;availableDevices?:{id:string;name:string}[];enabled:boolean;station:{id:string;label:string;mode:string}|null;devices:{id:string;name:string;status:string;expiresAt:string;code?:string}[];device:Device|null};
+export type QueueRow={id:string;registrationId:string;name:string;number:string;state:string;scannedAt:string;station:string;mine:boolean;selectedTshirtSize?:string|null;tshirtDelivered:boolean;tshirtIncluded:boolean};
+type Snapshot={lastDeviceStatus?:string|null;invitation?:{code:string;expiresAt:string}|null;availableDevices?:{id:string;name:string}[];enabled:boolean;station:{id:string;label:string;mode:string}|null;devices:{id:string;name:string;status:string;expiresAt:string;code?:string}[];device:Device|null};
 const empty:Snapshot={enabled:false,station:null,devices:[],device:null};
-type Value={state:Snapshot;stations:{id:string;label:string}[];rows:QueueRow[];connected:boolean;pending:boolean;error:string;ready:boolean;scannerOpen:boolean;setScannerOpen:(v:boolean)=>void;refresh:()=>Promise<void>;act:(path:string,body?:object)=>Promise<any>;read:(token:string)=>Promise<any>};
+type Value={state:Snapshot;stations:{id:string;label:string}[];rows:QueueRow[];connected:boolean;pending:boolean;error:string;ready:boolean;scannerOpen:boolean;setScannerOpen:(v:boolean)=>void;refresh:()=>Promise<void>;act:(path:string,body?:object)=>Promise<any>;read:(token:string,size?:string)=>Promise<any>;preview:(token:string)=>Promise<any>};
 const Context=createContext<Value|null>(null);
 export function ReceptionQueueProvider({children}:{children:ReactNode}){
  const {user,token}=useAuth(),{currentEvent}=useEdition();
@@ -30,7 +30,8 @@ export function ReceptionQueueProvider({children}:{children:ReactNode}){
  },[base,token,user?.role,user?.scannerOnly]);
  useRealtimeEvent(['RECEPTION_QUEUE_CHANGED','RESYNC','CHECK_IN_CONFIRMED'],()=>{void reload.current();});
  const act=async(path:string,body:object={})=>{if(busy.current)throw Error('Hay una operación en curso.');busy.current=true;setPending(true);setError('');try{const result=(await api.post(base+path,body)).data.data;await reload.current();return result;}catch(e:any){setError(e.response?.data?.message||'No se pudo completar la operación. Comprueba la conexión.');throw e;}finally{busy.current=false;setPending(false);}};
- const read=async(token:string)=>{const result=(await api.post(base+'/read',{token,...(state.device?{deviceId:state.device.id}:{})})).data.data;void reload.current();return result;};
- return <Context.Provider value={{state,stations,rows,connected,pending,error,ready,scannerOpen,setScannerOpen,refresh:()=>reload.current(),act,read}}>{children}</Context.Provider>;
+ const preview=async(token:string)=>(await api.post(base+'/preview',{token,...(state.device?{deviceId:state.device.id}:{})})).data.data;
+ const read=async(token:string,selectedTshirtSize?:string)=>{const result=(await api.post(base+'/read',{token,selectedTshirtSize,...(state.device?{deviceId:state.device.id}:{})})).data.data;void reload.current();return result;};
+ return <Context.Provider value={{state,stations,rows,connected,pending,error,ready,scannerOpen,setScannerOpen,refresh:()=>reload.current(),act,read,preview}}>{children}</Context.Provider>;
 }
 export function useReceptionQueue(){const c=useContext(Context);if(!c)throw Error('ReceptionQueueProvider required');return c;}

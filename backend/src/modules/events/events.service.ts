@@ -269,6 +269,7 @@ export class EventsService {
             eventId: newEvent.id,
             name: tt.name,
             price: tt.price,
+            includesTshirt: tt.includesTshirt,
             description: tt.description,
             isActive: tt.isActive,
           },
@@ -355,6 +356,7 @@ export class EventsService {
     data: {
       name: string;
       price: number;
+      includesTshirt?: boolean;
       description?: string | null;
       isActive?: boolean;
       presaleStartDate?: string | Date | null;
@@ -367,6 +369,7 @@ export class EventsService {
         eventId,
         name: data.name.trim(),
         price: data.price,
+        includesTshirt: data.includesTshirt ?? true,
         description: data.description?.trim(),
         isActive: data.isActive ?? true,
         presaleStartDate: data.presaleStartDate ? new Date(data.presaleStartDate) : null,
@@ -382,6 +385,7 @@ export class EventsService {
     data: {
       name?: string;
       price?: number;
+      includesTshirt?: boolean;
       description?: string | null;
       isActive?: boolean;
       presaleStartDate?: string | Date | null;
@@ -403,6 +407,7 @@ export class EventsService {
       data: {
         name: data.name ? data.name.trim() : undefined,
         price: data.price !== undefined ? data.price : undefined,
+        includesTshirt: data.includesTshirt,
         description: data.description !== undefined ? data.description?.trim() : undefined,
         isActive: data.isActive !== undefined ? data.isActive : undefined,
         presaleStartDate: data.presaleStartDate !== undefined ? (data.presaleStartDate ? new Date(data.presaleStartDate) : null) : undefined,

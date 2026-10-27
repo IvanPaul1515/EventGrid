@@ -55,6 +55,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
               again = true; continue;
             }
             if (snapshot.current.link?.status === 'LINKED' && !next.link && !explicitUnlink.current) setNotice('La vinculación ha finalizado o caducado. Puedes utilizar EventGrid normalmente.');
+            if (snapshot.current.link && snapshot.current.link.status !== 'LINKED' && !next.link && !explicitUnlink.current) setNotice('Solicitud rechazada o vencida. Puedes solicitar una nueva vinculación.');
             setReady(true); setState(next); snapshot.current = next; setConnected(true); setMessage('');
             const reception = ['/reception','/attendance'].includes(current.current.pathname);
             if (!next.link && (current.current.device !== 'desktop') && (reception || !current.current.dismissed)) {

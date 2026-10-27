@@ -18,7 +18,10 @@ route('post','/request',(r,e)=>Q.request(r.user,e,uuid.parse(r.body.stationId)))
 route('post','/devices/:id/decide',(r,e)=>Q.decide(r.user,e,uuid.parse(r.params.id),z.boolean().parse(r.body.approve)));
 route('post','/devices/:id/confirm',(r,e)=>Q.confirm(r.user,e,uuid.parse(r.params.id),z.string().regex(/^\d{6}$/).parse(r.body.code)));
 route('post','/devices/:id/unlink',(r,e)=>Q.unlink(r.user,e,uuid.parse(r.params.id)));
-route('post','/read',(r,e)=>{const b=z.object({token:z.string().trim().min(1).max(2048),deviceId:uuid.optional()}).parse(r.body);return Q.submit(r.user,e,b.token,b.deviceId);});
+route('post','/preview',(r,e)=>{const b=z.object({token:z.string().trim().min(1).max(2048),deviceId:uuid.optional()}).parse(r.body);return Q.preview(r.user,e,b.token,b.deviceId);});
+route('post','/read',(r,e)=>{const b=z.object({token:z.string().trim().min(1).max(2048),deviceId:uuid.optional(),selectedTshirtSize:z.string().trim().min(1).max(60).optional()}).parse(r.body);return Q.submit(r.user,e,b.token,b.deviceId,b.selectedTshirtSize);});
+route('get','/entries/:id/details',(r,e)=>Q.details(r.user,e,uuid.parse(r.params.id)));
+route('post','/entries/:id/confirm',(r,e)=>{const b=z.object({confirmed:z.literal(true),tshirtSize:z.string().trim().min(1).max(60).optional(),tshirtDelivered:z.boolean().default(false)}).parse(r.body);return Q.complete(r.user,e,uuid.parse(r.params.id),b.tshirtSize,b.tshirtDelivered);});
 route('post','/entries/:id/claim',(r,e)=>Q.claim(r.user,e,uuid.parse(r.params.id)));
 route('post','/entries/:id/release',(r,e)=>Q.claim(r.user,e,uuid.parse(r.params.id),true));
 route('post','/entries/:id/incident',(r,e)=>Q.incident(r.user,e,uuid.parse(r.params.id),z.string().trim().min(5).max(300).parse(r.body.reason)));

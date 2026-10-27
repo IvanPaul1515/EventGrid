@@ -6,6 +6,8 @@ import { BadRequestError, NotFoundError } from '../../utils/errors.js';
 import * as XLSX from 'xlsx';
 import { SearchAttendanceQuery } from './attendance.dto.js';
 import { participantNameIds } from '../../utils/participantSearch.js';
+import { createHash } from 'node:crypto';
+import { queueBlockReason, queueTshirts, validateQueueSize } from '../scanner/queue-tshirts.js';
 
 export class AttendanceService {
   /**
@@ -132,10 +134,11 @@ export class AttendanceService {
     operatorUserId: string,
     tshirtSize?: string,
     tshirtDelivered?: boolean,
-    sessionId?: string
+    sessionId?: string,
+    queueEntryId?: string
   ) {
     // QA-06: Validar que la talla pertenezca a la edición
-    const validTshirtSize = tshirtSize ? await InventoryService.validateSize(eventId, tshirtSize) : null;
+    const validTshirtSize = tshirtSize ? queueEntryId ? tshirtSize : await InventoryService.validateSize(eventId, tshirtSize) : null;
 
     // Buscar la inscripción en la edición activa
     const registration = await prisma.registration.findFirst({
@@ -208,7 +211,8 @@ export class AttendanceService {
       );
     }
 
-    const shouldDeliver = Boolean(tshirtDelivered === true && validTshirtSize);
+    let alreadyDelivered = registration.tshirtDelivered;
+    let shouldDeliver = Boolean(tshirtDelivered === true && validTshirtSize && !alreadyDelivered);
 
     // QA-01, QA-02, QA-03: Ejecución atómica y condicional en transacción interactiva
     const updatedRegistration = await writeTransaction(async (tx) => {
@@ -216,6 +220,18 @@ export class AttendanceService {
       if (actor?.scannerOnly) throw new BadRequestError('El perfil Escáner QR no confirma asistencia.');
       if (sessionId && await tx.queueDevice.findFirst({where:{eventId,sessionId,status:'LINKED',leaseUntil:{gt:new Date()}}})) throw new BadRequestError('Confirme desde la PC o desvincule el escáner.');
       const queued = await tx.queueEntry.findUnique({where:{eventId_registrationId:{eventId,registrationId}}});
+      if (queueEntryId) {
+        if (!queued || queued.id !== queueEntryId || queued.state !== 'CLAIMED' || queued.claimedBySessionId !== sessionId || !queued.claimUntil || queued.claimUntil <= new Date()) throw new BadRequestError('La reserva de atención venció o pertenece a otra estación. Vuelve a la cola.');
+        const live = await tx.registration.findUniqueOrThrow({where:{id:registrationId},include:{ticketType:true}});
+        const pending = await tx.courtesyRequest.findUnique({where:{pendingRegistrationId:registrationId}});
+        const reason = queueBlockReason(live,Boolean(pending));
+        if (reason) throw new BadRequestError(reason);
+        if (queued.validatedQrHash && queued.validatedQrHash !== createHash('sha256').update(live.qrCode || '').digest('hex')) throw new BadRequestError('El QR fue revocado. Revisa la ficha completa.');
+        if (live.tshirtDelivered && validTshirtSize && live.tshirtSize !== validTshirtSize) throw new BadRequestError('La camiseta ya fue entregada. Su ajuste requiere una operación autorizada.');
+        alreadyDelivered = live.tshirtDelivered;
+        shouldDeliver = Boolean(tshirtDelivered === true && validTshirtSize && !alreadyDelivered);
+        if (tshirtDelivered || validTshirtSize) validateQueueSize(await queueTshirts(tx,eventId,live),validTshirtSize);
+      }
       if (queued && !['CONFIRMED','REJECTED'].includes(queued.state)) {
         if (!sessionId) throw new BadRequestError('Inicie sesión nuevamente para atender esta entrada.');
         const claimed = await tx.queueEntry.updateMany({where:{id:queued.id,OR:[{state:'WAITING'},{state:'CLAIMED',claimedBySessionId:sessionId},{state:'CLAIMED',claimUntil:{lte:new Date()}}]},data:{state:'CLAIMED',claimedBySessionId:sessionId,claimedByUserId:operatorUserId,claimUntil:new Date(Date.now()+90000)}});
@@ -281,7 +297,7 @@ export class AttendanceService {
           attendedAt: now,
           attendedByUserId: operatorUserId,
           updatedByUserId: operatorUserId,
-          ...(validTshirtSize ? {
+          ...(validTshirtSize && !alreadyDelivered ? {
             tshirtSize: validTshirtSize,
             tshirtSizeUpdatedAt: now,
             tshirtSizeUpdatedByUserId: operatorUserId,
@@ -290,7 +306,7 @@ export class AttendanceService {
             tshirtDelivered: true,
             tshirtDeliveredAt: now,
             tshirtDeliveredByUserId: operatorUserId,
-          } : {
+          } : alreadyDelivered ? {} : {
             tshirtDelivered: false,
           }),
         },
@@ -344,7 +360,7 @@ export class AttendanceService {
             participantName: registration.participant.fullName,
             ticket: registration.registrationNumber,
             tshirtSize: validTshirtSize || null,
-            tshirtDelivered: shouldDeliver,
+            tshirtDelivered: alreadyDelivered || shouldDeliver,
             inventoryDeducted: shouldDeliver ? 1 : 0,
             deliveryPending: Boolean(validTshirtSize && !shouldDeliver),
             attendedAt: now.toISOString(),
@@ -362,7 +378,7 @@ export class AttendanceService {
         },
       });
 
-      await tx.queueEntry.updateMany({where:{eventId,registrationId},data:{state:'CONFIRMED',claimUntil:null}});
+      await tx.queueEntry.updateMany({where:{eventId,registrationId},data:{state:'CONFIRMED',claimUntil:null,...(queueEntryId&&validTshirtSize?{selectedTshirtSize:validTshirtSize}:{})}});
       return updated!;
     });
 

@@ -17,7 +17,7 @@ export function ScannerPrompts() {
   if (state.station?.pc && link && link.status !== 'LINKED') return <ScannerDialog label="Autorizar escáner">
     <ShieldCheck className="w-9 h-9 text-primary" /><h2 className="text-xl font-bold">Nuevo dispositivo solicita vinculación</h2>
     <dl className="text-sm space-y-2"><div><dt className="text-muted-foreground">Cuenta</dt><dd>{link.user}</dd></div><div><dt className="text-muted-foreground">Dispositivo</dt><dd>Dispositivo solicitante · escáner móvil</dd></div><div><dt className="text-muted-foreground">Estación</dt><dd>{state.station.label}</dd></div><div><dt className="text-muted-foreground">Edición</dt><dd>{currentEvent?.name}</dd></div></dl>
-    <p className="text-center rounded-xl bg-background border border-border p-4"><strong className="tracking-[.35em] text-3xl">{link.code}</strong></p>
+    {link.status === 'APPROVED' && <p className="text-center rounded-xl bg-background border border-border p-4"><strong className="tracking-[.35em] text-3xl">{link.code}</strong></p>}
     <p role="status" className="text-sm text-muted-foreground">{!seconds ? 'La solicitud ha vencido.' : link.status === 'APPROVED' ? 'Autorizado. Esperando confirmación del teléfono.' : `Solicitud pendiente · vence en ${seconds} s`}</p>
     {message && <p role="alert" className="text-destructive">{message}</p>}
     <div className="flex gap-3"><button disabled={pending || !seconds || link.status !== 'REQUESTED'} className="btn-primary flex-1" onClick={() => void act('/'+link.id+'/decide',{approve:true})}>{pending && <Loader2 className="w-4 h-4 animate-spin" />}Autorizar</button><button disabled={pending} className="btn-secondary flex-1" onClick={() => void act('/'+link.id+'/decide',{approve:false})}>Rechazar</button></div>

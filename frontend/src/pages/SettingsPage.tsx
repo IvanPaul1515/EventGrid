@@ -411,6 +411,7 @@ export const SettingsPage: React.FC = () => {
       const payload: Partial<TicketType> = {
         name: editingTicket.name,
         price: Number(editingTicket.price ?? 0),
+        includesTshirt: editingTicket.includesTshirt !== false,
         description: editingTicket.description || undefined,
         totalCapacity: editingTicket.totalCapacity ? Number(editingTicket.totalCapacity) : null,
         presaleStartDate: editingTicket.presaleStartDate ? new Date(editingTicket.presaleStartDate).toISOString() : null,
@@ -2018,6 +2019,7 @@ export const SettingsPage: React.FC = () => {
               </div>
 
               <div>
+                <label className="flex items-center gap-2 text-sm mb-3"><input type="checkbox" checked={editingTicket.includesTshirt !== false} onChange={e=>setEditingTicket({...editingTicket,includesTshirt:e.target.checked})}/>Esta entrada incluye camiseta</label>
                 <label className="block text-xs font-semibold text-foreground mb-1">Precio en RD$</label>
                 <input
                   type="number"
