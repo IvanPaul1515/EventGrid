@@ -158,11 +158,14 @@ describe('collaborative reception, isolated SQLite and no mail',()=>{
   const fs=await import('node:fs'),os=await import('node:os'),path=await import('node:path'),{execFileSync}=await import('node:child_process'),{PrismaClient}=await import('@prisma/client');
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'eventgrid-queue-upgrade-')),url='file:'+path.join(dir,'upgrade.db').replaceAll('\\','/');
   fs.writeFileSync(path.join(dir,'upgrade.db'),'');
-  const source=fs.readFileSync('backend/prisma/schema.sqlite.prisma','utf8'),before=source.split('// Collaborative reception is opt-in;')[0].replace('  scannerOnly Boolean @default(false)\n','');
+  const {fileURLToPath}=await import('node:url');
+  const currentSchema=fileURLToPath(new URL('../prisma/schema.sqlite.prisma',import.meta.url));
+  const prismaCli=fileURLToPath(new URL('../../node_modules/prisma/build/index.js',import.meta.url));
+  const source=fs.readFileSync(currentSchema,'utf8'),before=source.split('// Collaborative reception is opt-in;')[0].replace(/  scannerOnly Boolean @default\(false\)\r?\n/,'');
   const schema=path.join(dir,'before.prisma');fs.writeFileSync(schema,before);
-  const push=(schema:string)=>execFileSync(process.execPath,['node_modules/prisma/build/index.js','db','push','--schema',schema,'--skip-generate'],{env:{...process.env,DATABASE_URL:url},stdio:'pipe'});
+  const push=(schema:string)=>execFileSync(process.execPath,[prismaCli,'db','push','--schema',schema,'--skip-generate'],{env:{...process.env,DATABASE_URL:url},stdio:'pipe'});
   push(schema);const old=new PrismaClient({datasourceUrl:url});let eId:string,id:string;
   try{const e=await old.event.create({data:{name:'Preserved fixture',slug:'preserved-fixture',year:2026,startDate:new Date(),endDate:new Date()}});eId=e.id;const p=await old.participant.create({data:{firstName:'Preserved',lastName:'Fixture',fullName:'Preserved Fixture',email:'preserved@example.invalid'}});id=(await old.registration.create({data:{eventId:e.id,participantId:p.id,registrationNumber:'KEEP-1',qrCode:'keep-qr',attended:true,attendedAt:new Date('2026-10-01T10:00:00Z'),ticketPrice:1750,amountPaid:1750,totalAmount:1750,status:'CONFIRMED'}})).id;}finally{await old.$disconnect();}
-  push('backend/prisma/schema.sqlite.prisma');const upgraded=new PrismaClient({datasourceUrl:url});try{const row=await upgraded.registration.findUniqueOrThrow({where:{id:id!}});expect(row.registrationNumber).toBe('KEEP-1');expect(row.attended).toBe(true);expect(Number(row.amountPaid)).toBe(1750);expect(row.qrCode).toBe('keep-qr');expect(await upgraded.queueEntry.count()).toBe(0);}finally{await upgraded.$disconnect();}
+  push(currentSchema);const upgraded=new PrismaClient({datasourceUrl:url});try{const row=await upgraded.registration.findUniqueOrThrow({where:{id:id!}});expect(row.registrationNumber).toBe('KEEP-1');expect(row.attended).toBe(true);expect(Number(row.amountPaid)).toBe(1750);expect(row.qrCode).toBe('keep-qr');expect(await upgraded.queueEntry.count()).toBe(0);}finally{await upgraded.$disconnect();}
  });
 });
