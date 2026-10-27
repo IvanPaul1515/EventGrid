@@ -51,7 +51,6 @@ export const ROLE_PERMISSIONS: Record<'ADMIN' | 'OPERATOR' | 'VIEWER', Permissio
     'QR_REVOKE',
   ],
   OPERATOR: [
-    'REGISTRATION_CANCEL',
     'PARTICIPANTS_EXPORT',
     'COMMUNICATIONS_SEND',
     'QR_SCAN',

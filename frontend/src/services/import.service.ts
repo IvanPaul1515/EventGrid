@@ -23,6 +23,7 @@ export interface ValidationSummaryItem {
 }
 
 export interface ValidationResult {
+  reconciliation?: { newRecords: number; paidTransitions: number; discrepancies: number; absentRecords: { id: string; registrationNumber: string; action: string }[] };
   totalRows: number;
   validRows: number;
   duplicateRows: number;

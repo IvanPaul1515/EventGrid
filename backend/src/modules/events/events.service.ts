@@ -1,3 +1,4 @@
+import { FinanceService } from '../finance/finance.service.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
 import { prisma } from '../../config/db.js';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors.js';
@@ -513,6 +514,7 @@ export class EventsService {
    * Resumen y analítica financiera integral de la edición (Fase 4)
    */
   static async getFinancialSummary(eventId: string) {
+    const reconciled = await FinanceService.summary(eventId);
     const event = await prisma.event.findUnique({
       where: { id: eventId },
       include: {
@@ -590,7 +592,7 @@ export class EventsService {
         for (const p of reg.payments) {
           totalPaymentsCount++;
           const pAmount = Number(p.amount);
-          const mName = p.paymentMethod?.name || 'Efectivo';
+          const mName = p.channel === 'EXTERNAL' ? 'Universidad · ' + (p.externalMethod || 'Método externo') : p.channel === 'LEGACY' ? 'Histórico sin atribuir' : p.paymentMethod?.name || 'Sin método registrado';
           if (!methodBreakdown[mName]) {
             methodBreakdown[mName] = { name: mName, count: 0, totalAmount: 0 };
           }
@@ -606,13 +608,13 @@ export class EventsService {
             timestamp: p.createdAt,
             participantName: reg.participant.fullName,
             ticketNumber: reg.registrationNumber,
-            operator: p.receivedByUser?.fullName || 'Sistema',
+            operator: p.channel === 'EXTERNAL' ? 'Universidad / plataforma externa' : p.channel === 'LEGACY' ? 'Histórico sin atribuir' : p.receivedByUser?.fullName || 'Sin receptor registrado',
             isDirectPayment: true,
           });
         }
       } else if (Number(reg.amountPaid || 0) > 0 && !reg.isCourtesy) {
         // Inscripción con pago inicial
-        const mName = reg.paymentMethod?.name || 'Efectivo';
+        const mName = 'Histórico sin atribuir' + (reg.paymentMethod?.name ? ' · ' + reg.paymentMethod.name : '');
         if (!methodBreakdown[mName]) {
           methodBreakdown[mName] = { name: mName, count: 0, totalAmount: 0 };
         }
@@ -629,7 +631,7 @@ export class EventsService {
           timestamp: reg.saleTimestamp || reg.createdAt,
           participantName: reg.participant.fullName,
           ticketNumber: reg.registrationNumber,
-          operator: reg.salesResponsible?.name || 'Comité Organizador',
+          operator: reg.salesResponsible?.name || 'Sin receptor histórico registrado',
           isDirectPayment: false,
         });
       }
@@ -655,9 +657,10 @@ export class EventsService {
       courtesyCount,
       verifiedPaymentsCount,
       totalPaymentsCount,
-      totalRevenue,
-      totalExpected,
-      totalPending,
+      totalRevenue: reconciled.netAccredited,
+      totalExpected: reconciled.expectedActive,
+      totalPending: reconciled.receivable,
+      reconciliation: reconciled,
       totalOverpaid,
       byMethod: Object.values(methodBreakdown),
       byTicketType: Object.values(ticketBreakdown),
@@ -667,6 +670,7 @@ export class EventsService {
   }
 
   static async getStats(eventId: string) {
+    const reconciled = await FinanceService.summary(eventId);
     const event = await prisma.event.findUnique({
       where: { id: eventId },
       include: { settings: true },
@@ -870,9 +874,9 @@ export class EventsService {
         attendanceRate,
       },
       finances: {
-        confirmedRevenue,
-        pendingRevenue,
-        totalExpected,
+        confirmedRevenue: reconciled.netAccredited,
+        pendingRevenue: reconciled.receivable,
+        totalExpected: reconciled.expectedActive,
         currencySymbol: event.settings?.currencySymbol || 'RD$',
       },
       tickets: ticketBreakdown,

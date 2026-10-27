@@ -1,3 +1,5 @@
+import { api } from '../services/api';
+import { TicketType } from '../types';
 import React, { useState, useEffect, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
@@ -45,18 +47,22 @@ const SYSTEM_FIELDS: SystemFieldDef[] = [
   { key: 'fullName', label: 'Nombre Completo', required: false, description: 'Nombres y apellidos juntos en una sola columna' },
   { key: 'firstName', label: 'Nombres', required: false, description: 'Primer y segundo nombre del asistente' },
   { key: 'lastName', label: 'Apellidos', required: false, description: 'Apellidos completos del participante' },
-  { key: 'email', label: 'Correo Electrónico', required: true, description: 'Correo institucional o personal único' },
+  { key: 'email', label: 'Correo Electrónico', required: true, description: 'Correo de contacto; puede ser compartido por varios participantes' },
   { key: 'documentId', label: 'Cédula / Documento', required: false, description: 'Cédula dominicana (11 dígitos) o pasaporte' },
   { key: 'phone', label: 'Teléfono Principal', required: false, description: 'Celular o teléfono de contacto' },
   { key: 'alternatePhone', label: 'Teléfono Alterno', required: false, description: 'Contacto secundario' },
   { key: 'institution', label: 'Institución / Empresa', required: false, description: 'Universidad, empresa o centro educativo' },
+  { key: 'organizationRnc', label: 'RNC de la organización', required: false, description: 'Identificación fiscal de la empresa; nunca identifica al participante' },
+  { key: 'participantCategory', label: 'Categoría del participante', required: false, description: 'Se conserva separada de la tarifa' },
+  { key: 'waitlistFlag', label: 'Lista de espera', required: false, description: 'SÍ / NO; no acredita pagos ni asistencia' },
+  { key: 'paidFullIndicator', label: 'Pago Total: SÍ / NO', required: false, description: 'Indicador booleano externo. SÍ acredita la tarifa aplicable sin duplicar pagos; NO conserva los abonos existentes' },
   { key: 'ticketType', label: 'Tipo de Entrada', required: false, description: 'General, VIP, Estudiante, etc.' },
   { key: 'externalPaymentStatus', label: 'Estado de pago externo', required: false, description: 'Estado informado por la plataforma; se conserva sin sustituir el balance calculado' },
   { key: 'externalReference', label: 'Referencia externa / Ticket de origen', required: false, description: 'Se conserva separada del número interno automático' },
   { key: 'externalPlatform', label: 'Plataforma / origen', required: false, description: 'Origen de la compra externa' },
   { key: 'buyerName', label: 'Comprador', required: false, description: 'Comprador original, distinto del participante e importador' },
   { key: 'paymentMethod', label: 'Forma de Pago', required: false, description: 'Efectivo, Tarjeta, Transferencia, Cortesía, etc.' },
-  { key: 'totalAmount', label: 'Pago Total (RD$)', required: false, description: 'Monto pagado en pesos dominicanos' },
+  { key: 'totalAmount', label: 'Importe monetario acumulado (RD$)', required: false, description: 'Monto pagado en pesos dominicanos' },
   { key: 'salesResponsible', label: 'Responsable de Venta', required: false, description: 'Persona o comité receptor del pago' },
   { key: 'status', label: 'Estado Confirmación', required: false, description: 'CONFIRMED, PENDING, ATTENDED o CANCELLED' },
   { key: 'attended', label: 'Asistencia / Check-in', required: false, description: 'Indica si el participante ya asistió físicamente' },
@@ -82,6 +88,8 @@ export const ImportPage: React.FC = () => {
 
   // Mapeo de columnas (Paso 3)
   // Formato: { "Nombres": "firstName", "Correo": "email", ... }
+  const [batchTickets, setBatchTickets] = useState<TicketType[]>([]);
+  const [approvedBatchTicket, setApprovedBatchTicket] = useState('');
   const [batchDefaults, setBatchDefaults] = useState<Record<string, string>>({});
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
 
@@ -113,6 +121,12 @@ export const ImportPage: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let active = true; setBatchTickets([]); setApprovedBatchTicket(''); setBatchDefaults({});
+    if (currentEvent?.id) void api.get(`/events/${currentEvent.id}`).then(res => { if (active) setBatchTickets(res.data.data?.ticketTypes || []); }).catch(() => {});
+    return () => { active = false; };
+  }, [currentEvent?.id]);
 
   // Cargar historial de lotes al montar
   useEffect(() => {
@@ -213,6 +227,10 @@ export const ImportPage: React.FC = () => {
         }
       });
       setColumnMapping(initialMap);
+      if (Object.values(initialMap).includes('paidFullIndicator')) {
+        setBatchDefaults(previous => ({ ...previous, externalPlatform: previous.externalPlatform || 'Universidad' }));
+        setConflictStrategy('UPDATE');
+      }
       setCurrentStep(2);
     } catch (err: any) {
       setErrorMessage(err.response?.data?.message || 'Error al analizar el archivo Excel');
@@ -574,6 +592,10 @@ export const ImportPage: React.FC = () => {
             <p className="sm:col-span-2 text-xs text-muted-foreground">Valores del lote: se usan solo donde la fila no tiene información. El importador no se asigna como vendedor. El número interno siempre es automático.</p>
             {([{key:'externalPlatform',label:'Plataforma / origen'}, {key:'salesResponsible',label:'Responsable comercial'}, {key:'buyerName',label:'Comprador'}, {key:'paymentMethod',label:'Forma de pago'}]).map(field => <label key={field.key} className="text-xs">{field.label}<input className="input-field text-base" maxLength={100} value={batchDefaults[field.key] || ''} onChange={e => setBatchDefaults(previous => ({...previous,[field.key]:e.target.value}))} /></label>)}
           </div>
+          {hasRole(['ADMIN']) && <div className="p-4 rounded-xl bg-card border border-border space-y-2">
+            <label className="block text-sm">Regla administrativa de tarifa para este lote<select className="input-field text-base" value={approvedBatchTicket} onChange={e => { setApprovedBatchTicket(e.target.value); setBatchDefaults(previous => { const { ticketTypeId, tariffApproved, ...rest } = previous; return rest; }); }}><option value="">Sin regla: usar evidencia inequívoca o dejar en revisión</option>{batchTickets.filter(t => t.isActive && Number(t.price) > 0).map(t => <option key={t.id} value={t.id}>{t.name} · RD$ {Number(t.price).toFixed(2)}</option>)}</select></label>
+            {approvedBatchTicket && <label className="flex gap-2 text-sm"><input type="checkbox" checked={batchDefaults.tariffApproved === 'true'} onChange={e => setBatchDefaults(previous => { const { ticketTypeId, tariffApproved, ...rest } = previous; return e.target.checked ? { ...rest, ticketTypeId: approvedBatchTicket, tariffApproved: 'true' } : rest; })} />Confirmo documentalmente esta tarifa para los registros nuevos del lote. No cambia precios históricos.</label>}
+          </div>}
           <div className="p-5 rounded-2xl bg-card border border-border space-y-4">
             <div>
               <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">
@@ -689,6 +711,12 @@ export const ImportPage: React.FC = () => {
       {/* ======================================================== */}
       {/* PASO 4: RESULTADO DE VALIDACIÓN                          */}
       {/* ======================================================== */}
+      {currentStep === 4 && validationResult?.reconciliation && <div className="card p-4 text-sm space-y-2" role="status">
+        <p className="font-semibold">Vista previa de conciliación externa</p>
+        <p>Nuevos: {validationResult.reconciliation.newRecords} · Cambios de NO a SÍ: {validationResult.reconciliation.paidTransitions} · Discrepancias para revisión: {validationResult.reconciliation.discrepancies}</p>
+        <p>Registros ausentes del archivo que se conservarán: {validationResult.reconciliation.absentRecords.length}. Las discrepancias no eliminan pagos ni cambian tarifas históricas.</p>
+        <p>Los pagos externos se acreditan a la universidad y no a la caja de recepción. Importar no envía correos.</p>
+      </div>}
       {currentStep === 4 && validationResult && (
         <div className="space-y-6 animate-in fade-in">
           {/* Tarjetas KPI de Validación */}
@@ -790,6 +818,7 @@ export const ImportPage: React.FC = () => {
                         </td>
                         <td className="p-2.5 font-bold text-foreground">
                           {item.normalized.firstName} {item.normalized.lastName}
+                          <span className="block text-[11px] font-normal text-muted-foreground">Origen: {item.normalized.externalPlatform} · Ref. {item.normalized.externalReference || 'Sin referencia'}</span>
                         </td>
                         <td className="p-2.5 text-foreground font-mono text-[11px]">
                           {item.normalized.email || '—'}
@@ -815,6 +844,8 @@ export const ImportPage: React.FC = () => {
                           )}
                         </td>
                         <td className="p-2.5 text-[11px]">
+                          <p>{({ NEW: 'Nuevo', EXISTING: 'Ya registrado', UNPAID_TO_PAID: 'Conciliar NO → SÍ', PAID_TO_UNPAID: 'SÍ → NO: conservar pagos y revisar', IDENTITY_CONFLICT: 'Identidad en conflicto: no fusionar' } as Record<string,string>)[item.normalized.reconciliation] || ''}</p>
+                          <p>{item.normalized.tariffNeedsReview ? 'Tarifa ambigua: revisión administrativa, sin acreditar dinero' : `Tarifa histórica/aplicable: RD$ ${Number(item.normalized.applicableTicketPrice || 0).toFixed(2)}`} · Pago Total: {item.normalized.paidFullIndicator || 'UNKNOWN'}</p>
                           {item.errors.length > 0 ? (
                             <span className="text-rose-400 font-semibold">{item.errors.join('; ')}</span>
                           ) : item.isDuplicateInDb ? (
@@ -862,7 +893,7 @@ export const ImportPage: React.FC = () => {
                 Resolución de Conflictos y Duplicados
               </h3>
               <p className="text-xs text-muted-foreground mt-1">
-                Se detectaron <strong>{validationResult.duplicateRows} registros</strong> que ya existen en <strong>{currentEvent?.name}</strong> (por correo, cédula o ticket). Selecciona cómo debe proceder la importación:
+                Se detectaron <strong>{validationResult.duplicateRows} registros</strong> que ya existen en <strong>{currentEvent?.name}</strong> (por referencia externa o documento; el correo compartido no une personas). Selecciona cómo debe proceder la importación:
               </p>
             </div>
 

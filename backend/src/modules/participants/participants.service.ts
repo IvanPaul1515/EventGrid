@@ -1,3 +1,4 @@
+import { FinanceService } from '../finance/finance.service.js';
 import { recordCourtesyRequest } from './courtesy.policy.js';
 import { officialTicket, authorizeCourtesy, auditCourtesy } from './registrationPolicy.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
@@ -69,6 +70,7 @@ export class ParticipantsService {
       const orClauses: any[] = [
         { participantId: { in: await participantNameIds(prisma, eventId, s) } },
         { registrationNumber: { contains: s } },
+        { externalReference: { contains: s } },
         { qrCode: { contains: s } },
         { participant: { fullName: { contains: s } } },
         { participant: { firstName: { contains: s } } },
@@ -232,6 +234,7 @@ export class ParticipantsService {
           include: {
             paymentMethod: true,
             receivedByUser: { select: { id: true, fullName: true, email: true } },
+            recordedByUser: { select: { id: true, fullName: true, email: true } },
           },
           orderBy: { createdAt: 'desc' },
         },
@@ -334,8 +337,9 @@ export class ParticipantsService {
   /**
    * Crear nueva inscripción en la edición activa
    */
-  static async create(eventId: string, input: CreateRegistrationInput, actorId?: string, request?: { key: string; reason: string }) {
+  static async create(eventId: string, input: CreateRegistrationInput, actorId?: string, request?: { key: string; reason: string; exceptionType?: 'COURTESY' | 'SPONSOR' | 'GUEST' | 'AGREEMENT'; agreementReference?: string }) {
     if ((input.status as string) === 'ATTENDED') throw new BadRequestError('La asistencia solo puede confirmarse mediante check-in autorizado.');
+    if (input.status === 'CANCELLED') throw new BadRequestError('Cree el registro vigente y use la cancelación administrativa con motivo e historial.');
     const reservedNumber = await ParticipantsService.getNextRegistrationNumber(eventId);
     return writeTransaction(async tx => {
     const prisma = tx;
@@ -544,7 +548,7 @@ export class ParticipantsService {
     if (request && actorId) {
       const changes = { createdByUserId: actorId, action: 'CREATE_PENDING_COURTESY_REGISTRATION' };
       await tx.auditLog.create({ data: { userId: actorId, action: 'CREATE', entity: 'REGISTRATION', entityId: registration.id, changes: (process.env.DATABASE_URL?.startsWith('file:') ? JSON.stringify(changes) : changes) as any } });
-      await recordCourtesyRequest(tx, eventId, registration, actorId, request.reason, request.key);
+      await recordCourtesyRequest(tx, eventId, registration, actorId, request.reason, request.key, request);
     }
     if (approval) await auditCourtesy(tx, eventId, registration.id, actorId, approval, true);
     return registration;
@@ -571,6 +575,8 @@ export class ParticipantsService {
     if (!existing) {
       throw new NotFoundError('Inscripción no encontrada en la edición activa');
     }
+
+    if ((input.status === 'CANCELLED' && existing.status !== 'CANCELLED') || (existing.status === 'CANCELLED' && input.status && input.status !== 'CANCELLED')) throw new BadRequestError('Utilice la operación administrativa de cancelación o reactivación; la edición de la ficha no sustituye sus controles.');
 
     const numberChanged = Boolean(input.registrationNumber && input.registrationNumber !== existing.registrationNumber);
     const responsibleChanged = (input.salesResponsibleId !== undefined && input.salesResponsibleId !== existing.salesResponsibleId) || (input.commercialUserId !== undefined && input.commercialUserId !== existing.commercialUserId);
@@ -1007,6 +1013,7 @@ export class ParticipantsService {
         include: {
           paymentMethod: true,
           receivedByUser: { select: { id: true, fullName: true, email: true } },
+            recordedByUser: { select: { id: true, fullName: true, email: true } },
         },
       }),
       prisma.registration.update({
@@ -1046,45 +1053,16 @@ export class ParticipantsService {
    * REGLA: No borra datos ni pagos históricos, ni genera reembolsos automáticos.
    */
   static async cancelRegistration(eventId: string, registrationId: string, reason: string, adminUserId: string) {
-    const registration = await prisma.registration.findFirst({
-      where: { id: registrationId, eventId },
-      include: { participant: true },
-    });
-
-    if (!registration) {
-      throw new NotFoundError('Inscripción no encontrada en la edición activa');
-    }
-
-    if (registration.status === 'CANCELLED') {
-      throw new BadRequestError('La inscripción ya se encuentra cancelada');
-    }
-
-    const noteEntry = `[CANCELACIÓN ${new Date().toLocaleString('es-DO')}]: ${reason}`;
-    const newNotes = registration.notes ? `${registration.notes}\n${noteEntry}` : noteEntry;
-
-    const updated = await prisma.registration.update({
-      where: { id: registrationId },
-      data: {
-        status: 'CANCELLED',
-        notes: newNotes,
-        updatedByUserId: adminUserId,
-      },
-      include: {
-        participant: true,
-        ticketType: true,
-      },
-    });
-
-    return {
-      ...updated,
-      previousTshirtSize: registration.tshirtSize || null,
-    };
+    return writeTransaction(tx => FinanceService.cancel(tx, eventId, adminUserId, registrationId, reason, 'VOLUNTARY'));
   }
 
   /**
    * Reactivar inscripción cancelada (Solo ADMIN)
    */
   static async reactivateRegistration(eventId: string, registrationId: string, reason: string, adminUserId: string) {
+    return writeTransaction(async tx => {
+    const prisma = tx;
+    await FinanceService.admin(tx, adminUserId, eventId);
     const registration = await prisma.registration.findFirst({
       where: { id: registrationId, eventId },
       include: { participant: true },
@@ -1094,6 +1072,7 @@ export class ParticipantsService {
       throw new NotFoundError('Inscripción no encontrada en la edición activa');
     }
 
+    if (await prisma.refundRequest.findFirst({ where: { registrationId, status: 'REFUNDED' } })) throw new BadRequestError('Tiene reembolsos confirmados. Requiere regularización financiera antes de reactivar.');
     if (registration.status !== 'CANCELLED') {
       throw new BadRequestError('Solo se pueden reactivar inscripciones en estado CANCELADO');
     }
@@ -1120,6 +1099,7 @@ export class ParticipantsService {
       ...updated,
       previousTshirtSize: registration.tshirtSize || null,
     };
+    });
   }
 
   /**
@@ -1137,6 +1117,7 @@ export class ParticipantsService {
       throw new NotFoundError('Inscripción no encontrada en la edición activa');
     }
 
+    if (registration.attended || registration.status === 'CANCELLED') throw new BadRequestError('No puede asignar cortesía a una entrada cancelada o con asistencia confirmada.');
     if (Number(registration.amountPaid) > 0) throw new BadRequestError('No se puede convertir a cortesía una inscripción con pagos registrados.');
     const approval = await authorizeCourtesy(prisma, eventId, adminUserId, input.reason);
     // Buscar tipo de entrada cortesía si existe
@@ -1201,6 +1182,7 @@ export class ParticipantsService {
         include: {
           paymentMethod: true,
           receivedByUser: { select: { id: true, fullName: true, email: true } },
+            recordedByUser: { select: { id: true, fullName: true, email: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -1416,6 +1398,7 @@ export class ParticipantsService {
       whereClause.OR = [
         { participantId: { in: await participantNameIds(prisma, eventId, s) } },
         { registrationNumber: { contains: s } },
+        { externalReference: { contains: s } },
         { participant: { fullName: { contains: s } } },
         { participant: { email: { contains: s } } },
         { participant: { documentId: { contains: s } } },

@@ -9,7 +9,7 @@ export async function recordCourtesyRequest(tx: Prisma.TransactionClient, eventI
     amountPaid: unknown;
     attended: boolean;
     status: string;
-}, userId: string, reason: string, key: string) {
+}, userId: string, reason: string, key: string, exception: { exceptionType?: 'COURTESY' | 'SPONSOR' | 'GUEST' | 'AGREEMENT'; agreementReference?: string } = {}) {
     const user = await tx.user.findUnique({ where: { id: userId } });
     if (!user?.isActive || user.role !== 'OPERATOR' || user.accountStatus === 'PENDING')
         throw new ForbiddenError('Solo un operador puede solicitar una cortesía.');
@@ -21,7 +21,7 @@ export async function recordCourtesyRequest(tx: Prisma.TransactionClient, eventI
             throw new ConflictError('Otro operador ya solicitó la cortesía de esta inscripción.');
         return pending;
     }
-    const result = await tx.courtesyRequest.create({ data: { eventId, registrationId: registration.id, pendingRegistrationId: registration.id, requestedByUserId: userId, reason: reason.trim(), requestKey: key } });
-    await courtesyAudit(tx, userId, registration.id, { action: 'REQUEST_COURTESY', requestId: result.id, requestedByUserId: userId, reason: result.reason, status: result.status });
+    const result = await tx.courtesyRequest.create({ data: { eventId, registrationId: registration.id, pendingRegistrationId: registration.id, requestedByUserId: userId, reason: reason.trim(), requestKey: key, exceptionType: exception.exceptionType || 'COURTESY', agreementReference: exception.agreementReference || null } });
+    await courtesyAudit(tx, userId, registration.id, { action: 'REQUEST_COURTESY', requestId: result.id, requestedByUserId: userId, reason: result.reason, status: result.status, exceptionType: result.exceptionType, agreementReference: result.agreementReference });
     return result;
 }

@@ -1,3 +1,4 @@
+import { executeReconciledImport } from './reconciliation-import.service.js';
 import { officialTicket } from '../participants/registrationPolicy.js';
 import { prisma } from '../../config/db.js';
 import { BadRequestError, NotFoundError } from '../../utils/errors.js';
@@ -27,8 +28,12 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
   ],
   documentId: [
     'doc. identidad', 'doc identidad', 'doc_identidad', 'documento', 'cédula', 'cedula',
-    'identificación', 'identificacion', 'pasaporte', 'id', 'rnc', 'cédula / pasaporte'
+    'identificación', 'identificacion', 'pasaporte', 'id', 'cédula / pasaporte'
   ],
+  organizationRnc: ['rnc', 'rnc empresa', 'rnc de empresa'],
+  participantCategory: ['categoria', 'categoría', 'categoria participante', 'tipo participante'],
+  waitlistFlag: ['lista de espera', 'en espera', 'waitlist'],
+  paidFullIndicator: ['pago total', 'pago_total', 'pago completo', 'pagado completo'],
   email: [
     'email', 'e-mail', 'correo', 'correo electrónico', 'correo electronico', 'correo_electronico',
     'mail', 'e_mail'
@@ -42,11 +47,11 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
   ],
   institution: [
     'institución', 'institucion', 'empresa', 'universidad', 'colegio', 'company',
-    'organization', 'organización', 'organizacion', 'centro educativo', 'lugar de trabajo', 'instituto'
+    'organization', 'organización', 'organizacion', 'organizacion empresa', 'organización/empresa', 'centro educativo', 'lugar de trabajo', 'instituto'
   ],
   ticketType: [
     'tipo de entrada', 'tipo entrada', 'tipo_de_entrada', 'tipo_entrada', 'ticket type',
-    'tipo ticket', 'tarifa', 'categoría', 'categoria'
+    'tipo ticket', 'tarifa'
   ],
   ticketPrice: [
     'precio entrada', 'precio de entrada', 'precio_entrada', 'valor ticket', 'costo entrada', 'tarifa entrada'
@@ -59,7 +64,7 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
     'metodo pago', 'metodo_pago', 'payment method', 'tipo pago'
   ],
   totalAmount: [
-    'pago total', 'pago_total', 'total', 'monto', 'monto pagado', 'monto_pagado',
+    'total monetario', 'total', 'monto',
     'precio', 'amount', 'total pagado', 'valor'
   ],
   salesResponsible: [
@@ -90,9 +95,10 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
 
 function normalizeHeader(header: string): string {
   return header
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
-    .replace(/[_-]/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .replace(/\s+/g, ' ');
 }
 
@@ -121,9 +127,7 @@ export function normalizeDocumentId(raw: any): string | null {
   const digits = str.replace(/\D/g, '');
   if (digits.length === 11) {
     return `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10, 11)}`;
-  } else if (digits.length === 10) {
-    const padded = digits.padStart(11, '0');
-    return `${padded.slice(0, 3)}-${padded.slice(3, 10)}-${padded.slice(10, 11)}`;
+
   }
   return str;
 }
@@ -208,7 +212,7 @@ export class ImportService {
           if (typeof cell !== 'string' || !cell.trim()) continue;
           const norm = normalizeHeader(cell);
           for (const key of Object.keys(ALIAS_DICTIONARY)) {
-            if (ALIAS_DICTIONARY[key].includes(norm)) {
+            if (ALIAS_DICTIONARY[key].some(alias => normalizeHeader(alias) === norm)) {
               matches++;
               break;
             }
@@ -223,9 +227,14 @@ export class ImportService {
     }
 
     const headerRow = rawMatrix[detectedHeaderIdx] || [];
+    const usedHeaders = new Set<string>();
     const columns: string[] = headerRow.map((col, idx) => {
       const s = String(col).trim();
-      return s !== '' ? s : `Columna_${idx + 1}`;
+      const base = s !== '' ? s : `Columna_${idx + 1}`;
+      let key = base, suffix = 2;
+      while (usedHeaders.has(key)) key = `${base}_${suffix++}`;
+      usedHeaders.add(key);
+      return key;
     });
 
     // Asociación automática de columnas por alias
@@ -233,7 +242,7 @@ export class ImportService {
     for (const col of columns) {
       const norm = normalizeHeader(col);
       for (const [targetField, aliases] of Object.entries(ALIAS_DICTIONARY)) {
-        if (aliases.includes(norm)) {
+        if (aliases.some(alias => normalizeHeader(alias) === norm)) {
           // Si encontramos match directo y el campo destino aún no está tomado
           if (!Object.values(autoMapping).includes(targetField)) {
             autoMapping[col] = targetField;
@@ -244,18 +253,16 @@ export class ImportService {
     }
 
     // Extraer datos usando la fila de cabecera detectada
-    const rawJsonRows: any[] = XLSX.utils.sheet_to_json(worksheet, {
-      range: detectedHeaderIdx,
-      defval: '',
-      blankrows: false,
-      raw: false,
+    const rawJsonRows = rawMatrix.slice(detectedHeaderIdx + 1).map(row => Object.fromEntries(columns.map((column, index) => [column, row[index] ?? ''])));
+    const validRows = rawJsonRows.filter(row => {
+      const values = Object.values(row).map(v => String(v).trim()).filter(Boolean);
+      if (!values.length) return false;
+      const hasEmail = values.some(v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v));
+      const footer = values.some(v => /^(total( de)? (participantes|registros|inscritos)|total general|subtotal)\b/i.test(normalizeHeader(v)));
+      return hasEmail || !footer;
     });
-
-    // Filtrar filas completamente vacías
-    const validRows = rawJsonRows.filter((r) => {
-      const values = Object.values(r).map((v) => String(v).trim()).filter((v) => v !== '');
-      return values.length > 0;
-    });
+    const columnProfiles = columns.map(column => ({ column, generatedHeader: /^Columna_\d+$/.test(column), nonempty: validRows.filter(row => String(row[column]).trim()).length }));
+    for (const profile of columnProfiles) if (!profile.nonempty) autoMapping[profile.column] = 'IGNORE';
 
     return {
       fileName,
@@ -264,6 +271,8 @@ export class ImportService {
       headerRowIndex: detectedHeaderIdx,
       columns,
       autoMapping,
+      columnProfiles,
+      ignoredRows: rawJsonRows.length - validRows.length,
       totalRows: validRows.length,
       previewRows: validRows.slice(0, 10),
       rows: validRows,
@@ -278,6 +287,7 @@ export class ImportService {
       where: { id: eventId },
       include: {
         paymentMethods: true,
+        ticketTypes: true,
         registrations: {
           include: { participant: true },
         },
@@ -387,13 +397,16 @@ export class ImportService {
         }
       }
 
-      // 2. Normalizar montos
-      const amount = parseMoney(normalized.totalAmount);
-      const ticketPrice = parseMoney(normalized.ticketPrice);
-      const amountPaid = parseMoney(normalized.amountPaid);
-      normalized.totalAmount = amount;
-      normalized.ticketPrice = ticketPrice;
-      normalized.amountPaid = amountPaid;
+      const yesNo = (value: unknown) => ['si','yes','true','1'].includes(normalizeHeader(String(value ?? ''))) ? 'YES' : ['no','false','0'].includes(normalizeHeader(String(value ?? ''))) ? 'NO' : 'UNKNOWN';
+      normalized.paidFullIndicator = yesNo(normalized.paidFullIndicator);
+      normalized.waitlistState = yesNo(normalized.waitlistFlag);
+      for (const key of ['totalAmount','ticketPrice','amountPaid']) {
+        const original = normalized[key];
+        normalized[key + 'Provided'] = original !== undefined && String(original).trim() !== '';
+        if (normalized[key + 'Provided'] && (/[a-záéíóú]/i.test(String(original).replace(/RD|DOP/gi,'')) || !/[0-9]/.test(String(original)))) errors.push('La columna monetaria ' + key + ' no contiene un importe. Use el indicador Pago Total para SÍ/NO.');
+        normalized[key] = parseMoney(original);
+        if (normalized[key] < 0 || !Number.isFinite(normalized[key]) || Math.abs(normalized[key]*100-Math.round(normalized[key]*100))>0.00001) errors.push('Importe inválido en ' + key);
+      }
 
       // 3. Reglas de Cortesía
       let isCourtesy = false;
@@ -423,13 +436,6 @@ export class ImportService {
       if (isAttendedFromFile) errors.push('La asistencia no puede importarse: confirme el ingreso mediante check-in.');
 
       // 5. Detección de duplicados internos dentro de este mismo Excel
-      if (normalized.email) {
-        if (seenEmailsInFile.has(normalized.email)) {
-          errors.push(`Correo repetido en la fila ${seenEmailsInFile.get(normalized.email)} de este mismo archivo`);
-        } else {
-          seenEmailsInFile.set(normalized.email, rowNum);
-        }
-      }
 
       if (normalized.documentId) {
         const docTrim = normalized.documentId.trim();
@@ -440,16 +446,29 @@ export class ImportService {
         }
       }
 
-      // 6. Detección de duplicados contra la base de datos de ESTA edición
-      if (normalized.email && existingEmailsInDb.has(normalized.email)) {
-        isDuplicateInDb = true;
-        const reg = event.registrations.find((r) => r.participant.email?.toLowerCase() === normalized.email);
-        existingTicket = reg?.registrationNumber;
-      } else if (normalized.documentId && existingDocsInDb.has(normalized.documentId.trim())) {
-        isDuplicateInDb = true;
-        const reg = event.registrations.find((r) => r.participant.documentId === normalized.documentId.trim());
-        existingTicket = reg?.registrationNumber;
-      }
+      const documentKey = (value: string) => String(value || '').toUpperCase().replace(/[\s-]/g, '');
+      const byReference = normalized.externalReference ? event.registrations.find(r => r.externalReference === normalized.externalReference && r.externalPlatform === normalized.externalPlatform) : undefined;
+      const documentMatches = normalized.documentId ? event.registrations.filter(r => documentKey(r.participant.documentId || '') === documentKey(normalized.documentId)) : [];
+      const matched = byReference || (documentMatches.length === 1 ? documentMatches[0] : undefined);
+      if (matched) {
+        isDuplicateInDb = true; existingTicket = matched.registrationNumber; normalized.existingRegistrationId = matched.id;
+        const documentConflict = byReference && normalized.documentId && matched.participant.documentId && documentKey(normalized.documentId) !== documentKey(matched.participant.documentId);
+        const referenceConflict = !byReference && normalized.externalReference && matched.externalReference && (matched.externalReference !== normalized.externalReference || matched.externalPlatform !== normalized.externalPlatform);
+        normalized.identityConflict = Boolean(documentConflict || referenceConflict || documentMatches.length > 1);
+        normalized.reconciliation = normalized.identityConflict ? 'IDENTITY_CONFLICT' : matched.paymentFullReported === 'YES' && normalized.paidFullIndicator === 'NO' ? 'PAID_TO_UNPAID' : normalized.paidFullIndicator === 'YES' && matched.paymentStatus !== 'PAID' ? 'UNPAID_TO_PAID' : 'EXISTING';
+        normalized.personalChanges = ['firstName','lastName','email','phone','institution'].filter(key => normalized[key] && normalized[key] !== (matched.participant as any)[key]);
+        normalized.methodChanged = Boolean(normalized.paymentMethod && matched.externalPaymentMethod && normalized.paymentMethod !== matched.externalPaymentMethod);
+      } else if (normalized.email && event.registrations.some(r => r.participant.email.toLowerCase() === normalized.email && !normalized.documentId && !normalized.externalReference)) {
+        normalized.identityConflict = true; normalized.reconciliation = 'IDENTITY_CONFLICT';
+      } else normalized.reconciliation = 'NEW';
+
+      const paidTickets = event.ticketTypes.filter(t => t.isActive && Number(t.price) > 0);
+      const approvedTicket = batchDefaults.tariffApproved === 'true' ? paidTickets.find(t => t.id === batchDefaults.ticketTypeId) : undefined;
+      const namedTicket = normalized.ticketType ? paidTickets.find(t => t.name.toLowerCase() === String(normalized.ticketType).toLowerCase()) : undefined;
+      const applicablePrice = matched ? Number(matched.ticketPrice) : normalized.ticketPriceProvided ? normalized.ticketPrice : Number((approvedTicket || namedTicket || (paidTickets.length === 1 ? paidTickets[0] : undefined))?.price || 0);
+      normalized.applicableTicketPrice = applicablePrice;
+      normalized.tariffNeedsReview = !matched && applicablePrice <= 0;
+      normalized.forecastExternalPaid = normalized.paidFullIndicator === 'YES' && applicablePrice > 0 ? applicablePrice : null;
 
       // Clasificación de estado de fila
       let rowStatus: 'VALID' | 'DUPLICATE' | 'ERROR' = 'VALID';
@@ -480,6 +499,12 @@ export class ImportService {
       duplicateRows: duplicateCount,
       errorRows: errorCount,
       rowsSummary,
+      reconciliation: {
+        newRecords: rowsSummary.filter(r => r.normalized.reconciliation === 'NEW').length,
+        paidTransitions: rowsSummary.filter(r => r.normalized.reconciliation === 'UNPAID_TO_PAID').length,
+        discrepancies: rowsSummary.filter(r => r.normalized.identityConflict || r.normalized.reconciliation === 'PAID_TO_UNPAID' || r.normalized.methodChanged).length,
+        absentRecords: event.registrations.filter(r => r.source === 'EXCEL_IMPORT' && rowsSummary.some(row => row.normalized.externalPlatform === r.externalPlatform) && !rowsSummary.some(row => row.normalized.existingRegistrationId === r.id || (row.normalized.externalReference === r.externalReference && row.normalized.externalPlatform === r.externalPlatform))).map(r => ({ id: r.id, registrationNumber: r.registrationNumber, action: 'PRESERVED' })),
+      },
     };
   }
 
@@ -496,355 +521,9 @@ export class ImportService {
     conflictStrategy: 'SKIP' | 'UPDATE' | 'ONLY_NEW' = 'SKIP',
     batchDefaults: Record<string, string> = {}
   ) {
-    const event = await prisma.event.findUnique({
-      where: { id: eventId },
-      include: {
-        settings: true,
-        paymentMethods: true,
-        salesResponsibles: true,
-        ticketTypes: true,
-      },
-    });
-    if (!event) throw new NotFoundError('Edición no encontrada');
-
-    // 1. Validar filas antes de escribir
     const validation = await this.validateRows(eventId, rows, columnMapping, batchDefaults);
-
-    // Importing a spreadsheet is not administrative approval of a courtesy.
-    if (validation.rowsSummary.some(row => row.status !== 'ERROR' && (row.normalized?.isCourtesy || (row.normalized?.ticketType && event.ticketTypes.some(t => t.name.toLowerCase().includes(String(row.normalized.ticketType).trim().toLowerCase()) && Number(t.price)<=0))))) {
-      throw new BadRequestError('Las cortesías requieren aprobación administrativa individual desde el registro manual o la ficha del participante.');
-    }
-
-    if (!officialTicket(event.ticketTypes,event.defaultTicketTypeId) && validation.rowsSummary.some(row => row.status!=='ERROR' && !row.normalized?.ticketType && !(Number(row.normalized?.ticketPrice)>0))) throw new BadRequestError('Configure una tarifa oficial o especifique el precio histórico válido antes de importar.');
-
-    // 2. Crear lote de importación (ImportBatch)
-    const batch = await prisma.importBatch.create({
-      data: {
-        eventId,
-        importedByUserId: userId,
-        fileName,
-        fileSize,
-        totalRows: rows.length,
-        validRows: validation.validRows,
-        importedRows: 0,
-        updatedRows: 0,
-        skippedRows: 0,
-        errorRows: validation.errorRows,
-        mappingConfig: JSON.stringify(columnMapping),
-      },
-    });
-
-    let importedCount = 0;
-    let updatedCount = 0;
-    let skippedCount = 0;
-    let errorCount = 0;
-    const errorsToRecord: Array<{ rowNumber: number; fieldName: string; errorMessage: string; rawRowData: any }> = [];
-
-    // Catálogo en memoria de métodos de pago y responsables para evitar consultas repetitivas
-    const paymentMethodsMap = new Map<string, string>();
-    for (const pm of event.paymentMethods) {
-      paymentMethodsMap.set(pm.name.toLowerCase().trim(), pm.id);
-    }
-
-    const salesResponsiblesMap = new Map<string, string>();
-    for (const sr of event.salesResponsibles) {
-      salesResponsiblesMap.set(sr.name.toLowerCase().trim(), sr.id);
-    }
-
-    const prefix = event.settings?.registrationPrefix || `BC${String(event.year).slice(-2)}-`;
-    let nextRegNum = (await prisma.registration.count({ where: { eventId } })) + 1;
-
-    // Procesamiento secuencial transaccional por fila
-    for (const item of validation.rowsSummary) {
-      if (item.status === 'ERROR') {
-        errorCount++;
-        errorsToRecord.push({
-          rowNumber: item.rowNumber,
-          fieldName: 'validation',
-          errorMessage: item.errors.join('; '),
-          rawRowData: item.raw,
-        });
-        continue;
-      }
-
-      const n = item.normalized;
-      if (n.attended || n.status === 'ATTENDED') { errorCount++; errorsToRecord.push({ rowNumber: item.rowNumber, fieldName: 'attended', errorMessage: 'La asistencia solo puede confirmarse mediante check-in.', rawRowData: item.raw }); continue; }
-
-      // Si es un duplicado en base de datos
-      if (item.isDuplicateInDb) {
-        if (conflictStrategy === 'SKIP' || conflictStrategy === 'ONLY_NEW') {
-          skippedCount++;
-          continue;
-        } else if (conflictStrategy === 'UPDATE') {
-          // Estrategia Actualizar: buscar registro existente y actualizarlo
-          try {
-            const existingReg = await prisma.registration.findFirst({
-              where: {
-                eventId,
-                OR: [
-                  { participant: { email: n.email } },
-                  ...(n.documentId ? [{ participant: { documentId: n.documentId } }] : []),
-                  ...(n.externalReference ? [{ externalReference: n.externalReference, externalPlatform: n.externalPlatform }] : []),
-                ],
-              },
-              include: { participant: true },
-            });
-
-            if (existingReg) {
-              const qrUpdate = !existingReg.qrCode ? {
-                qrCode: `eg_qr_${crypto.randomBytes(16).toString('hex')}`,
-                qrGeneratedAt: new Date(),
-              } : {};
-
-              await prisma.registration.update({
-                where: { id: existingReg.id },
-                data: {
-
-                  notes: n.notes || existingReg.notes,
-                  ...qrUpdate,
-                },
-              });
-
-              // Actualizar datos del participante físico si hay nuevos
-              await prisma.participant.update({
-                where: { id: existingReg.participantId },
-                data: {
-                  firstName: n.firstName || existingReg.participant.firstName,
-                  lastName: n.lastName || existingReg.participant.lastName,
-                  fullName: `${n.firstName} ${n.lastName}`,
-                  phone: n.phone || existingReg.participant.phone,
-                  alternatePhone: n.alternatePhone || existingReg.participant.alternatePhone,
-                  documentId: n.documentId || existingReg.participant.documentId,
-                },
-              });
-
-              updatedCount++;
-              continue;
-            }
-          } catch (e: any) {
-            errorCount++;
-            errorsToRecord.push({
-              rowNumber: item.rowNumber,
-              fieldName: 'update',
-              errorMessage: e.message || 'Error al actualizar registro existente',
-              rawRowData: item.raw,
-            });
-            continue;
-          }
-        }
-      }
-
-      // Registro nuevo: Resolver o crear método de pago
-      let resolvedPaymentId: string | null = null;
-      if (n.paymentMethod && n.paymentMethod.trim() !== '') {
-        const pmKey = n.paymentMethod.toLowerCase().trim();
-        if (paymentMethodsMap.has(pmKey)) {
-          resolvedPaymentId = paymentMethodsMap.get(pmKey)!;
-        } else {
-          // Crear nuevo método de pago si no existe
-          try {
-            const newPm = await prisma.paymentMethod.create({
-              data: {
-                eventId,
-                name: n.paymentMethod.trim(),
-              },
-            });
-            paymentMethodsMap.set(pmKey, newPm.id);
-            resolvedPaymentId = newPm.id;
-          } catch {
-            resolvedPaymentId = null;
-          }
-        }
-      }
-
-      // Resolver o crear responsable de venta
-      let resolvedRespId: string | null = null;
-      if (n.salesResponsible && n.salesResponsible.trim() !== '') {
-        const srKey = n.salesResponsible.toLowerCase().trim();
-        if (salesResponsiblesMap.has(srKey)) {
-          resolvedRespId = salesResponsiblesMap.get(srKey)!;
-        } else {
-          try {
-            const newSr = await prisma.salesResponsible.create({
-              data: {
-                eventId,
-                name: n.salesResponsible.trim(),
-              },
-            });
-            salesResponsiblesMap.set(srKey, newSr.id);
-            resolvedRespId = newSr.id;
-          } catch {
-            resolvedRespId = null;
-          }
-        }
-      }
-
-      // Resolver o crear persona física
-      try {
-        let participant = null;
-        if (n.documentId) {
-          participant = await prisma.participant.findFirst({ where: { documentId: n.documentId } });
-        }
-        if (!participant && n.email) {
-          participant = await prisma.participant.findFirst({ where: { email: n.email } });
-        }
-
-        const fullName = `${n.firstName} ${n.lastName}`.trim();
-        if (participant) {
-          participant = await prisma.participant.update({
-            where: { id: participant.id },
-            data: {
-              firstName: n.firstName,
-              lastName: n.lastName,
-              fullName,
-              phone: n.phone || participant.phone,
-              alternatePhone: n.alternatePhone || participant.alternatePhone,
-              documentId: n.documentId || participant.documentId,
-              institution: n.institution || participant.institution,
-            },
-          });
-        } else {
-          participant = await prisma.participant.create({
-            data: {
-              firstName: n.firstName,
-              lastName: n.lastName,
-              fullName,
-              email: n.email,
-              documentId: n.documentId || null,
-              phone: n.phone || null,
-              alternatePhone: n.alternatePhone || null,
-              institution: n.institution || null,
-            },
-          });
-        }
-
-        // Resolver tipo de entrada de la edición
-        let matchedTicketType = null;
-        if (n.ticketType && n.ticketType.trim()) {
-          const ttQuery = n.ticketType.toLowerCase().trim();
-          matchedTicketType = event.ticketTypes.find((t) => t.name.toLowerCase().includes(ttQuery));
-        }
-        if (!matchedTicketType && event.ticketTypes.length > 0) {
-          if (n.isCourtesy) {
-            matchedTicketType = event.ticketTypes.find((t) => Number(t.price) === 0) || null;
-          } else {
-            matchedTicketType = officialTicket(event.ticketTypes,event.defaultTicketTypeId) || null;
-          }
-        }
-
-        const ticketPrice = n.isCourtesy
-          ? 0
-          : (n.ticketPrice ? Number(n.ticketPrice) : (matchedTicketType ? Number(matchedTicketType.price) : Number(n.totalAmount || 0)));
-        const amountPaid = n.isCourtesy
-          ? 0
-          : (n.amountPaid ? Number(n.amountPaid) : Number(n.totalAmount || 0));
-        const balanceDue = Math.max(0, ticketPrice - amountPaid);
-
-        // Every NEW import uses EventGrid's atomic sequence. Historical numbers are untouched.
-        const regNum = await ParticipantsService.getNextRegistrationNumber(eventId, event.year, prefix);
-
-        const paymentStatus = n.isCourtesy
-          ? 'COURTESY'
-          : balanceDue === 0 && amountPaid > 0
-          ? 'PAID'
-          : amountPaid > 0 && balanceDue > 0
-          ? 'PARTIAL'
-          : 'PENDING';
-
-        if (n.attended || n.status === 'ATTENDED') throw new BadRequestError('La asistencia debe confirmarse mediante check-in, no desde Excel.');
-        const isAttended = false;
-        const qrCode = `eg_qr_${crypto.randomBytes(16).toString('hex')}`;
-
-        // Crear inscripción vinculada al lote
-        const importedRegistration = await prisma.registration.create({
-          data: {
-            eventId,
-            participantId: participant.id,
-            registrationNumber: regNum,
-            source: 'EXCEL_IMPORT',
-            externalPaymentStatus: n.externalPaymentStatus ? String(n.externalPaymentStatus) : null,
-            externalReference: n.externalReference || null,
-            externalPlatform: n.externalPlatform || 'Excel',
-            buyerName: n.buyerName || null,
-            originLabel: n.externalPlatform || 'Excel',
-            createdByUserId: userId,
-            commercialUserId: null,
-            importBatchId: batch.id,
-            ticketTypeId: matchedTicketType ? matchedTicketType.id : null,
-            ticketPrice,
-            amountPaid,
-            balanceDue,
-            totalAmount: amountPaid,
-            isVerified: n.isCourtesy ? true : (n.isVerified === 'SÍ' || n.isVerified === 'true' || amountPaid > 0),
-            isCourtesy: n.isCourtesy || false,
-            courtesyAuthorizedBy: n.isCourtesy ? (n.courtesyAuthorizedBy || 'Comité Organizador') : null,
-            courtesyReason: n.isCourtesy ? (n.courtesyReason || 'Cortesía importada') : null,
-            courtesyDate: n.isCourtesy ? new Date() : null,
-            paymentMethodId: resolvedPaymentId,
-            paymentStatus,
-            salesResponsibleId: resolvedRespId,
-            status: isAttended ? 'CONFIRMED' : (n.status || (balanceDue === 0 || n.isCourtesy ? 'CONFIRMED' : 'PENDING')),
-            attended: isAttended,
-            attendedAt: isAttended ? new Date() : null,
-            attendedByUserId: isAttended ? userId : null,
-            qrCode,
-            qrGeneratedAt: new Date(),
-            notes: n.notes || null,
-            saleTimestamp: n.saleTimestamp ? parseExcelDate(n.saleTimestamp) : new Date(),
-          },
-        });
-
-        const changes = { importedByUserId: userId, origin: importedRegistration.originLabel, externalReference: importedRegistration.externalReference, salesResponsibleId: resolvedRespId, buyerName: importedRegistration.buyerName, amountPaid, ticketPrice, paymentStatus, paymentMethodId: resolvedPaymentId, isCourtesy: false };
-        await prisma.auditLog.create({ data: { userId, action: 'IMPORT', entity: 'REGISTRATION', entityId: importedRegistration.id, changes: (process.env.DATABASE_URL?.startsWith('file:') ? JSON.stringify(changes) : changes) as any } });
-        importedCount++;
-      } catch (err: any) {
-        errorCount++;
-        errorsToRecord.push({
-          rowNumber: item.rowNumber,
-          fieldName: 'database',
-          errorMessage: err.message || 'Error al persistir en base de datos',
-          rawRowData: item.raw,
-        });
-      }
-    }
-
-    // Guardar errores individuales si ocurrieron
-    if (errorsToRecord.length > 0) {
-      const isSqlite = process.env.DATABASE_URL?.startsWith('file:');
-      for (const err of errorsToRecord) {
-        await prisma.importError.create({
-          data: {
-            importBatchId: batch.id,
-            rowNumber: err.rowNumber,
-            fieldName: err.fieldName,
-            errorMessage: err.errorMessage,
-            rawRowData: isSqlite ? JSON.stringify(err.rawRowData) : (err.rawRowData as any),
-          },
-        });
-      }
-    }
-
-    // Actualizar resumen del lote
-    const updatedBatch = await prisma.importBatch.update({
-      where: { id: batch.id },
-      data: {
-        importedRows: importedCount,
-        updatedRows: updatedCount,
-        skippedRows: skippedCount,
-        errorRows: errorCount,
-      },
-    });
-
-    return {
-      batchId: batch.id,
-      fileName,
-      totalRows: rows.length,
-      importedCount,
-      updatedCount,
-      skippedCount,
-      errorCount,
-      errors: errorsToRecord,
-    };
+    if (validation.rowsSummary.some(row => row.normalized?.isCourtesy)) throw new BadRequestError('Las cortesías requieren aprobación administrativa individual.');
+    return executeReconciledImport({ eventId, userId, fileName, fileSize, rows, columnMapping, conflictStrategy, batchDefaults, validation });
   }
 
   /**

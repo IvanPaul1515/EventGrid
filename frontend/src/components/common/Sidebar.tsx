@@ -55,11 +55,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
   }, [mobileOpen, setMobileOpen]);
 
   const navItems = [
-    {to:'/reception',label:'Recepción rápida',icon:UserCheck,roles:['ADMIN','OPERATOR']},
     {
       to: '/',
       label: 'Dashboard',
       icon: LayoutDashboard,
+      roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
+    },
+    {to:'/reception',label:'Recepción rápida',icon:UserCheck,roles:['ADMIN','OPERATOR']},
+    {
+      to: '/participants',
+      label: 'Participantes',
+      icon: Users,
       roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
     },
     {
@@ -67,12 +73,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       label: 'Control de asistencia',
       icon: UserCheck,
       badge: 'Check-in',
-      roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
-    },
-    {
-      to: '/participants',
-      label: 'Participantes',
-      icon: Users,
       roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
     },
     {

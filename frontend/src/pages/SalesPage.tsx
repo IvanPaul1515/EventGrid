@@ -1,3 +1,4 @@
+import { FinancialOperationsPanel } from '../components/sales/FinancialOperationsPanel';
 import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { MobileSearchInput } from '../components/common/MobileSearchInput';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -178,13 +179,20 @@ export const SalesPage: React.FC = () => {
         </div>
       )}
 
+      {summary?.reconciliation && <div className="card p-4 text-sm space-y-2">
+        <p className="font-semibold">Procedencia de los pagos acreditados</p>
+        <p>Universidad / plataforma externa: {currency} {summary.reconciliation.externalPayments.toFixed(2)} · Caja EventGrid: {currency} {summary.reconciliation.onsitePayments.toFixed(2)} · Histórico sin atribuir: {currency} {summary.reconciliation.legacyUnattributed.toFixed(2)}</p>
+        <p>Devoluciones confirmadas: {currency} {summary.reconciliation.refunded.toFixed(2)} · Neto acreditado: {currency} {summary.reconciliation.netAccredited.toFixed(2)}</p>
+        <p className="text-muted-foreground">{summary.reconciliation.netDefinition}</p>
+      </div>}
+      {currentEvent && hasRole(['ADMIN']) && <FinancialOperationsPanel key={currentEvent.id} eventId={currentEvent.id} tickets={ticketTypes} onChange={() => void loadFinancialData(true)} />}
       {/* Tarjetas KPI Financieras Principales */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* KPI 1: Total Recaudado / Ingresos Brutos */}
         <div className="p-5 rounded-2xl bg-card border border-border shadow-sm space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Total Recaudado
+              Neto acreditado
             </span>
             <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
               <TrendingUp className="w-5 h-5" />
@@ -263,7 +271,7 @@ export const SalesPage: React.FC = () => {
           ) : (
             <div className="space-y-3.5">
               {summary.byMethod.map((m) => {
-                const total = summary.totalRevenue || 1;
+                const total = summary.reconciliation?.confirmedPayments || summary.totalRevenue || 1;
                 const percentage = Math.min(100, Math.round((m.totalAmount / total) * 100));
                 return (
                   <div key={m.name} className="space-y-1.5">
@@ -317,7 +325,7 @@ export const SalesPage: React.FC = () => {
           ) : (
             <div className="space-y-3.5">
               {summary.byTicketType.map((t) => {
-                const total = summary.totalRevenue || 1;
+                const total = summary.reconciliation?.confirmedPayments || summary.totalRevenue || 1;
                 const percentage = Math.min(100, Math.round((t.totalRevenue / total) * 100));
                 return (
                   <div key={t.name} className="space-y-1.5">

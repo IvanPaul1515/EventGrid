@@ -3,6 +3,7 @@ import { RealtimeService } from './realtime.service.js';
 // Observe successful persisted API actions once. Preview/read-only POSTs never invalidate.
 // No response data is broadcast; subscribers re-read their authorized endpoints.
 const domains: Record<string, string[]> = {
+  finance: ['participants', 'attendance', 'sales', 'dashboard', 'communications', 'courtesies'],
   participants: ['participants', 'attendance', 'sales', 'inventory', 'dashboard', 'courtesies', 'operations'],
   attendance: ['participants', 'attendance', 'inventory', 'dashboard', 'courtesies', 'operations'],
   inventory: ['inventory', 'participants', 'attendance', 'dashboard'],
