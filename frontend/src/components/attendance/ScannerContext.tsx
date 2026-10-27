@@ -33,7 +33,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   const eventId = currentEvent?.id, base = `/events/${eventId}/scanner`;
   useEffect(() => {
-    let active = true, running: Promise<void> | null = null, again = false;
+    let active = true, running: Promise<void> | null = null, again = false, advertised = false;
     setReady(false); setNotice(''); setState(empty); setStations([]); setMessage(''); setDismissed(stored(key)); busy.current = !['/reception','/attendance'].includes(current.current.pathname);
     if (!eventId || !token || !['ADMIN','OPERATOR'].includes(user?.role || '')) { setReady(true); refreshRef.current = async () => {}; return; }
     const load = (): Promise<void> => {
@@ -45,6 +45,13 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
           try {
             const next: ScannerSnapshot = (await api.post(base + '/state', { busy: busy.current })).data.data;
             if (!active || generation !== epoch.current) continue;
+            // Presence is optional pairing availability, never an authorization.
+            // Reuse the authenticated station lease; a phone still needs PC approval.
+            if (!next.station && !next.link && current.current.device === 'desktop' && !advertised) {
+              advertised = true;
+              await api.post(base + '/station', { label: 'Computadora disponible' });
+              again = true; continue;
+            }
             if (snapshot.current.link?.status === 'LINKED' && !next.link && !explicitUnlink.current) setNotice('La vinculación ha finalizado o caducado. Puedes utilizar EventGrid normalmente.');
             setReady(true); setState(next); snapshot.current = next; setConnected(true); setMessage('');
             const reception = ['/reception','/attendance'].includes(current.current.pathname);

@@ -1,3 +1,5 @@
+import { qrFeedback } from '../../utils/qrFeedback';
+import '../attendance/scanner.css';
 import { inventoryService, TshirtInventoryItem } from '../../services/inventory.service';
 import { useRealtimeRefresh } from '../../context/RealtimeContext';
 import { participantsService } from '../../services/participants.service';
@@ -48,6 +50,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
 
   const [scanInput, setScanInput] = useState('');
   const [isScanning, setIsScanning] = useState(false);
+  const [networkFailure, setNetworkFailure] = useState(false);
   const [scanResult, setScanResult] = useState<QrScanResult | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkInSuccess, setCheckInSuccess] = useState<string | null>(null);
@@ -167,6 +170,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
     const generation = scanGeneration.current;
     try {
       setIsScanning(true);
+      setNetworkFailure(false);
       setCheckInSuccess(null);
       setCameraActive(false);
       setCameraLoading(false);
@@ -185,10 +189,11 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
       setSelectedTshirtSize(result.registration?.tshirtSize || null);
     } catch (err: any) {
       if (generation !== scanGeneration.current) return;
+      setNetworkFailure(true);
       setScanResult({
         valid: false,
         status: 'INVALID_CODE',
-        message: err?.response?.data?.message || 'Error al validar el código QR',
+        message: qrFeedback('NETWORK').message,
         canCheckIn: false,
       });
     } finally {
@@ -260,7 +265,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
             );
           } else {
             setCameraError(
-              'No fue posible acceder a la cámara. Verifique que otra aplicación no la esté utilizando o use el modo lector USB.'
+              linkedRead.current ? 'No fue posible acceder a la cámara. Comprueba los permisos y que otra aplicación no la esté utilizando.' : 'No fue posible acceder a la cámara. Comprueba los permisos o utiliza el lector USB/manual.'
             );
           }
         }
@@ -388,7 +393,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+    <div className="scanner-ui scanner-overlay mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in">
       <div className="relative w-full max-w-lg bg-card rounded-2xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden flex flex-col max-h-[92dvh] max-sm:max-h-full" role="dialog" aria-modal="true" aria-label="Escáner de entradas QR">
         {/* Cabecera */}
         <div className="flex items-center justify-between p-3.5 sm:p-4 border-b border-border bg-card/60 shrink-0">
@@ -411,7 +416,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
         </div>
 
         {/* Selector de Modo: Cámara vs Lector Externo/Manual */}
-        <div className="px-4 pt-3 shrink-0">
+        {!onLinkedRead && <div className="px-4 pt-3 shrink-0">
           <div className="grid grid-cols-2 p-1 rounded-xl bg-muted/60 border border-border text-xs font-semibold">
             <button
               type="button"
@@ -440,13 +445,14 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
           </div>
         </div>
 
+        }
         {/* Cuerpo del Modal */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
           {/* MODO 1: CÁMARA CON GUÍA CUADRADA */}
           {scanMode === 'camera' && !isScanning && !scanResult && (
             <div className="space-y-3">
               {/* Contenedor Cuadrado con Retícula y Láser */}
-              <div className="relative w-full max-w-[310px] aspect-square mx-auto rounded-2xl overflow-hidden bg-black border-2 border-primary/40 shadow-inner flex items-center justify-center">
+              <div className="relative w-full scanner-viewport max-w-[310px] aspect-square mx-auto rounded-2xl overflow-hidden bg-black border-2 border-primary/40 shadow-inner flex items-center justify-center">
                 {/* Contenedor del video html5-qrcode con recorte cuadrado perfecto y sin deformación */}
                 <div
                   ref={attachCameraHost}
@@ -461,7 +467,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
 
                 {/* Láser de escaneo animado en movimiento continuo */}
                 {cameraActive && !cameraLoading && !scanResult && (
-                  <div className="absolute left-4 right-4 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent shadow-[0_0_12px_#ED2917] pointer-events-none z-10 animate-scan-line" />
+                  <div className="absolute left-4 right-4 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent shadow-sm pointer-events-none z-10 animate-scan-line" />
                 )}
 
                 {/* Estado de carga de la cámara */}
@@ -525,7 +531,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
           )}
 
           {/* MODO 2: LECTOR USB EXTERNO O ENTRADA MANUAL */}
-          {scanMode === 'manual' && (
+          {!onLinkedRead && scanMode === 'manual' && (
             <div className="space-y-3">
               <form onSubmit={handleScanSubmit} className="space-y-2.5">
                 <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
@@ -571,57 +577,14 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
           {/* Resultado de Validación */}
           {scanResult && (
             <div className="space-y-3.5 pt-3 border-t border-border animate-fade-in">
-              {!scanResult.registration && (
-                <button type="button" onClick={handleResetForNext}
-                  className="px-3 py-2 rounded-lg bg-muted text-foreground text-xs font-bold cursor-pointer">
-                  Escanear siguiente
-                </button>
-              )}
-              {/* Tarjeta de Estado del Ticket */}
-              {scanResult.status === 'VALID' ? (
-                <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 shrink-0" />
-                    <span className="font-bold text-sm">Entrada Válida — Listo para ingresar</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {scanResult.message}
-                  </p>
-                </div>
-              ) : scanResult.status === 'ALREADY_CHECKED_IN' ? (
-                <div className="p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-5 h-5 shrink-0" />
-                    <span className="font-bold text-sm">Asistencia Ya Registrada Anteriormente</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {scanResult.message}
-                  </p>
-                </div>
-              ) : scanResult.status === 'EDITION_MISMATCH' ? (
-                <div className="p-3.5 rounded-xl bg-orange-500/15 border border-orange-500/30 text-orange-400">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 shrink-0" />
-                    <span className="font-bold text-sm">Edición o Evento Incorrecto</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {scanResult.message}
-                  </p>
-                </div>
-              ) : (
-                <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400">
-                  <div className="flex items-center gap-2">
-                    <ShieldAlert className="w-5 h-5 shrink-0" />
-                    <span className="font-bold text-sm">Código No Válido o Revocado</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {scanResult.message}
-                  </p>
-                </div>
-              )}
-
+              <div role="status" aria-live="polite" className={`rounded-2xl border p-5 text-center space-y-3 ${scanResult.status==='VALID'?'border-emerald-500/40 bg-emerald-500/10':'border-destructive/30 bg-destructive/10'}`}>
+                {scanResult.status==='VALID'?<CheckCircle2 className="w-14 h-14 mx-auto text-emerald-600" />:<ShieldAlert className="w-14 h-14 mx-auto text-destructive" />}
+                <h2 className="text-xl font-bold">{scanResult.status==='VALID'?'Entrada válida':qrFeedback(networkFailure?'NETWORK':scanResult.status).title}</h2>
+                <p className="text-sm text-muted-foreground">{scanResult.status==='VALID'?'Comprueba la identidad y confirma la asistencia.':qrFeedback(networkFailure?'NETWORK':scanResult.status).message}</p>
+                {!scanResult.canCheckIn&&<button type="button" onClick={handleResetForNext} className="btn-primary w-full">Escanear siguiente</button>}
+              </div>
               {/* Ficha del Participante Identificado */}
-              {scanResult.registration && (
+              {scanResult.registration && ['VALID','ALREADY_CHECKED_IN'].includes(scanResult.status) && (
                 <div className="p-4 rounded-xl bg-card border border-border space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -715,6 +678,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                     </button>
 
                     <button
+                      hidden={!scanResult.canCheckIn}
                       type="button"
                       onClick={handleResetForNext}
                       className="px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-border"
