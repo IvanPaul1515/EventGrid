@@ -1,4 +1,5 @@
 import { DeviceSessionService } from './device-session.service.js';
+import { DEMO_SCANNERS, isDemoScannerAccount } from './demo-scanners.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { prisma } from '../../config/db.js';
 import { RecoveryService, recoveryMessage } from './recovery.service.js';
@@ -20,7 +21,14 @@ router.get('/demo-access', (_req, res) => res.json({ enabled: Boolean(demoAccess
 router.post('/demo-login', loginRateLimiter, async (req, res, next) => {
   if (!demoAccessEnabled()) return res.sendStatus(404);
   try {
-    const role = z.enum(['ADMIN', 'OPERATOR', 'VIEWER']).parse(req.body.role);
+    const role = z.enum(['ADMIN', 'OPERATOR', 'VIEWER', 'SCANNER_1', 'SCANNER_2']).parse(req.body.role);
+    if (role === 'SCANNER_1' || role === 'SCANNER_2') {
+      const account = DEMO_SCANNERS[role];
+      const user = await prisma.user.findUnique({ where: { email: account.email } });
+      if (!user || !isDemoScannerAccount(user, account)) return res.sendStatus(404);
+      const data = await AuthService.login(account.email, account.password);
+      return res.json({ status: 'success', data });
+    }
     const accounts = { ADMIN: ['admin', 'Admin'], OPERATOR: ['operador', 'Op'], VIEWER: ['consulta', 'View'] };
     const [name, suffix] = accounts[role];
     const data = await AuthService.login(`${name}@barcamp.org.do`, `BarCamp2026!${suffix}`);

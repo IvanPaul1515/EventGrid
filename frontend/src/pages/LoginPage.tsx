@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { DemoScannerButtons } from '../components/DemoScannerButtons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { failureKind, failureCopy } from '../utils/appError';
@@ -56,7 +57,7 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleQuickAccess = async (role: 'ADMIN' | 'OPERATOR' | 'VIEWER') => {
+  const handleQuickAccess = async (role: 'ADMIN' | 'OPERATOR' | 'VIEWER' | 'SCANNER_1' | 'SCANNER_2') => {
     if (submitting.current || !demoAccess) return;
     submitting.current = true;
     setLoading(true);
@@ -194,7 +195,7 @@ export const LoginPage: React.FC = () => {
                 <ShieldCheck className="w-3.5 h-3.5 text-primary" />
                 Accesos de demostración:
               </p>
-              <div className="grid grid-cols-3 gap-2 text-[11px] font-mono">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] font-mono">
                 <button
                   type="button"
                   onClick={() => handleQuickAccess('ADMIN')}
@@ -202,7 +203,7 @@ export const LoginPage: React.FC = () => {
                   disabled={loading}
                   title="Ingresar como Administrador"
                 >
-                  <strong className="block text-primary font-bold">Admin</strong>
+                  <strong className="block text-primary font-bold">Administrador</strong>
                   <span className="text-[9px] text-muted-foreground">admin@...</span>
                 </button>
                 <button
@@ -225,6 +226,7 @@ export const LoginPage: React.FC = () => {
                   <strong className="block text-muted-foreground font-bold">Consulta</strong>
                   <span className="text-[9px] text-muted-foreground">consulta@...</span>
                 </button>
+                <DemoScannerButtons loading={loading} onSelect={handleQuickAccess} />
               </div>
             </div>
           )}
