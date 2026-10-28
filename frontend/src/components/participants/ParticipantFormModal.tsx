@@ -1,3 +1,4 @@
+import {Link} from 'react-router-dom';
 import {ReceiptReader} from '../sales/ReceiptReader';
 import {receiptRegistrationDraft} from '../../utils/receiptOcr';
 import { CurrencyInput } from '../common/CurrencyInput';
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 
 interface ParticipantFormModalProps {
+  onScanList?:()=>void;
   initialReceipt?: boolean;
   isOpen: boolean;
   registrationToEdit: Registration | null;
@@ -32,6 +34,7 @@ interface ParticipantFormModalProps {
 export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   isOpen,
   initialReceipt = false,
+  onScanList,
   registrationToEdit,
   onClose,
   onSuccess,
@@ -333,7 +336,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
         {requestSent && <div role="status" className="p-4 border-b border-border bg-muted text-sm">{requestMessage} Consulte el resultado en sus solicitudes antes de reintentar.</div>}
         <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col justify-between">
           <div className="overflow-y-auto px-6 py-5 space-y-4 flex-1 min-h-0">
-          {!registrationToEdit&&<div className="flex flex-wrap gap-2"><button type="button" className="btn-secondary" onClick={()=>setReadingReceipt(false)}>Registrar manualmente</button><button type="button" className="btn-secondary" onClick={()=>setReadingReceipt(true)}>Leer comprobante con OCR</button></div>}
+          {!registrationToEdit&&<div className="flex flex-wrap gap-2"><button type="button" className="btn-secondary" onClick={()=>setReadingReceipt(false)}>Agregar manualmente</button><Link className="btn-secondary" to="/import" onClick={e=>{if(isFormDirty&&!window.confirm('Ir a Excel descarta este formulario sin guardar. ¿Continuar?'))e.preventDefault();}}>Importar Excel</Link>{onScanList&&<button type="button" className="btn-secondary" onClick={()=>{if(!isFormDirty||window.confirm('Cambiar al escáner descarta este formulario sin guardar. ¿Continuar?'))onScanList();}}>Escanear lista manuscrita</button>}<button type="button" className="text-xs underline text-muted-foreground" onClick={()=>setReadingReceipt(true)}>Comprobante individual (opcional)</button></div>}
           {/* Fila 1: Nombres y Apellidos */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
