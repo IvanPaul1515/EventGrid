@@ -1,3 +1,4 @@
+import {verifiedCapOrder} from '../merch/official-order.js';
 import {confirmationHash,CapDecision} from './queue-confirmation.js';
 import { randomUUID, randomInt, randomBytes, createHash, createHmac, createCipheriv, createDecipheriv, timingSafeEqual } from 'node:crypto';
 import { prisma } from '../../config/db.js';
@@ -256,8 +257,9 @@ export class ReceptionQueueService {
   let blockedReason=(revoked?'La credencial de charlista está revocada.':null)||queueBlockReason(reg,Boolean(pending),settings?.requirePaymentForEntry!==false)||(entry.validatedQrHash&&entry.validatedQrHash!==createHash('sha256').update(reg.qrCode||'').digest('hex')?'El QR fue revocado. Revisa la ficha completa.':null);
   if(blockedReason?.startsWith('Pago pendiente.'))blockedReason=canCollect?'Pago pendiente. Registra el pago para confirmar.':payment.external?'Saldo pendiente de conciliación externa.':'Pago pendiente. El cobro presencial no está habilitado.';
   const cap=await prisma.merchAllocation.findFirst({where:{eventId,recipientId:reg.id,kind:'PARTICIPANT',status:{in:['RESERVED','DELIVERED']},item:{systemCode:'OFFICIAL_CAP',isActive:true}},include:{item:true}});
-  const capEligible=Boolean(cap&&reg.officialRegistrationOrder&&reg.officialOrderSource&&reg.officialRegistrationOrder<=cap.item.participantQuota&&!reg.isDemo);
-  return {officialOrder:reg.officialOrderSource?reg.officialRegistrationOrder:null,cap:capEligible?{eligible:true,delivered:cap!.status==='DELIVERED'}:null,category:reg.participantCategory,payment:{...payment,ticketPrice:Number(reg.ticketPrice)},paymentMethods,canCollect,registrationId:reg.id,name:reg.participant.fullName,number:reg.registrationNumber,canCheckIn:!blockedReason,blockedReason,selectedTshirtSize:entry.selectedTshirtSize||reg.tshirtSize,shirts:await queueTshirts(prisma,eventId,reg)};
+  const verified=await verifiedCapOrder(prisma,eventId,reg.id,cap?.item.participantQuota??100);
+  const capEligible=Boolean(cap&&verified.eligible&&!reg.isDemo);
+  return {officialOrder:verified.order,cap:{eligible:capEligible,delivered:cap?.status==='DELIVERED',pendingVerification:verified.pending||verified.eligible&&!cap},category:reg.participantCategory,payment:{...payment,ticketPrice:Number(reg.ticketPrice)},paymentMethods,canCollect,registrationId:reg.id,name:reg.participant.fullName,number:reg.registrationNumber,canCheckIn:!blockedReason,blockedReason,selectedTshirtSize:entry.selectedTshirtSize||reg.tshirtSize,shirts:await queueTshirts(prisma,eventId,reg)};
  }
  static async complete(user:AuthUser,eventId:string,id:string,size?:string,delivered=false,decision?:ShirtDecision,capDecision?:CapDecision,requestKey?:string){
   const detail=await this.details(user,eventId,id);

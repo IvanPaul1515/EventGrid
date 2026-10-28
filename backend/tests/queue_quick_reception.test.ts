@@ -1,3 +1,5 @@
+import {selectShirtSize} from '../../frontend/src/utils/shirtSelection.js';
+import {inventoryChart} from '../../frontend/src/utils/inventoryChart.js';
 import {returnToReception} from '../../frontend/src/utils/queueReturn.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash, createHmac } from 'node:crypto';
@@ -29,6 +31,7 @@ beforeEach(()=>{
  mocks.db.user.findUnique.mockResolvedValue(operator);
  mocks.db.merchAllocation.findFirst.mockResolvedValue(null);
  mocks.db.auditLog.findMany.mockResolvedValue([]);
+ mocks.db.registration.findMany.mockImplementation(async()=>[reg]);
  mocks.db.registration.findFirst.mockImplementation(async({where}:any)=>where.source?null:reg);
  mocks.db.registration.findUniqueOrThrow.mockImplementation(async()=>reg);
  mocks.db.registration.findUnique.mockImplementation(async()=>reg);
@@ -207,4 +210,25 @@ describe('one atomic queue confirmation for attendance and merch',()=>{
  it('revalidates the operator inside the transaction',async()=>{mocks.db.user.findUnique.mockResolvedValue({...operator,role:'VIEWER'});await expect(Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'},'DELIVER',requestKey)).rejects.toThrow('autorizada');expect(reg.attended).toBe(false);expect(stock.deliveredQuantity).toBe(2);});
  it('does not allow another station to complete the bundle',async()=>{await expect(Q.complete({...operator,id:'other',sessionId:'other-session'},'event','entry','M',true,{decision:'DELIVER'},'DELIVER',requestKey)).rejects.toThrow();expect(reg.attended).toBe(false);expect(moves).toHaveLength(1);});
  it('returns to the queue with no selection while preserving search and filter context',()=>{const context={selected:entry,search:'Sofía',filter:'WAITING',page:3};expect(returnToReception(context)).toEqual({...context,selected:null});expect(context.selected).toBe(entry);});
+});
+
+describe('size confirmation and inventory chart unit calculations',()=>{
+ it('asks before L to M, cancellation preserves L, confirmation can apply M',()=>{
+  const choice=selectShirtSize('L','L','M');expect(choice).toEqual({size:'L',pending:'M'});
+  expect(selectShirtSize('L','L','L')).toEqual({size:'L',pending:null});
+  expect(choice.size).toBe('L');expect(selectShirtSize(choice.pending!,'L','M')).toEqual({size:'M',pending:null});
+ });
+ it('keeps scan L and final/delivered M with actor and timestamp',async()=>{
+  entry.selectedTshirtSize='L';mocks.db.queueDevice.findFirst.mockResolvedValue(null);
+  await Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'});
+  expect(entry.selectedTshirtSize).toBe('L');expect(reg.tshirtSize).toBe('M');
+  const audit=mocks.db.auditLog.create.mock.calls.map(c=>JSON.parse(c[0].data.changes)).find(c=>c.action==='CHECK_IN');
+  expect(audit).toMatchObject({requestedTshirtSize:'L',finalTshirtSize:'M',deliveredTshirtSize:'M',sizeChangedBy:'operator'});expect(Number.isNaN(Date.parse(audit.sizeChangedAt))).toBe(false);
+  expect(mocks.db.tshirtInventory.updateMany).toHaveBeenCalledTimes(1);
+ });
+ it('does not turn pending requests or staff reservations into extra physical stock',()=>{
+  const [r]=inventoryChart([{size:'M',initialQuantity:100,deliveredQuantity:20,staffDeliveredQuantity:5,availableQuantity:60,physicalRemaining:75,pendingDelivery:40}]);
+  expect(r).toMatchObject({total:100,delivered:25,available:75,pending:40,participantAvailable:60});expect(r.delivered+r.available).toBe(r.total);
+  expect(inventoryChart([{size:'L',initialQuantity:10,deliveredQuantity:0,availableQuantity:8,pendingDelivery:2}])[0].available).toBe(10);
+ });
 });
