@@ -1,8 +1,10 @@
+import {MerchService} from '../merch/merch.service.js';
+import type {QueueConfirmation,QueueReceipt} from '../scanner/queue-confirmation.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { prisma } from '../../config/db.js';
 import { InventoryService } from '../inventory/inventory.service.js';
-import { BadRequestError, NotFoundError } from '../../utils/errors.js';
+import { BadRequestError, NotFoundError, ForbiddenError } from '../../utils/errors.js';
 import * as XLSX from 'xlsx';
 import { SearchAttendanceQuery } from './attendance.dto.js';
 import { participantNameIds } from '../../utils/participantSearch.js';
@@ -138,7 +140,8 @@ export class AttendanceService {
     tshirtDelivered?: boolean,
     sessionId?: string,
     queueEntryId?: string,
-    deliveryDecision?: ShirtDecision
+    deliveryDecision?: ShirtDecision,
+    bundle?: QueueConfirmation
   ) {
     // QA-06: Validar que la talla pertenezca a la edición
     const validTshirtSize = tshirtSize ? queueEntryId ? tshirtSize : await InventoryService.validateSize(eventId, tshirtSize) : null;
@@ -218,8 +221,11 @@ export class AttendanceService {
     let shouldDeliver = Boolean(tshirtDelivered === true && validTshirtSize && !alreadyDelivered);
 
     // QA-01, QA-02, QA-03: Ejecución atómica y condicional en transacción interactiva
+    let confirmationReceipt:QueueReceipt|undefined;
     const updatedRegistration = await writeTransaction(async (tx) => {
+      let shirtsIncluded=false;
       const actor = await tx.user.findUnique({where:{id:operatorUserId}});
+      if(queueEntryId&&(!actor||!['ADMIN','OPERATOR'].includes(actor.role)||actor.isActive===false||actor.accountStatus&&actor.accountStatus!=='ACTIVE'||actor.assignedEventId&&actor.assignedEventId!==eventId))throw new ForbiddenError('Tu cuenta ya no está autorizada para confirmar en esta edición.');
       if (actor?.scannerOnly) throw new BadRequestError('El perfil Escáner QR no confirma asistencia.');
       if (sessionId && await tx.queueDevice.findFirst({where:{eventId,sessionId,status:'LINKED',leaseUntil:{gt:new Date()}}})) throw new BadRequestError('Confirme desde la PC o desvincule el escáner.');
       const queued = await tx.queueEntry.findUnique({where:{eventId_registrationId:{eventId,registrationId}}});
@@ -236,6 +242,7 @@ export class AttendanceService {
         if (reason) throw new BadRequestError(reason);
         if (queued.validatedQrHash && queued.validatedQrHash !== createHash('sha256').update(live.qrCode || '').digest('hex')) throw new BadRequestError('El QR fue revocado. Revisa la ficha completa.');
         if (live.tshirtDelivered && validTshirtSize && live.tshirtSize !== validTshirtSize) throw new BadRequestError('La camiseta ya fue entregada. Su ajuste requiere una operación autorizada.');
+        shirtsIncluded=Boolean(settings?.tshirtSizesEnabled&&live.ticketType?.includesTshirt!==false);
         alreadyDelivered = live.tshirtDelivered;
         shouldDeliver = Boolean(tshirtDelivered === true && validTshirtSize && !alreadyDelivered);
         if (tshirtDelivered || validTshirtSize) validateQueueSize(await queueTshirts(tx,eventId,live),validTshirtSize);
@@ -305,7 +312,7 @@ export class AttendanceService {
           attendedAt: now,
           attendedByUserId: operatorUserId,
           updatedByUserId: operatorUserId,
-          ...(!alreadyDelivered&&validTshirtSize?{tshirtDeliveryStatus:delivery.status,tshirtNonDeliveryReason:delivery.reason,tshirtNonDeliveryNotes:delivery.notes,tshirtDecisionAt:now,tshirtDecisionByUserId:operatorUserId}:{}),
+          ...(!alreadyDelivered&&(validTshirtSize||queueEntryId&&deliveryDecision?.decision==='NO_DELIVERY')?{tshirtDeliveryStatus:delivery.status,tshirtNonDeliveryReason:delivery.reason,tshirtNonDeliveryNotes:delivery.notes,tshirtDecisionAt:now,tshirtDecisionByUserId:operatorUserId}:{}),
           ...(validTshirtSize && !alreadyDelivered ? {
             tshirtSize: validTshirtSize,
             tshirtSizeUpdatedAt: now,
@@ -348,6 +355,20 @@ export class AttendanceService {
         throw new BadRequestError('No se pudo registrar la asistencia debido a una operación concurrente.');
       }
 
+      if(queueEntryId){
+        const cap=await tx.merchAllocation.findFirst({where:{eventId,kind:'PARTICIPANT',recipientId:registrationId,status:{in:['RESERVED','DELIVERED']},item:{systemCode:'OFFICIAL_CAP',isActive:true}},include:{item:true}});
+        const eligible=Boolean(cap&&livePayment.officialRegistrationOrder&&livePayment.officialOrderSource&&livePayment.officialRegistrationOrder<=cap.item.participantQuota&&!livePayment.isDemo);
+        if(bundle?.capDecision==='DELIVER'){
+          if(!eligible)throw new BadRequestError('Esta entrada no tiene una gorra asignada por orden oficial.');
+          await MerchService.deliverInTransaction(tx,eventId,operatorUserId,cap!.id,registrationId);
+        }else if(eligible&&cap!.status==='RESERVED'){
+          await tx.auditLog.create({data:{userId:operatorUserId,action:'UPDATE',entity:'EVENT',entityId:eventId,changes:JSON.stringify({module:'MERCH',operation:'DELIVERY_DEFERRED',allocationId:cap!.id,registrationId,status:'RESERVED'})}});
+        }
+        confirmationReceipt={name:registration.participant.fullName,number:registration.registrationNumber,officialOrder:livePayment.officialOrderSource?livePayment.officialRegistrationOrder:null,
+          shirt:{status:!shirtsIncluded?'NOT_INCLUDED':alreadyDelivered||shouldDeliver?'DELIVERED':'NOT_DELIVERED',size:validTshirtSize||livePayment.tshirtSize||null,reason:delivery.reason},
+          cap:{status:eligible?(bundle?.capDecision==='DELIVER'||cap!.status==='DELIVERED'?'DELIVERED':'PENDING'):'NOT_INCLUDED'}};
+      }
+
       await tx.attendanceLog.create({
         data: {
           registrationId,
@@ -366,6 +387,7 @@ export class AttendanceService {
           changes: JSON.stringify({
             action: 'CHECK_IN',
             result: 'SUCCESS',
+            ...(queueEntryId?{queueRequestKey:bundle?.requestKey,queueRequestHash:bundle?.requestHash,confirmationReceipt}:{}),
             participantName: registration.participant.fullName,
             ticket: registration.registrationNumber,
             tshirtSize: validTshirtSize || null,
@@ -416,7 +438,8 @@ export class AttendanceService {
     return {
       registration: updatedRegistration,
       counters,
-      message: `¡Bienvenido(a), ${registration.participant.fullName}! Asistencia confirmada exitosamente.`,
+      ...(confirmationReceipt?{confirmationReceipt}:{}),
+      message: queueEntryId?'Asistencia confirmada.':`¡Bienvenido(a), ${registration.participant.fullName}! Asistencia confirmada exitosamente.`,
     };
   }
 

@@ -1,13 +1,14 @@
+import {returnToReception} from '../../frontend/src/utils/queueReturn.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash, createHmac } from 'node:crypto';
 
 const mocks=vi.hoisted(()=>{
  const model=()=>({findUnique:vi.fn(),findUniqueOrThrow:vi.fn(),findFirst:vi.fn(),findMany:vi.fn(),create:vi.fn(),update:vi.fn(),updateMany:vi.fn(),upsert:vi.fn()});
- return {db:{speaker:model(),registration:model(),queueEntry:model(),queueDevice:model(),queueStation:model(),eventSettings:model(),tshirtInventory:model(),courtesyRequest:model(),user:model(),scannerLink:model(),receptionStation:model(),auditLog:model(),attendanceLog:model()},qr:vi.fn(),session:vi.fn(),hint:vi.fn(),emit:vi.fn()};
+ return {db:{merchAllocation:model(),merchItem:model(),merchMovement:model(),speaker:model(),registration:model(),queueEntry:model(),queueDevice:model(),queueStation:model(),eventSettings:model(),tshirtInventory:model(),courtesyRequest:model(),user:model(),scannerLink:model(),receptionStation:model(),auditLog:model(),attendanceLog:model()},snapshot:vi.fn(),restore:vi.fn(),qr:vi.fn(),session:vi.fn(),hint:vi.fn(),emit:vi.fn()};
 });
 vi.mock('../src/config/db.js',()=>({prisma:mocks.db}));
 vi.mock('../src/config/env.js',()=>({ENV:{DATABASE_URL:'file:mock-only',JWT_SECRET:'unit-test-secret'}}));
-vi.mock('../src/utils/writeTransaction.js',()=>({writeTransaction:(fn:any)=>fn(mocks.db)}));
+vi.mock('../src/utils/writeTransaction.js',()=>({writeTransaction:async(fn:any)=>{const snapshot=mocks.snapshot();try{return await fn(mocks.db);}catch(e){mocks.restore(snapshot);throw e;}}}));
 vi.mock('../src/modules/qr/qr.service.js',()=>({QrService:{validateAndScan:mocks.qr}}));
 vi.mock('../src/modules/scanner/scanner.service.js',()=>({ScannerService:{authorize:vi.fn(),session:mocks.session}}));
 vi.mock('../src/middleware/editionAccess.js',()=>({assignedEdition:async()=>null}));
@@ -26,6 +27,8 @@ beforeEach(()=>{
  stock={id:'stock',size:'M',eventId:'event',initialQuantity:10,deliveredQuantity:2,staffReservedQuantity:3,staffDeliveredQuantity:0,isActive:true};
  mocks.session.mockImplementation(async(_db:any,_id:string,userId:string)=>({user:{...operator,id:userId}}));
  mocks.db.user.findUnique.mockResolvedValue(operator);
+ mocks.db.merchAllocation.findFirst.mockResolvedValue(null);
+ mocks.db.auditLog.findMany.mockResolvedValue([]);
  mocks.db.registration.findFirst.mockImplementation(async({where}:any)=>where.source?null:reg);
  mocks.db.registration.findUniqueOrThrow.mockImplementation(async()=>reg);
  mocks.db.registration.findUnique.mockImplementation(async()=>reg);
@@ -156,4 +159,52 @@ describe('queue scan selection and compact confirmation, unit mocks only',()=>{
   mocks.db.queueDevice.findUnique.mockResolvedValue({id:'device',stationId:'station',eventId:'event',sessionId:phone.sessionId,userId:phone.id,status:'REQUESTED',expiresAt:new Date(0)});
   await expect(Q.decide(operator,'event','device',true)).rejects.toThrow('vencida');
  });
+});
+
+describe('one atomic queue confirmation for attendance and merch',()=>{
+ let cap:any,capStock:any,moves:any[],audits:any[];
+ const requestKey='11111111-1111-4111-8111-111111111111';
+ beforeEach(()=>{
+  reg.officialRegistrationOrder=4;reg.officialOrderSource='No. Registro';reg.ticketPrice=1750;reg.amountPaid=1750;reg.isDemo=false;
+  mocks.db.queueDevice.findFirst.mockResolvedValue(null);
+  moves=[{kind:'RESERVE',quantity:1}];audits=[];
+  cap={id:'cap-right',itemId:'cap-stock',eventId:'event',kind:'PARTICIPANT',recipientId:reg.id,status:'RESERVED',item:{participantQuota:100,isActive:true}};
+  capStock={id:'cap-stock',eventId:'event',systemCode:'OFFICIAL_CAP',isActive:true,initialQuantity:150,participantQuota:100,staffQuota:50,version:0,movements:moves,allocations:[cap]};
+  mocks.db.merchAllocation.findFirst.mockImplementation(async({where}:any)=>where.id&&where.id!==cap.id||where.recipientId&&where.recipientId!==cap.recipientId?null:cap);
+  mocks.db.merchAllocation.updateMany.mockImplementation(async({where,data}:any)=>{if(cap.status!==where.status)return {count:0};Object.assign(cap,data);return {count:1};});
+  mocks.db.merchItem.findFirst.mockImplementation(async()=>capStock);
+  mocks.db.merchItem.updateMany.mockImplementation(async({where}:any)=>{if(capStock.version!==where.version)return {count:0};capStock.version++;return {count:1};});
+  mocks.db.merchMovement.create.mockImplementation(async({data}:any)=>{moves.push(data);return data;});
+  mocks.db.tshirtInventory.updateMany.mockImplementation(async({data}:any)=>{Object.assign(stock,data);return {count:1};});
+  mocks.db.auditLog.create.mockImplementation(async({data}:any)=>{audits.push(data);return data;});
+  mocks.db.auditLog.findMany.mockImplementation(async({where}:any)=>audits.filter(a=>a.action===where.action&&a.entityId===where.entityId&&a.userId===where.userId));
+  mocks.snapshot.mockImplementation(()=>structuredClone({reg,entry,stock,cap,capStock,moves,audits}));
+  mocks.restore.mockImplementation((s:any)=>{reg=s.reg;entry=s.entry;stock=s.stock;cap=s.cap;capStock=s.capStock;moves=s.moves;audits=s.audits;capStock.movements=moves;});
+ });
+ it.each([[true,true],[true,false],[false,true],[false,false]])('confirms shirt=%s cap=%s in one operation',async(shirt,hat)=>{
+  const result=await Q.complete(operator,'event','entry','M',shirt,{decision:shirt?'DELIVER':'NO_DELIVERY',...(shirt?{}:{reason:'El participante no desea camiseta'})},hat?'DELIVER':'NO_DELIVERY',requestKey);
+  expect(reg.attended).toBe(true);expect(stock.deliveredQuantity).toBe(shirt?3:2);expect(cap.status).toBe(hat?'DELIVERED':'RESERVED');
+  expect(moves.filter(m=>m.kind==='DELIVER')).toHaveLength(hat?1:0);expect(result.confirmationReceipt).toMatchObject({officialOrder:4,shirt:{status:shirt?'DELIVERED':'NOT_DELIVERED'},cap:{status:hat?'DELIVERED':'PENDING'}});expect(result.message).not.toContain('Bienvenido');
+ });
+ it('rolls back attendance and shirt stock when cap stock fails',async()=>{
+  capStock.initialQuantity=0;await expect(Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'},'DELIVER',requestKey)).rejects.toThrow('existencias');
+  expect(reg.attended).toBe(false);expect(stock.deliveredQuantity).toBe(2);expect(cap.status).toBe('RESERVED');expect(moves).toHaveLength(1);expect(audits).toHaveLength(0);
+ });
+ it('rejects cap delivery without verified eligibility and restores all writes',async()=>{
+  reg.officialRegistrationOrder=150;await expect(Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'},'DELIVER',requestKey)).rejects.toThrow('gorra asignada');
+  expect(reg.attended).toBe(false);expect(stock.deliveredQuantity).toBe(2);expect(moves).toHaveLength(1);
+ });
+ it('replays the committed result after a lost response without duplicate check-in or stock deductions',async()=>{
+  const first=await Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'},'DELIVER',requestKey);
+  const second=await Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'},'DELIVER',requestKey);
+  expect(second).toMatchObject({replayed:true,confirmationReceipt:first.confirmationReceipt});expect(stock.deliveredQuantity).toBe(3);expect(moves.filter(m=>m.kind==='DELIVER')).toHaveLength(1);expect(mocks.db.registration.updateMany).toHaveBeenCalledTimes(1);
+ });
+ it('rejects changed decisions on a committed request and a second check-in under a new request',async()=>{
+  await Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'},'DELIVER',requestKey);
+  await expect(Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'},'NO_DELIVERY',requestKey)).rejects.toThrow('otras decisiones');
+  await expect(Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'},'DELIVER','22222222-2222-4222-8222-222222222222')).rejects.toThrow();expect(stock.deliveredQuantity).toBe(3);
+ });
+ it('revalidates the operator inside the transaction',async()=>{mocks.db.user.findUnique.mockResolvedValue({...operator,role:'VIEWER'});await expect(Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'},'DELIVER',requestKey)).rejects.toThrow('autorizada');expect(reg.attended).toBe(false);expect(stock.deliveredQuantity).toBe(2);});
+ it('does not allow another station to complete the bundle',async()=>{await expect(Q.complete({...operator,id:'other',sessionId:'other-session'},'event','entry','M',true,{decision:'DELIVER'},'DELIVER',requestKey)).rejects.toThrow();expect(reg.attended).toBe(false);expect(moves).toHaveLength(1);});
+ it('returns to the queue with no selection while preserving search and filter context',()=>{const context={selected:entry,search:'Sofía',filter:'WAITING',page:3};expect(returnToReception(context)).toEqual({...context,selected:null});expect(context.selected).toBe(entry);});
 });

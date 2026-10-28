@@ -5,6 +5,8 @@ import { PaymentMethod } from '../../types';
 import { CreditCard, X, DollarSign } from 'lucide-react';
 
 interface RecordPaymentModalProps {
+  originalAmount?:number;
+  amountPaid?:number;
   requireMethodChoice?:boolean;
   responsibleName?:string;
   isOpen: boolean;
@@ -19,6 +21,8 @@ interface RecordPaymentModalProps {
 export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   isOpen,
   requireMethodChoice=false,
+  originalAmount,
+  amountPaid,
   responsibleName,
   onClose,
   onConfirm,
@@ -41,6 +45,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       setError('El monto a abonar debe ser mayor a RD$ 0.00');
       return;
     }
+    if(requireMethodChoice&&amount>balanceDue){setError('El importe supera el saldo pendiente.');return;}
     if (!paymentMethodId) {
       setError('Debe seleccionar el método de pago');
       return;
@@ -99,6 +104,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             )}
           </div>
 
+          {originalAmount!==undefined&&<dl className="grid grid-cols-2 gap-2 rounded-xl border border-border p-3 text-sm"><dt>Importe original</dt><dd>RD${originalAmount.toFixed(2)}</dd><dt>Importe pagado</dt><dd>RD${(amountPaid||0).toFixed(2)}</dd><dt>Saldo pendiente</dt><dd>RD${balanceDue.toFixed(2)}</dd></dl>}
           {responsibleName&&<p className="text-sm">Responsable: <strong>{responsibleName}</strong></p>}
           <div>
             <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">

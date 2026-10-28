@@ -1,3 +1,4 @@
+import {returnToReception} from '../../utils/queueReturn';
 import {QueueOperationalRows} from './QueueOperationalRows';
 import {QueueInventorySummary} from './QueueInventorySummary';
 import {useEffect,useRef,useState} from 'react';
@@ -14,14 +15,16 @@ import {qrFeedback} from '../../utils/qrFeedback';
 const labels:Record<string,string>={WAITING:'En espera',CLAIMED:'En atención',CONFIRMED:'Asistencia confirmada',INCIDENT:'Incidencia',REJECTED:'Entrada cancelada o rechazada'};
 export function ReceptionQueuePanel({onOpen,drawerOpen,onSale}:{onSale?:()=>void;onOpen:(id:string)=>Promise<void>;drawerOpen:boolean}){
  const q=useReceptionQueue(),{user}=useAuth(),{currentEvent}=useEdition();
- const [search,setSearch]=useState(''),[label,setLabel]=useState('Recepción PC'),[scan,setScan]=useState(false),[status,setStatus]=useState(''),[opening,setOpening]=useState(false);
+ const [context,setContext]=useState({search:'',selected:null as QueueRow|null});
+ const {search,selected}=context;const setSearch=(search:string)=>setContext(v=>({...v,search})),setSelected=(selected:QueueRow|null)=>setContext(v=>({...v,selected}));
+ const [label,setLabel]=useState('Recepción PC'),[scan,setScan]=useState(false),[status,setStatus]=useState(''),[opening,setOpening]=useState(false);
  const [incident,setIncident]=useState<QueueRow|null>(null),[reason,setReason]=useState('');
  const [paymentRequested,setPaymentRequested]=useState(false);
- const [selected,setSelected]=useState<QueueRow|null>(null);
  const claim=useRef<string|null>(null),seenOpen=useRef(false),base=`/events/${currentEvent?.id}/reception-queue`;
  useEffect(()=>{if(!claim.current)return;if(drawerOpen)seenOpen.current=true;else if(seenOpen.current){const id=claim.current;claim.current=null;seenOpen.current=false;void api.post(base+'/entries/'+id+'/release').catch(()=>{}).finally(()=>void q.refresh());}},[drawerOpen]);
  useEffect(()=>{const timer=setInterval(()=>{if(claim.current&&(drawerOpen||selected))void api.post(base+'/entries/'+claim.current+'/claim').catch(()=>setStatus('La reserva de atención venció o cambió. Revisa la cola antes de confirmar.'));},25000);return()=>clearInterval(timer);},[base,drawerOpen,selected?.id]);
  const open=async(row:QueueRow,collect=false)=>{if(opening||drawerOpen)return;setOpening(true);setStatus('');try{await q.act('/entries/'+row.id+'/claim');claim.current=row.id;seenOpen.current=false;setPaymentRequested(collect);setSelected(row);}catch{setStatus('No se pudo abrir: puede estar en atención en otra estación.');if(claim.current){await api.post(base+'/entries/'+claim.current+'/release').catch(()=>{});claim.current=null;}}finally{setOpening(false);}};
+ useEffect(()=>{claim.current=null;setContext({search:'',selected:null});},[currentEvent?.id,user?.id]);
  const pending=q.rows.filter(r=>['WAITING','CLAIMED'].includes(r.state));
  const filtered=q.rows.filter(r=>!['CONFIRMED','REJECTED'].includes(r.state)&&(r.name+' '+r.number).toLocaleLowerCase().includes(search.toLocaleLowerCase()));
  const [changing,setChanging]=useState(false),[inviteOpen,setInviteOpen]=useState(false);
@@ -58,7 +61,7 @@ export function ReceptionQueuePanel({onOpen,drawerOpen,onSale}:{onSale?:()=>void
   {inviteOpen&&inviteValue&&<QueuePairingInvitation value={inviteValue} pending={q.pending} active={Boolean(q.state.invitation)} onRegenerate={()=>void invitation()} onClose={()=>void q.act('/invite/revoke').then(()=>setInviteOpen(false)).catch(()=>{})}/>}
 
   {incident&&<ScannerDialog label="Incidencia de recepción" onCancel={()=>setIncident(null)}><h2 className="text-xl font-bold">Marcar incidencia</h2><p>{incident.name} · {incident.number}</p><label className="block space-y-2">Motivo<input className="input-field" autoFocus value={reason} maxLength={300} onChange={e=>setReason(e.target.value)}/></label><p className="text-sm text-muted-foreground">La entrada se conservará para revisión. No se registra asistencia.</p><div className="flex gap-3"><button className="btn-secondary" onClick={()=>setIncident(null)}>Cancelar</button><button className="btn-primary" disabled={q.pending||reason.trim().length<5} onClick={()=>void q.act('/entries/'+incident.id+'/incident',{reason}).then(()=>setIncident(null)).catch(()=>{})}>Guardar incidencia</button></div></ScannerDialog>}
-  {selected&&<QueueQuickConfirm key={selected.id} row={selected} startPayment={paymentRequested} onClose={()=>{const id=claim.current;claim.current=null;setSelected(null);if(id)void api.post(base+'/entries/'+id+'/release').catch(()=>{}).finally(()=>void q.refresh());}} onFull={async()=>{await onOpen(selected.registrationId);setSelected(null);}} onConfirmed={message=>{const completed=selected.id;claim.current=null;setSelected(null);setStatus(message);const next=q.rows.find(row=>row.id!==completed&&row.state==='WAITING');if(next)void open(next);}}/>}
+  {selected&&<QueueQuickConfirm key={selected.id} row={selected} startPayment={paymentRequested} onClose={()=>{const id=claim.current;claim.current=null;setSelected(null);if(id)void api.post(base+'/entries/'+id+'/release').catch(()=>{}).finally(()=>void q.refresh());}} onFull={async()=>{await onOpen(selected.registrationId);setSelected(null);}} onCommitted={()=>{claim.current=null;}} onIncident={()=>{setReason('');setIncident(selected);setSelected(null);}} onConfirmed={message=>{claim.current=null;setContext(returnToReception);setStatus(message);void q.refresh();}}/>}
   <QueueScanFlow allowManual isOpen={scan} onClose={()=>setScan(false)} onResult={result=>setStatus(result.status==='QUEUED'?`${result.number} · ${result.result}`:qrFeedback(result.result).title)}/>
  </section>;
 }

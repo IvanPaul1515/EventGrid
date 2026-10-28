@@ -1,3 +1,4 @@
+import {confirmationHash,CapDecision} from './queue-confirmation.js';
 import { randomUUID, randomInt, randomBytes, createHash, createHmac, createCipheriv, createDecipheriv, timingSafeEqual } from 'node:crypto';
 import { prisma } from '../../config/db.js';
 import { ENV } from '../../config/env.js';
@@ -251,16 +252,23 @@ export class ReceptionQueueService {
   const payment=paymentSummary(reg);
   const paymentMethods=settings?.allowOnsitePayments&&!payment.external&&!payment.isCourtesy?await prisma.paymentMethod.findMany({where:{eventId,isActive:true,OR:[{code:null},{code:{notIn:['COURTESY','SPONSOR']}}]}}):[];
   const revoked=reg.participantCategory==='SPEAKER'?await prisma.speaker.findFirst({where:{eventId,registrationId:reg.id,credentialRevokedAt:{not:null}}}):null;
-  const blockedReason=(revoked?'La credencial de charlista está revocada.':null)||queueBlockReason(reg,Boolean(pending),settings?.requirePaymentForEntry!==false)||(entry.validatedQrHash&&entry.validatedQrHash!==createHash('sha256').update(reg.qrCode||'').digest('hex')?'El QR fue revocado. Revisa la ficha completa.':null);
-  return {category:reg.participantCategory,payment,paymentMethods,canCollect:Boolean(settings?.allowOnsitePayments&&!payment.external&&!payment.isCourtesy&&payment.balanceDue>0&&reg.status!=='CANCELLED'),registrationId:reg.id,name:reg.participant.fullName,number:reg.registrationNumber,canCheckIn:!blockedReason,blockedReason,selectedTshirtSize:entry.selectedTshirtSize||reg.tshirtSize,shirts:await queueTshirts(prisma,eventId,reg)};
+  const canCollect=Boolean(settings?.allowOnsitePayments&&!payment.external&&!payment.isCourtesy&&payment.balanceDue>0&&reg.status!=='CANCELLED');
+  let blockedReason=(revoked?'La credencial de charlista está revocada.':null)||queueBlockReason(reg,Boolean(pending),settings?.requirePaymentForEntry!==false)||(entry.validatedQrHash&&entry.validatedQrHash!==createHash('sha256').update(reg.qrCode||'').digest('hex')?'El QR fue revocado. Revisa la ficha completa.':null);
+  if(blockedReason?.startsWith('Pago pendiente.'))blockedReason=canCollect?'Pago pendiente. Registra el pago para confirmar.':payment.external?'Saldo pendiente de conciliación externa.':'Pago pendiente. El cobro presencial no está habilitado.';
+  const cap=await prisma.merchAllocation.findFirst({where:{eventId,recipientId:reg.id,kind:'PARTICIPANT',status:{in:['RESERVED','DELIVERED']},item:{systemCode:'OFFICIAL_CAP',isActive:true}},include:{item:true}});
+  const capEligible=Boolean(cap&&reg.officialRegistrationOrder&&reg.officialOrderSource&&reg.officialRegistrationOrder<=cap.item.participantQuota&&!reg.isDemo);
+  return {officialOrder:reg.officialOrderSource?reg.officialRegistrationOrder:null,cap:capEligible?{eligible:true,delivered:cap!.status==='DELIVERED'}:null,category:reg.participantCategory,payment:{...payment,ticketPrice:Number(reg.ticketPrice)},paymentMethods,canCollect,registrationId:reg.id,name:reg.participant.fullName,number:reg.registrationNumber,canCheckIn:!blockedReason,blockedReason,selectedTshirtSize:entry.selectedTshirtSize||reg.tshirtSize,shirts:await queueTshirts(prisma,eventId,reg)};
  }
- static async complete(user:AuthUser,eventId:string,id:string,size?:string,delivered=false,decision?:ShirtDecision){
+ static async complete(user:AuthUser,eventId:string,id:string,size?:string,delivered=false,decision?:ShirtDecision,capDecision?:CapDecision,requestKey?:string){
   const detail=await this.details(user,eventId,id);
+  const requestHash=confirmationHash(size,delivered,decision,capDecision);
+  const replay=async()=>{if(!requestKey)return null;const logs=await prisma.auditLog.findMany({where:{action:'ATTENDANCE_CHECKIN',entityId:detail.registrationId,userId:user.id},orderBy:{createdAt:'desc'},take:10});for(const log of logs){let change:any=log.changes;if(typeof change==='string'){try{change=JSON.parse(change);}catch{continue;}}if(change?.queueRequestKey===requestKey&&change.confirmationReceipt){if(change.queueRequestHash!==requestHash)throw new ConflictError('La confirmación ya se registró con otras decisiones. Consulta su resultado.');return {message:'Asistencia confirmada.',confirmationReceipt:change.confirmationReceipt,replayed:true};}}return null;};
+  const previous=await replay();if(previous)return previous;
   if(!detail.canCheckIn)throw new BadRequestError(detail.blockedReason!);
   if(delivered){validateQueueSize(detail.shirts,size);if(!detail.shirts.enabled)throw new BadRequestError('Esta entrada no incluye camiseta.');}
   if(size)validateQueueSize(detail.shirts,size);
   if(decision){shirtDecision(decision,delivered);if((decision.decision==='DELIVER')!==delivered)throw new BadRequestError('La decisión de entrega no coincide con la operación.');}
-  return AttendanceService.checkIn(eventId,detail.registrationId,user.id,size,delivered,user.sessionId,id,decision);
+  try{return await AttendanceService.checkIn(eventId,detail.registrationId,user.id,size,delivered,user.sessionId,id,decision,{capDecision,requestKey,requestHash});}catch(error){const completed=await replay();if(completed)return completed;throw error;}
  }
  static async stats(user:AuthUser,eventId:string){await this.access(user,eventId);return ScanActivity.stats(user.id,eventId,user.sessionId);}
  static async incident(user:AuthUser,eventId:string,id:string,reason:string){

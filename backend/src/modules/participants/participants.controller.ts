@@ -1,3 +1,4 @@
+import {RealtimeService} from '../realtime/realtime.service.js';
 import {prisma} from '../../config/db.js';
 import {ForbiddenError} from '../../utils/errors.js';
 import { Request, Response, NextFunction } from 'express';
@@ -167,6 +168,7 @@ export class ParticipantsController {
         },
       });
 
+      if(validated.source==='RECEPTION_QUEUE')RealtimeService.changed(eventId,['attendance','participants','sales']);
       return res.status(201).json({
         status: 'success',
         message: `Pago de RD$ ${validated.amount.toFixed(2)} registrado exitosamente. Balance pendiente: RD$ ${Number(result.registration.balanceDue).toFixed(2)}`,
