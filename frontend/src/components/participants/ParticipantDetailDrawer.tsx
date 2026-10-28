@@ -895,12 +895,12 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                   )}
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 rounded-xl bg-muted/20 border border-border">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-muted/20 border border-border">
+                  <div className="flex items-center gap-3 min-w-0 flex-1 basis-48">
                     <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
                       <QrCode className="w-5 h-5" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs font-bold text-foreground">Credencial Digital del Participante</p>
                       <p className="text-[11px] text-muted-foreground">
                         {registration.qrCode ? 'Código QR seguro generado para acceso al evento' : 'QR pendiente de asignación'}
