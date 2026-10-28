@@ -1,3 +1,5 @@
+import {prisma as appPrisma} from '../src/config/db.js';
+import {MerchService} from '../src/modules/merch/merch.service.js';
 import { seedBarcamp2026 } from './barcamp2026.js';
 import { seedDemoScanners } from '../src/modules/auth/demo-scanners.js';
 import { INITIAL_TSHIRT_INVENTORY } from '../src/modules/inventory/inventory.service.js';
@@ -250,6 +252,8 @@ async function main() {
   console.log(`   - ${event2026.name} [ACTIVO] (Predeterminada)`);
   console.log(`   - ${event2025.name} [FINALIZADO]`);
   console.log(`   - ${event2024.name} [ARCHIVADO]`);
+  await MerchService.ensureOfficialCaps(event2026.id,adminUser.id);
+  try{await MerchService.reconcileOfficialCaps(event2026.id,adminUser.id);}catch{console.warn('La conciliación de gorras requiere revisión administrativa; los derechos existentes se conservan.');}
   console.log('🏁 Inicialización completada con éxito.');
 }
 
@@ -259,5 +263,6 @@ main()
     process.exit(1);
   })
   .finally(async () => {
+    await appPrisma.$disconnect();
     await prisma.$disconnect();
   });

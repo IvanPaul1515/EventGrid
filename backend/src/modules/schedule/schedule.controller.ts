@@ -1,3 +1,4 @@
+import {hasUserPermission} from '../../middleware/rbac.js';
 import { Request, Response, NextFunction } from 'express';
 import { ScheduleService } from './schedule.service.js';
 import {
@@ -9,7 +10,7 @@ import {
   NotifyScheduleChangeSchema,
   CreateAnnouncementSchema,
 } from './schedule.dto.js';
-import { BadRequestError } from '../../utils/errors.js';
+import { BadRequestError, ForbiddenError } from '../../utils/errors.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -55,6 +56,7 @@ export class ScheduleController {
     try {
       const eventId = ScheduleController.getEventId(req);
       const input = CreateScheduleItemSchema.parse(req.body);
+      if(input.isDemo&&!hasUserPermission(req.user!,'DEMO_MANAGE'))throw new ForbiddenError('La gestión de datos demo requiere administrador.');
       const item = await ScheduleService.createItem(eventId, input, req.user?.id);
 
       return res.status(201).json({
@@ -72,6 +74,7 @@ export class ScheduleController {
       const eventId = ScheduleController.getEventId(req);
       const input = UpdateScheduleItemSchema.parse(req.body);
       const userId = (req as any).user?.id;
+      const existing=await ScheduleService.getItemById(eventId,req.params.id);if((existing.isDemo||input.isDemo)&&!hasUserPermission(req.user!,'DEMO_MANAGE'))throw new ForbiddenError('La gestión de datos demo requiere administrador.');
       const result = await ScheduleService.updateItem(eventId, req.params.id, input, userId);
 
       return res.status(200).json({
@@ -89,6 +92,7 @@ export class ScheduleController {
   static async deleteItem(req: Request, res: Response, next: NextFunction) {
     try {
       const eventId = ScheduleController.getEventId(req);
+      const existing=await ScheduleService.getItemById(eventId,req.params.id);if(existing.isDemo&&!hasUserPermission(req.user!,'DEMO_MANAGE'))throw new ForbiddenError('La eliminación de datos demo requiere administrador.');
       const result = await ScheduleService.deleteItem(eventId, req.params.id);
 
       return res.status(200).json({

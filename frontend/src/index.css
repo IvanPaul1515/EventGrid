@@ -2,6 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Shared controls: the scanner originally owned these classes exclusively. */
+@layer components {
+  .input-field {
+    @apply block w-full min-w-0 rounded-xl border border-border bg-background px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground;
+    min-height: 46px;
+  }
+  .input-field:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+  .input-field:disabled { opacity: .55; cursor: not-allowed; }
+  label:has(> .input-field) { display: block; font-size: .875rem; font-weight: 500; }
+  label > .input-field { margin-top: .5rem; }
+  textarea.input-field { min-height: 96px; resize: vertical; }
+  .btn-primary, .btn-secondary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors;
+    cursor: pointer; white-space: normal;
+  }
+  .btn-primary { @apply border-primary bg-primary text-primary-foreground hover:bg-primary-hover; }
+  .btn-secondary { @apply border-border bg-card text-foreground hover:bg-muted; }
+  .btn-primary:focus-visible, .btn-secondary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
+  .btn-primary:disabled, .btn-secondary:disabled { opacity: .5; cursor: not-allowed; }
+}
+
 @layer base {
   /* ══════════════════════════════════════════════════════════════════
      Modo Claro BarCamp 2026 — Papel cálido impreso, no blanco puro

@@ -83,7 +83,6 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
   const [isCourtesyFilter, setIsCourtesyFilter] = useState<'ALL' | 'COURTESY' | 'REGULAR'>(init.isCourtesyFilter || 'ALL');
   const [sortBy, setSortBy] = useState<string>(init.sortBy || 'createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(init.sortOrder || 'desc');
-  const [demoLoading, setDemoLoading] = useState(false);
   const [stats, setStats] = useState<any>(null);
 
   // Catálogos para filtros
@@ -206,34 +205,6 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
   };
 
   // Generar datos de prueba (15)
-  const handleGenerateDemo = async () => {
-    setDemoLoading(true);
-    try {
-      const res = await participantsService.generateDemo(15);
-      showNotification('success', res.message || '15 participantes de prueba generados exitosamente');
-      await fetchParticipants();
-    } catch (err: any) {
-      showNotification('error', err.response?.data?.message || 'Error al generar datos de prueba');
-    } finally {
-      setDemoLoading(false);
-    }
-  };
-
-  // Limpiar datos de prueba
-  const handleClearDemo = async () => {
-    if (!window.confirm('¿Está seguro de eliminar todos los participantes de demostración [DEMO]?')) return;
-    setDemoLoading(true);
-    try {
-      const res = await participantsService.clearDemo();
-      showNotification('success', res.message || `${res.deletedCount} participantes demo eliminados`);
-      await fetchParticipants();
-    } catch (err: any) {
-      showNotification('error', err.response?.data?.message || 'Error al eliminar datos demo');
-    } finally {
-      setDemoLoading(false);
-    }
-  };
-
   // Actualizar estado de confirmación
   const handleStatusChange = async (regId: string, newStatus: string) => {
     try {
@@ -367,29 +338,6 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Carga y Limpieza de Datos Demo (Entorno de Desarrollo) */}
-          {hasRole(['ADMIN', 'OPERATOR']) && (
-            <>
-              <button
-                onClick={handleGenerateDemo}
-                disabled={demoLoading}
-                className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                title="Generar 15 participantes ficticios para pruebas de desarrollo"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span>{demoLoading ? 'Cargando...' : 'Cargar datos demo (15)'}</span>
-              </button>
-              <button
-                onClick={handleClearDemo}
-                disabled={demoLoading}
-                className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-rose-500/15 border border-zinc-700/60 hover:border-rose-500/30 text-zinc-400 hover:text-rose-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                title="Eliminar todos los participantes con etiqueta [DEMO]"
-              >
-                <span>Limpiar datos demo</span>
-              </button>
-            </>
-          )}
-
           {/* Menú de Exportación */}
           <button
             onClick={() => handleExport('xlsx')}

@@ -1,3 +1,5 @@
+import {prisma} from '../../config/db.js';
+import {ForbiddenError} from '../../utils/errors.js';
 import { Request, Response, NextFunction } from 'express';
 import { ParticipantsService } from './participants.service.js';
 import {
@@ -270,6 +272,7 @@ export class ParticipantsController {
   static async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const eventId = req.params.eventId || req.eventId!;
+      const existing=await prisma.registration.findFirst({where:{id:req.params.id,eventId},select:{isDemo:true}});if(existing?.isDemo&&req.user?.role!=='ADMIN')throw new ForbiddenError('Eliminar datos demo requiere administrador.');
       const result = await ParticipantsService.delete(eventId, req.params.id);
 
       await recordAuditLog({

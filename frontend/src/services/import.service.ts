@@ -32,6 +32,7 @@ export interface ValidationResult {
 }
 
 export interface ExecutionResult {
+  merchReconciliation?: {eligible:string[];issues:{registrationId?:string;reason:string}[]};
   batchId: string;
   fileName: string;
   totalRows: number;

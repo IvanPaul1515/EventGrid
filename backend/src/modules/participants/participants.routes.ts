@@ -12,8 +12,8 @@ router.use(editionContext);
 router.use('/courtesy-requests', courtesyRoutes);
 
 // Rutas especiales y acciones globales (deben declararse antes de /:id)
-router.post('/demo', requireAdmin, ParticipantsController.generateDemo);
-router.delete('/demo', requireOperatorOrAdmin, ParticipantsController.clearDemo);
+router.post('/demo', requirePermission('DEMO_MANAGE'), ParticipantsController.generateDemo);
+router.delete('/demo', requirePermission('DEMO_MANAGE'), ParticipantsController.clearDemo);
 router.post('/onsite-sale', requireOperatorOrAdmin, ParticipantsController.onsiteSale);
 
 // Rutas administrativas de eliminación segura (ADMIN)

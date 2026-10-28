@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ScheduleController } from './schedule.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
-import { requireAnyRole, requireOperatorOrAdmin } from '../../middleware/rbac.js';
+import { requireAnyRole, requireOperatorOrAdmin, requireAdmin, requirePermission } from '../../middleware/rbac.js';
 import { editionContext } from '../../middleware/editionContext.js';
 
 const router = Router({ mergeParams: true });
@@ -23,8 +23,8 @@ router.delete('/:id', requireOperatorOrAdmin, ScheduleController.deleteItem);
 router.post('/import', requireOperatorOrAdmin, ScheduleController.importSchedule);
 router.post('/pdf', requireOperatorOrAdmin, ScheduleController.updatePdfUrl);
 
-router.post('/demo', requireOperatorOrAdmin, ScheduleController.seedDemoSchedule);
-router.delete('/demo', requireOperatorOrAdmin, ScheduleController.clearDemoSchedule);
+router.post('/demo', requirePermission('DEMO_MANAGE'), ScheduleController.seedDemoSchedule);
+router.delete('/demo', requirePermission('DEMO_MANAGE'), ScheduleController.clearDemoSchedule);
 
 
 // Historial de cambios y notificaciones programadas

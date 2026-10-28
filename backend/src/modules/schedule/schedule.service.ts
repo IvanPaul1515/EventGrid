@@ -587,6 +587,7 @@ export class ScheduleService {
   ];
 
   static async seedDemoSchedule(eventId: string) {
+    return writeTransaction(async tx=>{const prisma=tx;
     const event = await prisma.event.findUnique({ where: { id: eventId } });
     if (!event) throw new NotFoundError('Edición no encontrada');
 
@@ -615,20 +616,14 @@ export class ScheduleService {
         ? `Se agregaron ${createdItems.length} actividades de demostración al cronograma.`
         : 'Las actividades de prueba ya existían en el cronograma.',
     };
+    });
   }
 
   static async clearDemoSchedule(eventId: string) {
-    const demoTitles = this.DEMO_ACTIVITIES.map((a) => a.title);
-    const deleteResult = await prisma.scheduleItem.deleteMany({
-      where: {
-        eventId,
-        OR: [
-          { isDemo: true },
-          { title: { in: demoTitles } },
-          { category: 'Demostración' },
-          { category: 'Demostracion' },
-        ],
-      },
+    const deleteResult = await writeTransaction(async tx=>{
+      const rows=await tx.scheduleItem.findMany({where:{eventId,isDemo:true},select:{id:true}});
+      await tx.speakerTalk.deleteMany({where:{eventId,scheduleItemId:{in:rows.map(r=>r.id)}}});
+      return tx.scheduleItem.deleteMany({where:{eventId,isDemo:true}});
     });
 
     return {

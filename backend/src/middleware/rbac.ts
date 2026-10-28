@@ -20,6 +20,8 @@ export function requireRole(allowedRoles: Array<'ADMIN' | 'OPERATOR' | 'VIEWER'>
 }
 
 export type Permission =
+  | 'SPEAKERS_MANAGE'
+  | 'SPEAKERS_CREDENTIALS'
   | 'RECEPTION_QUEUE_MANAGE'
   | 'RECEPTION_QUEUE_SCAN'
   | 'COURTESY_AUTHORIZE'
@@ -38,6 +40,7 @@ export type Permission =
 
 export const ROLE_PERMISSIONS: Record<'ADMIN' | 'OPERATOR' | 'VIEWER', Permission[]> = {
   ADMIN: [
+    'SPEAKERS_MANAGE','SPEAKERS_CREDENTIALS',
     'RECEPTION_QUEUE_MANAGE', 'RECEPTION_QUEUE_SCAN',
     'COURTESY_AUTHORIZE',
     'PRICE_MODIFY',
@@ -54,6 +57,7 @@ export const ROLE_PERMISSIONS: Record<'ADMIN' | 'OPERATOR' | 'VIEWER', Permissio
     'QR_REVOKE',
   ],
   OPERATOR: [
+    'SPEAKERS_MANAGE',
     'RECEPTION_QUEUE_MANAGE', 'RECEPTION_QUEUE_SCAN',
     'PARTICIPANTS_EXPORT',
     'COMMUNICATIONS_SEND',

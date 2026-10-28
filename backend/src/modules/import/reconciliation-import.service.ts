@@ -1,3 +1,4 @@
+import {MerchService} from '../merch/merch.service.js';
 import crypto from 'node:crypto';
 import { prisma } from '../../config/db.js';
 import { ENV } from '../../config/env.js';
@@ -14,7 +15,7 @@ export async function executeReconciledImport(input: { eventId: string; userId: 
   // A failed/replayed import may leave gaps; reserved numbers are never reused.
   const reserved = new Map<number,string>();
   for (const row of validation.rowsSummary) if (row.status === 'VALID' && !row.normalized.identityConflict && !row.normalized.existingRegistrationId) reserved.set(row.rowNumber, await ParticipantsService.getNextRegistrationNumber(eventId));
-  return writeTransaction(async tx => {
+  const result=await writeTransaction(async tx => {
     const actor=await tx.user.findUnique({where:{id:userId}});
     if(!actor?.isActive||actor.accountStatus!=='ACTIVE'||!['ADMIN','OPERATOR'].includes(actor.role)||(actor.assignedEventId&&actor.assignedEventId!==eventId))throw new ForbiddenError('Importador fuera de la edición autorizada.');
     const event=await tx.event.findUnique({where:{id:eventId},include:{ticketTypes:true,paymentMethods:true}});if(!event)throw new NotFoundError('Edición no encontrada.');
@@ -85,4 +86,6 @@ export async function executeReconciledImport(input: { eventId: string; userId: 
     await tx.importBatch.update({where:{id:batch.id},data:{importedRows:importedCount,updatedRows:updatedCount,skippedRows:skippedCount,errorRows:errorCount}});
     return {batchId:batch.id,fileName:input.fileName,totalRows:input.rows.length,importedCount,updatedCount,skippedCount,errorCount,reviewCount,errors};
   },{timeout:60000});
+  let merch;try{merch=await MerchService.reconcileOfficialCaps(eventId,userId);}catch(error){console.warn('Conciliación de gorras pendiente tras importación conservada');merch={eligible:[],issues:[{reason:'Importación conservada; conciliación de gorras pendiente. Revisa Inventario de merch.'}]};}
+  return {...result,merchReconciliation:merch};
 }
