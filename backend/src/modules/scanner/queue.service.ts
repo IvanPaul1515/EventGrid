@@ -251,7 +251,7 @@ export class ReceptionQueueService {
   const payment=paymentSummary(reg);
   const paymentMethods=settings?.allowOnsitePayments&&!payment.external&&!payment.isCourtesy?await prisma.paymentMethod.findMany({where:{eventId,isActive:true,OR:[{code:null},{code:{notIn:['COURTESY','SPONSOR']}}]}}):[];
   const blockedReason=queueBlockReason(reg,Boolean(pending),settings?.requirePaymentForEntry!==false)||(entry.validatedQrHash&&entry.validatedQrHash!==createHash('sha256').update(reg.qrCode||'').digest('hex')?'El QR fue revocado. Revisa la ficha completa.':null);
-  return {payment,paymentMethods,canCollect:Boolean(settings?.allowOnsitePayments&&!payment.external&&!payment.isCourtesy&&payment.balanceDue>0&&reg.status!=='CANCELLED'),registrationId:reg.id,name:reg.participant.fullName,number:reg.registrationNumber,canCheckIn:!blockedReason,blockedReason,selectedTshirtSize:entry.selectedTshirtSize||reg.tshirtSize,shirts:await queueTshirts(prisma,eventId,reg)};
+  return {category:reg.participantCategory,payment,paymentMethods,canCollect:Boolean(settings?.allowOnsitePayments&&!payment.external&&!payment.isCourtesy&&payment.balanceDue>0&&reg.status!=='CANCELLED'),registrationId:reg.id,name:reg.participant.fullName,number:reg.registrationNumber,canCheckIn:!blockedReason,blockedReason,selectedTshirtSize:entry.selectedTshirtSize||reg.tshirtSize,shirts:await queueTshirts(prisma,eventId,reg)};
  }
  static async complete(user:AuthUser,eventId:string,id:string,size?:string,delivered=false,decision?:ShirtDecision){
   const detail=await this.details(user,eventId,id);

@@ -95,10 +95,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       badge: 'Aportes',
       roles: ['ADMIN', 'OPERATOR', 'VIEWER'],
     },
+    { to: '/speakers', label: 'Charlistas', icon: Users, roles: ['ADMIN', 'OPERATOR', 'VIEWER'] },
     { to: '/staff', label: 'Personal y accesos', icon: Users, roles: ['ADMIN', 'OPERATOR', 'VIEWER'] },
     {
       to: '/inventory',
-      label: 'Inventario T-shirts',
+      label: 'Inventario de merch',
       icon: Shirt,
       badge: 'Stock',
       roles: ['ADMIN', 'OPERATOR', 'VIEWER'],

@@ -1,3 +1,4 @@
+import {RecipientMerch} from '../inventory/RecipientMerch';
 import { qrFeedback, qrFailureStatus } from '../../utils/qrFeedback';
 import { finishQrCameraRelease } from '../../utils/qrCameraRelease';
 import '../attendance/scanner.css';
@@ -590,6 +591,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                 {!scanResult.canCheckIn&&<button type="button" onClick={handleResetForNext} className="btn-primary w-full">Escanear siguiente</button>}
               </div>
               {/* Ficha del Participante Identificado */}
+              {scanResult.registration && ['VALID','ALREADY_CHECKED_IN'].includes(scanResult.status) && <RecipientMerch registrationId={scanResult.registration.id} attended={scanResult.registration.attended}/>}
               {scanResult.registration && ['VALID','ALREADY_CHECKED_IN'].includes(scanResult.status) && (
                 <div className="p-4 rounded-xl bg-card border border-border space-y-3">
                   <div className="flex items-start justify-between gap-3">
@@ -617,7 +619,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                         Entrada
                       </span>
                       <span className="text-xs font-bold text-foreground">
-                        {scanResult.registration.ticketType?.name || 'General'}
+                        {scanResult.registration.participantCategory==='SPEAKER'?'Charlista':scanResult.registration.ticketType?.name || 'General'}
                       </span>
                       <span className="text-[10px] block mt-0.5 text-muted-foreground">
                         {scanResult.registration.isCourtesy
