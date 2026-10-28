@@ -1,3 +1,4 @@
+import {lazy,Suspense} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {PaymentStatusBadge} from '../components/participants/PaymentStatusBadge';
 import {useListNavigation,useListNavigationScope} from '../hooks/useListNavigation';
@@ -52,11 +53,13 @@ export const ParticipantsPage: React.FC = () => {
   const scope=useListNavigationScope('participants');
   return <ParticipantsContent key={scope||'pending'} navigationKey={scope}/>;
 };
+const HandwrittenImport=lazy(()=>import('../components/participants/HandwrittenImport'));
+
 const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationKey}) => {
   const [searchParams,setSearchParams]=useSearchParams();
   const receiptEntry=searchParams.get('create')==='receipt';
   const { currentEvent } = useEdition();
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
 
   const init=React.useMemo(()=>{try{return readListNavigation(sessionStorage,navigationKey,participantFilters).filters;}catch{return {...participantFilters};}},[navigationKey]);
 
@@ -121,6 +124,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isOnsiteSaleOpen, setIsOnsiteSaleOpen] = useState(false);
   const [selectedForEdit, setSelectedForEdit] = useState<Registration | null>(null);
+  const [isHandwrittenOpen,setIsHandwrittenOpen]=useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   useEffect(()=>{if(receiptEntry&&hasRole(['ADMIN','OPERATOR']))setIsFormOpen(true);},[receiptEntry,hasRole]);
   const [selectedForDelete, setSelectedForDelete] = useState<Registration | null>(null);
@@ -394,7 +398,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
                 className="px-3.5 py-2 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Plus className="w-4 h-4 text-primary" />
-                <span>Nuevo Participante</span>
+                <span>Agregar participantes</span>
               </button>
             </>
           )}
@@ -1256,7 +1260,9 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
       />
 
       {/* Modal de Creación / Edición */}
+      {isHandwrittenOpen&&hasRole(['ADMIN','OPERATOR'])&&<Suspense fallback={<p role="status">Cargando escáner de listas…</p>}><HandwrittenImport key={`${currentEvent?.id}:${user?.id}`} onClose={()=>setIsHandwrittenOpen(false)} onSuccess={()=>{void fetchParticipants();window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));}}/></Suspense>}
       <ParticipantFormModal
+        onScanList={()=>{setIsFormOpen(false);if(receiptEntry)setSearchParams({}, {replace:true});setIsHandwrittenOpen(true);}}
         initialReceipt={receiptEntry}
         isOpen={isFormOpen}
         registrationToEdit={selectedForEdit}

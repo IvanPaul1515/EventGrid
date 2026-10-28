@@ -349,7 +349,7 @@ export class ImportService {
         normalized[targetField] = val !== undefined && val !== null ? String(val).trim() : '';
       }
 
-      try{normalized.historicalDates=temporalMetadata(normalized);}catch(error:any){errors.push(error.message);}
+      try{normalized.historicalDates=temporalMetadata(normalized);if(batchDefaults.captureKind==='HANDWRITTEN'&&normalized.historicalDates.purchasedAt)normalized.historicalDates.purchasedAt.source='DECLARED';}catch(error:any){errors.push(error.message);}
       if(batchDefaults.importKind==='PURCHASES'){
         const ref=String(normalized.externalReference||'').trim(),platform=String(normalized.externalPlatform||batchDefaults.externalPlatform||'Excel').trim();
         const candidates=event.registrations.filter(r=>r.externalReference===ref&&r.externalPlatform===platform);
