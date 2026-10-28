@@ -1,3 +1,6 @@
+import {PurchaseChronology} from '../components/sales/PurchaseChronology';
+import {ReceiptReader} from '../components/sales/ReceiptReader';
+import type {ReceiptDraft} from '../utils/receiptOcr';
 import {Link} from 'react-router-dom';
 import { FinancialOperationsPanel } from '../components/sales/FinancialOperationsPanel';
 import { useRealtimeRefresh } from '../context/RealtimeContext';
@@ -34,6 +37,7 @@ export const SalesPage: React.FC = () => {
   const { currentEvent } = useEdition();
   const { hasRole } = useAuth();
 
+  const [readingReceipt,setReadingReceipt]=useState(false),[receiptDraft,setReceiptDraft]=useState<ReceiptDraft>();
   const [summary, setSummary] = useState<FinancialSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
@@ -117,6 +121,7 @@ export const SalesPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <details><summary className="cursor-pointer font-semibold">Consultar orden de compras</summary><PurchaseChronology key={currentEvent?.id}/></details>
       {/* Cabecera del Módulo de Ventas */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -133,6 +138,7 @@ export const SalesPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {hasRole(['ADMIN','OPERATOR'])&&<button className="btn-secondary" onClick={()=>setReadingReceipt(true)}>Leer comprobante</button>}
           {hasRole(['ADMIN','OPERATOR'])&&<Link className="btn-secondary" to="/import?destination=PURCHASES">Importar Excel de compras</Link>}
           <button
             type="button"
@@ -503,7 +509,9 @@ export const SalesPage: React.FC = () => {
       </div>
 
       {/* Modal de Nueva Venta Presencial */}
+      {readingReceipt&&<ReceiptReader onClose={()=>setReadingReceipt(false)} onUse={draft=>{setReceiptDraft(draft);setReadingReceipt(false);setIsOnsiteSaleOpen(true);}}/>}
       <OnsiteSaleModal
+        receiptDraft={receiptDraft}
         isOpen={isOnsiteSaleOpen}
         onClose={() => setIsOnsiteSaleOpen(false)}
         ticketTypes={ticketTypes}

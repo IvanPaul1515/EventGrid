@@ -11,7 +11,7 @@ export function historicalDate(date:unknown,time:unknown,zone:unknown,source:str
  if(z&&!/^(Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/.test(z))throw new BadRequestError('Zona horaria: utiliza un desplazamiento explícito, por ejemplo -04:00.');
  if(offset&&z&&offset!==z)throw new BadRequestError('Zona horaria contradictoria.');offset=offset||z;
  if(clock.length===5)clock+=':00';if(clock&&offset&&!Number.isFinite(Date.parse(day+'T'+clock+offset)))throw new BadRequestError('Fecha/hora inválida.');
- return {value:day+(clock?'T'+clock+offset:''),precision:clock?'SECOND':'DATE',zone:clock?offset||null:null,source};
+ return {value:day+(clock?'T'+clock+offset:''),precision:clock?'SECOND':'DATE',zone:offset||null,source};
 }
 export function temporalMetadata(n:Record<string,any>){return {
  purchasedAt:historicalDate(n.saleTimestamp,n.purchaseTime,n.sourceTimezone,'Excel'),
@@ -22,3 +22,10 @@ export function detectDestinations(columns:string[]){const text=columns.join(' '
 export const IMPORT_FIELDS=new Set("externalPaymentStatus externalPlatform buyerName externalReference firstName lastName fullName documentId organizationRnc participantCategory waitlistFlag paidFullIndicator email phone alternatePhone institution ticketType ticketPrice amountPaid paymentMethod totalAmount salesResponsible saleTimestamp purchaseTime registrationDate registrationTime paymentDate paymentTime sourceTimezone status isCourtesy courtesyAuthorizedBy attended notes registrationNumber officialRegistrationOrder".split(" "));
 export function assertMapping(mapping:Record<string,string>){if(Object.values(mapping).some(v=>v&&v!=='IGNORE'&&!IMPORT_FIELDS.has(v)))throw new BadRequestError('Campo de destino no admitido.');const targets=Object.values(mapping).filter(v=>v&&v!=='IGNORE');if(new Set(targets).size!==targets.length)throw new BadRequestError('Un campo no puede recibir varias columnas incompatibles. Revisa el mapeo.');}
 export function mergeHistorical(existing:string|null|undefined,incoming:ReturnType<typeof temporalMetadata>){let old:any={};if(existing){try{old=JSON.parse(existing);}catch{throw new BadRequestError('Metadatos históricos existentes requieren revisión.');}}const conflicts:string[]=[];for(const [key,next]of Object.entries(incoming)){if(!next)continue;if(old[key]&&JSON.stringify(old[key])!==JSON.stringify(next)){conflicts.push(key);continue;}old[key]=next;}return {value:JSON.stringify(old),conflicts};}
+
+export function purchaseChronology(rows:{id:string;historicalDates?:string|null;externalReference?:string|null;source?:string;isCourtesy?:boolean;paymentStatus?:string}[]){
+ const purchases=rows.map(row=>{let date:HistoricalDate|null=null;try{date=JSON.parse(row.historicalDates||'{}').purchasedAt||null;}catch{}const instant=date?.precision==='SECOND'&&date.zone&&row.externalReference&&row.source==='EXCEL_IMPORT'?Date.parse(date.value):NaN;return {id:row.id,date,instant,position:null as number|null,verification:Number.isFinite(instant)?'SOURCE_TIMESTAMP':'PENDING'};});
+ const complete=purchases.every(p=>Number.isFinite(p.instant));const counts=new Map<number,number>();for(const p of purchases)if(Number.isFinite(p.instant))counts.set(p.instant,(counts.get(p.instant)||0)+1);
+ const sorted=[...purchases].sort((a,b)=>Number.isFinite(a.instant)&&Number.isFinite(b.instant)?a.instant-b.instant:Number.isFinite(a.instant)?-1:1);
+ sorted.forEach((p,i)=>{if(complete&&counts.get(p.instant)===1)p.position=i+1;else if(counts.get(p.instant)!==1)p.verification='PENDING';});return sorted.map(({instant,...safe})=>safe);
+}

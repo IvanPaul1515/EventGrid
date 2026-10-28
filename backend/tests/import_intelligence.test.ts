@@ -1,7 +1,8 @@
+import {receiptProposals} from '../../frontend/src/utils/receiptOcr.js';
 import {beforeEach,describe,it,expect,vi} from 'vitest';
 import * as XLSX from 'xlsx';
 vi.mock('../src/config/db.js',()=>({prisma:{event:{findUnique:vi.fn()}}}));
-import {historicalDate,temporalMetadata,mergeHistorical,assertMapping,detectDestinations} from '../src/modules/import/intelligence.js';
+import {purchaseChronology,historicalDate,temporalMetadata,mergeHistorical,assertMapping,detectDestinations} from '../src/modules/import/intelligence.js';
 import {ImportService} from '../src/modules/import/import.service.js';
 import {prisma} from '../src/config/db.js';
 function file(rows:any[][],type:'xlsx'|'xls'|'csv'='xlsx'){const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(rows),'Datos');return XLSX.write(book,{type:'buffer',bookType:type==='xls'?'biff8':type}).toString('base64');}
@@ -14,4 +15,9 @@ describe('intelligent import, pure helpers and mocked database only',()=>{
  it('keeps verified historical dates when a later import loses precision or changes values',()=>{const next=temporalMetadata({saleTimestamp:'2026-10-20',purchaseTime:'14:30',sourceTimezone:'-04:00'});const original=JSON.stringify(next);const result=mergeHistorical(original,temporalMetadata({saleTimestamp:'2026-10-20'}));expect(result.value).toBe(original);expect(result.conflicts).toEqual(['purchasedAt']);expect(mergeHistorical(original,next).conflicts).toEqual([]);});
  it('proposes modules without classifying generic company columns as sponsors',()=>{expect(detectDestinations(['Patrocinador','Aporte'])).toContain('SPONSORS');expect(detectDestinations(['Empresa','Correo'])).not.toContain('SPONSORS');});
  it('validates purchase-only rows against one existing reference and never invents a participant',async()=>{vi.mocked(prisma.event.findUnique).mockResolvedValue({paymentMethods:[],ticketTypes:[],registrations:[{id:'existing',registrationNumber:'EG1',source:'EXCEL_IMPORT',externalPlatform:'University',externalReference:'REF-1',ticketPrice:1750,participant:{firstName:'Unit',lastName:'Person',fullName:'Unit Person',email:'unit@example.invalid'}}]} as any);const result=await ImportService.validateRows('event',[{Ref:'REF-1',Fecha:'2026-10-20'}],{Ref:'externalReference',Fecha:'saleTimestamp'},{importKind:'PURCHASES',externalPlatform:'University'});expect(result.errorRows).toBe(0);expect(result.rowsSummary[0].normalized.historicalDates.purchasedAt.precision).toBe('DATE');const unknown=await ImportService.validateRows('event',[{Ref:'unknown'}],{Ref:'externalReference'},{importKind:'PURCHASES',externalPlatform:'University'});expect(unknown.errorRows).toBe(1);});
+});
+
+describe('OCR proposals and purchase order, unit only',()=>{
+ it('never invents missing receipt data or unlabelled amounts',()=>{expect(receiptProposals('Nada legible')).toEqual({date:'',time:'',amount:'',receipt:'',method:'',reference:'',participant:''});expect(receiptProposals('TOTAL RD$ 1,750.00\nFecha: 20/10/2026\nHora: 14:30\nReferencia: ABC-123')).toMatchObject({amount:'1,750.00',date:'20/10/2026',time:'14:30',reference:'ABC-123'});});
+ it('orders complete timestamps, and refuses ranks for ties or incomplete history',()=>{const row=(id:string,value:string)=>({id,source:'EXCEL_IMPORT',externalReference:id,historicalDates:JSON.stringify({purchasedAt:{value,zone:'-04:00',precision:'SECOND',source:'Excel'}})});expect(purchaseChronology([row('later','2026-10-20T11:00:00-04:00'),row('first','2026-10-20T10:00:00-04:00')]).map(r=>[r.id,r.position])).toEqual([['first',1],['later',2]]);expect(purchaseChronology([row('one','2026-10-20T10:00:00-04:00'),row('two','2026-10-20T10:00:00-04:00')]).every(r=>r.position===null)).toBe(true);expect(purchaseChronology([row('known','2026-10-20T10:00:00-04:00'),{id:'unknown'}]).every(r=>r.position===null)).toBe(true);});
 });
