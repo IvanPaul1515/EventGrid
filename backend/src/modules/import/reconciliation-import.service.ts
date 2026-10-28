@@ -1,3 +1,4 @@
+import {mergeHistorical} from './intelligence.js';
 import {MerchService} from '../merch/merch.service.js';
 import crypto from 'node:crypto';
 import { prisma } from '../../config/db.js';
@@ -11,13 +12,14 @@ const stored = (value: unknown) => ENV.DATABASE_URL?.startsWith('file:') ? JSON.
 export async function executeReconciledImport(input: { eventId: string; userId: string; fileName: string; fileSize: number; rows: any[]; columnMapping: Record<string,string>; conflictStrategy: string; batchDefaults: Record<string,string>; validation: any }) {
   const {eventId,userId,validation,batchDefaults} = input;
   const contentHash = crypto.createHash('sha256').update(JSON.stringify({ eventId, rows: input.rows, mapping: input.columnMapping, defaults: batchDefaults, strategy: input.conflictStrategy })).digest('hex');
+  if(batchDefaults.importKind==='PURCHASES'&&input.conflictStrategy!=='UPDATE')throw new BadRequestError('Las compras históricas requieren confirmar la conciliación de registros existentes.');
   // Reserve from the shared atomic sequence, outside the batch transaction.
   // A failed/replayed import may leave gaps; reserved numbers are never reused.
   const reserved = new Map<number,string>();
   for (const row of validation.rowsSummary) if (row.status === 'VALID' && !row.normalized.identityConflict && !row.normalized.existingRegistrationId) reserved.set(row.rowNumber, await ParticipantsService.getNextRegistrationNumber(eventId));
   const result=await writeTransaction(async tx => {
     const actor=await tx.user.findUnique({where:{id:userId}});
-    if(!actor?.isActive||actor.accountStatus!=='ACTIVE'||!['ADMIN','OPERATOR'].includes(actor.role)||(actor.assignedEventId&&actor.assignedEventId!==eventId))throw new ForbiddenError('Importador fuera de la edición autorizada.');
+    if(actor?.scannerOnly||!actor?.isActive||actor.accountStatus!=='ACTIVE'||!['ADMIN','OPERATOR'].includes(actor.role)||(actor.assignedEventId&&actor.assignedEventId!==eventId))throw new ForbiddenError('Importador fuera de la edición autorizada.');
     const event=await tx.event.findUnique({where:{id:eventId},include:{ticketTypes:true,paymentMethods:true}});if(!event)throw new NotFoundError('Edición no encontrada.');
     const previous=await tx.importBatch.findUnique({where:{eventId_contentHash:{eventId,contentHash}}});
     if(previous) {
@@ -61,6 +63,7 @@ export async function executeReconciledImport(input: { eventId: string; userId: 
       if(!existing&&price<=0&&!ambiguous)throw new BadRequestError('Una tarifa nula no autoriza una cortesía por Excel.');
       const explicitPaid=n.amountPaidProvided?Number(n.amountPaid):n.totalAmountProvided?Number(n.totalAmount):undefined;
       let registration=existing;
+      if(!registration&&batchDefaults.importKind==='PURCHASES')throw new BadRequestError('Las compras históricas solo actualizan inscripciones existentes identificadas.');
       if(!registration) {
         // Document/reference are the primary identity signals; shared email alone
         // never selects another physical participant.
@@ -71,7 +74,7 @@ export async function executeReconciledImport(input: { eventId: string; userId: 
         }
         let responsibleId:string|null=null;
         if(n.salesResponsible){const name=String(n.salesResponsible).trim();const found=await tx.salesResponsible.findFirst({where:{eventId,name}});responsibleId=found?.id||(await tx.salesResponsible.create({data:{eventId,name}})).id;}
-        registration=await tx.registration.create({data:{eventId,participantId:participant.id,registrationNumber:reserved.get(row.rowNumber)!,source:'EXCEL_IMPORT',importBatchId:batch.id,ticketTypeId:ticket?.id||null,ticketPrice:price,amountPaid:0,totalAmount:0,balanceDue:price,paymentStatus:'PENDING',status:'PENDING',isVerified:false,externalReference:n.externalReference||null,externalPlatform:n.externalPlatform,externalPaymentStatus:n.externalPaymentStatus||null,externalPaymentMethod:n.paymentMethod||null,buyerName:n.buyerName||null,originLabel:n.externalPlatform,createdByUserId:userId,commercialUserId:null,salesResponsibleId:responsibleId,organizationRnc:n.organizationRnc||null,participantCategory:n.participantCategory||null,waitlistState:n.waitlistState,importOriginalData:JSON.stringify(row.raw),qrCode:'eg_qr_'+crypto.randomBytes(16).toString('hex'),qrGeneratedAt:new Date(),notes:n.notes||null,saleTimestamp: n.saleTimestamp ? (typeof n.saleTimestamp === 'number' ? new Date((n.saleTimestamp - 25569) * 86400000) : new Date(n.saleTimestamp)) : new Date()},include:{participant:true}});
+        registration=await tx.registration.create({data:{eventId,participantId:participant.id,registrationNumber:reserved.get(row.rowNumber)!,source:'EXCEL_IMPORT',importBatchId:batch.id,ticketTypeId:ticket?.id||null,ticketPrice:price,amountPaid:0,totalAmount:0,balanceDue:price,paymentStatus:'PENDING',status:'PENDING',isVerified:false,externalReference:n.externalReference||null,externalPlatform:n.externalPlatform,externalPaymentStatus:n.externalPaymentStatus||null,externalPaymentMethod:n.paymentMethod||null,buyerName:n.buyerName||null,originLabel:n.externalPlatform,createdByUserId:userId,commercialUserId:null,salesResponsibleId:responsibleId,organizationRnc:n.organizationRnc||null,participantCategory:n.participantCategory||null,waitlistState:n.waitlistState,importOriginalData:JSON.stringify(row.raw),qrCode:'eg_qr_'+crypto.randomBytes(16).toString('hex'),qrGeneratedAt:new Date(),notes:n.notes||null,historicalDates:JSON.stringify(n.historicalDates||{}),...(n.historicalDates?.purchasedAt?.precision==='SECOND'&&n.historicalDates.purchasedAt.zone?{saleTimestamp:new Date(n.historicalDates.purchasedAt.value)}:{})},include:{participant:true}});
         importedCount++;
         await financeAudit(tx,userId,eventId,registration.id,'REGISTRATION_IMPORTED',{batchId:batch.id,externalReference:n.externalReference,source:n.externalPlatform,ticketPrice:price,reportedFull:n.paidFullIndicator,tariffRule:approvedTicket?.id||null});
       } else {
@@ -79,6 +82,7 @@ export async function executeReconciledImport(input: { eventId: string; userId: 
         if(row.normalized.personalChanges?.length){await FinanceService.review(tx,{eventId,registrationId:registration.id,sourceBatchId:batch.id,code:'PERSONAL_DATA_CHANGED',reason:'La fuente propone cambios personales; se conservaron los valores existentes.',evidence:{fields:row.normalized.personalChanges,rowNumber:row.rowNumber},actorId:userId});reviewCount++;}
         await tx.registration.update({where:{id:registration.id},data:{lastExternalSyncAt:new Date(),externalPaymentStatus:n.externalPaymentStatus||undefined,importOriginalData:JSON.stringify(row.raw)}});updatedCount++;
       }
+      if(n.historicalDates){const history=mergeHistorical(registration.historicalDates,n.historicalDates);if(history.conflicts.length){await FinanceService.review(tx,{eventId,registrationId:registration.id,sourceBatchId:batch.id,code:'HISTORICAL_DATE_CONFLICT',reason:'Fechas históricas conservadas; la nueva fuente requiere revisión.',evidence:{fields:history.conflicts},actorId:userId});reviewCount++;}await tx.registration.update({where:{id:registration.id},data:{historicalDates:history.value}});}
       if(ambiguous) {await FinanceService.review(tx,{eventId,registrationId:registration.id,sourceBatchId:batch.id,code:'AMBIGUOUS_TARIFF',reason:'La fuente no aporta importe de tarifa y hay varias tarifas posibles. No se acreditó dinero.',evidence:{rowNumber:row.rowNumber,reportedFull:n.paidFullIndicator},actorId:userId});reviewCount++;continue;}
       const outcome=await FinanceService.externalReport(tx,{eventId,registrationId:registration.id,actorId:userId,batchId:batch.id,reportedFull:n.paidFullIndicator||'UNKNOWN',cumulativeAmount:explicitPaid,method:n.paymentMethod||undefined,reference:n.externalReference||registration.registrationNumber});
       if(outcome.outcome==='REVIEW')reviewCount++;

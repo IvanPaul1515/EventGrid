@@ -1,6 +1,10 @@
 import { api } from './api';
 
 export interface AnalyzeResult {
+  detectedDestinations?:string[];
+  mappingSuggestions?:{column:string;field:string|null;confidence:number}[];
+  mergedCells?:string[];
+  ignoredRows?:number;
   fileName: string;
   sheets: string[];
   selectedSheet: string;
@@ -66,6 +70,8 @@ export interface ImportBatchItem {
 }
 
 export const importService = {
+  async templates(){return (await api.get('/import/templates')).data.data as {name:string;kind:string;columns:Record<string,string>;source?:string}[];},
+  async saveTemplate(input:{name:string;kind:string;columns:Record<string,string>}){return (await api.post('/import/templates',input)).data.data;},
   async analyze(fileBase64: string, fileName: string, sheetName?: string, headerRowIndex?: number): Promise<AnalyzeResult> {
     const res = await api.post('/import/analyze', {
       fileBase64,

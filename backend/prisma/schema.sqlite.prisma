@@ -92,6 +92,7 @@ model Event {
 }
 
 model EventSettings {
+  importMappingTemplates String?
   timeZone String @default("America/Santo_Domingo")
   allowOnsitePayments Boolean @default(false)
   requirePaymentForEntry Boolean @default(true)
@@ -152,6 +153,7 @@ model Participant {
 }
 
 model Registration {
+  historicalDates String?
   officialRegistrationOrder Int?
   officialOrderSource String?
   scanActivities QueueScanActivity[]

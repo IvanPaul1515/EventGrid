@@ -3,7 +3,7 @@ import { TicketType } from '../types';
 import React, { useState, useEffect, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DeleteExcelModal } from '../components/participants/DeleteExcelModal';
 import {
   importService,
@@ -44,6 +44,13 @@ interface SystemFieldDef {
 }
 
 const SYSTEM_FIELDS: SystemFieldDef[] = [
+  {key:'saleTimestamp',label:'Fecha de compra',required:false,description:'AAAA-MM-DD o DD/MM/AAAA; nunca se sustituye por la importación'},
+  {key:'purchaseTime',label:'Hora de compra',required:false,description:'HH:mm:ss; omitir si se desconoce'},
+  {key:'registrationDate',label:'Fecha de inscripción original',required:false,description:'Fecha histórica de la fuente'},
+  {key:'registrationTime',label:'Hora de inscripción original',required:false,description:'Omitir si se desconoce'},
+  {key:'paymentDate',label:'Fecha de pago histórica',required:false,description:'No acredita por sí misma dinero recibido'},
+  {key:'paymentTime',label:'Hora del pago',required:false,description:'Omitir si se desconoce'},
+  {key:'sourceTimezone',label:'Zona horaria de la fuente',required:false,description:'Desplazamiento explícito, por ejemplo -04:00; no se presupone'},
   { key: 'fullName', label: 'Nombre Completo', required: false, description: 'Nombres y apellidos juntos en una sola columna' },
   { key: 'firstName', label: 'Nombres', required: false, description: 'Primer y segundo nombre del asistente' },
   { key: 'lastName', label: 'Apellidos', required: false, description: 'Apellidos completos del participante' },
@@ -75,7 +82,11 @@ export const ImportPage: React.FC = () => {
   const { currentEvent } = useEdition();
   const { hasRole, user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams]=useSearchParams();
 
+  const [templates,setTemplates]=useState<{name:string;kind:string;columns:Record<string,string>}[]>([]);
+  const [templateName,setTemplateName]=useState('');
+  useEffect(()=>{let active=true;setTemplates([]);if(currentEvent)void importService.templates().then(value=>{if(active)setTemplates(value);}).catch(()=>{if(active)setErrorMessage('No se pudieron consultar las plantillas. Puedes mapear manualmente.');});return()=>{active=false;};},[currentEvent?.id,user?.id]);
   // Paso actual
   const [currentStep, setCurrentStep] = useState<StepNumber>(1);
 
@@ -90,7 +101,7 @@ export const ImportPage: React.FC = () => {
   // Formato: { "Nombres": "firstName", "Correo": "email", ... }
   const [batchTickets, setBatchTickets] = useState<TicketType[]>([]);
   const [approvedBatchTicket, setApprovedBatchTicket] = useState('');
-  const [batchDefaults, setBatchDefaults] = useState<Record<string, string>>({});
+  const [batchDefaults, setBatchDefaults] = useState<Record<string, string>>(()=>({importKind:searchParams.get('destination')==='PURCHASES'?'PURCHASES':'PARTICIPANTS'}));
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
 
   // Validación de filas (Paso 4)
@@ -252,9 +263,9 @@ export const ImportPage: React.FC = () => {
     // Verificar campos requeridos (firstName, lastName, email)
     const mappedTargets = Object.values(columnMapping);
     const missingFields: string[] = [];
-    if (!mappedTargets.includes('firstName')) missingFields.push('Nombres (firstName)');
-    if (!mappedTargets.includes('lastName')) missingFields.push('Apellidos (lastName)');
-    if (!mappedTargets.includes('email')) missingFields.push('Correo Electrónico (email)');
+    if (batchDefaults.importKind!=='PURCHASES'&&!mappedTargets.includes('fullName')&&!mappedTargets.includes('firstName')) missingFields.push('Nombres (firstName)');
+
+    if (batchDefaults.importKind!=='PURCHASES'&&!mappedTargets.includes('email')) missingFields.push('Correo Electrónico (email)');
 
     if (missingFields.length > 0) {
       setErrorMessage(`Faltan campos obligatorios por asociar: ${missingFields.join(', ')}`);
@@ -266,6 +277,7 @@ export const ImportPage: React.FC = () => {
       return;
     }
 
+    if(batchDefaults.importKind==='PURCHASES')setConflictStrategy('UPDATE');
     setLoadingValidate(true);
     try {
       const valRes = await importService.validate(
@@ -588,6 +600,14 @@ export const ImportPage: React.FC = () => {
       {/* ======================================================== */}
       {currentStep === 3 && analyzeResult && (
         <div className="space-y-6 animate-in fade-in">
+          <section className="rounded-xl border border-border bg-card p-4 space-y-3">
+            <p className="text-sm">Sugerencias por estructura: {analyzeResult.detectedDestinations?.join(' · ')||'Revisar manualmente'}. La detección no guarda datos.</p>
+            <label className="block space-y-1">Destino de importación<select className="input-field" value={batchDefaults.importKind||'PARTICIPANTS'} onChange={e=>{setBatchDefaults({...batchDefaults,importKind:e.target.value});setValidationResult(null);}}><option value="PARTICIPANTS">Participantes e inscripciones</option><option value="PURCHASES">Ventas y Pagos — compras históricas de participantes existentes</option></select></label>
+            {batchDefaults.importKind==='PURCHASES'&&<p className="text-sm">Requiere referencia externa y fuente inequívocas. Los importes son reportes externos acumulados, nunca cobros nuevos en efectivo.</p>}
+            <label className="block">Plantilla de esta edición<select className="input-field" defaultValue="" onChange={e=>{const t=templates.find(t=>t.name===e.target.value&&t.kind===(batchDefaults.importKind||'PARTICIPANTS'));if(t)setColumnMapping(Object.fromEntries(Object.entries(t.columns).filter(([column])=>analyzeResult.columns.includes(column))));}}><option value="">Elegir y aplicar manualmente</option>{templates.filter(t=>t.kind===(batchDefaults.importKind||'PARTICIPANTS')).map(t=><option key={t.name}>{t.name}</option>)}</select></label>
+            {hasRole(['ADMIN'])&&<div className="flex flex-col sm:flex-row gap-2"><input aria-label="Nombre de plantilla" className="input-field" maxLength={80} value={templateName} onChange={e=>setTemplateName(e.target.value)} placeholder="Nombre de plantilla (sin datos personales)"/><button type="button" className="btn-secondary" disabled={!templateName.trim()} onClick={()=>void importService.saveTemplate({name:templateName.trim(),kind:batchDefaults.importKind||'PARTICIPANTS',columns:columnMapping}).then(setTemplates).catch(e=>setErrorMessage(e.response?.data?.message||'No se pudo guardar la plantilla.'))}>Guardar mapeo</button></div>}
+            <p className="text-xs text-muted-foreground">{analyzeResult.ignoredRows||0} filas vacías/de encabezado/totales omitidas · {analyzeResult.mergedCells?.length||0} rangos combinados detectados.</p>
+          </section>
           <div className="p-4 rounded-xl bg-card border border-border grid grid-cols-1 sm:grid-cols-2 gap-3">
             <p className="sm:col-span-2 text-xs text-muted-foreground">Estos valores se utilizarán únicamente cuando el archivo no incluya la información correspondiente.</p>
             {([{key:'externalPlatform',label:'Plataforma / origen'}, {key:'salesResponsible',label:'Responsable comercial'}, {key:'buyerName',label:'Comprador'}, {key:'paymentMethod',label:'Forma de pago'}]).map(field => <label key={field.key} className="block space-y-2 text-sm font-medium"><span>{field.label}</span><input placeholder={field.label} className="block w-full min-h-12 px-3 py-2 rounded-xl bg-background text-foreground border border-border text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" maxLength={100} value={batchDefaults[field.key] || ''} onChange={e => setBatchDefaults(previous => ({...previous,[field.key]:e.target.value}))} /></label>)}
@@ -648,7 +668,7 @@ export const ImportPage: React.FC = () => {
                               }
                               setColumnMapping(updated);
                             }}
-                            className="w-full max-w-xs px-2.5 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                            className="input-field max-w-xs"
                           >
                             <option value="">-- No asociar / Omitir --</option>
                             {analyzeResult.columns.map((c) => (
@@ -659,6 +679,7 @@ export const ImportPage: React.FC = () => {
                           </select>
                         </td>
                         <td className="p-3 text-center whitespace-nowrap">
+                          {mappedColumn&&<p className="text-xs break-words max-w-48 whitespace-normal">Ejemplo: {String(analyzeResult.previewRows[0]?.[mappedColumn]??'Vacío')} · {analyzeResult.autoMapping[mappedColumn]===sysField.key?'Coincidencia exacta sugerida (95 %)':'Mapeo manual'}</p>}
                           {mappedColumn ? (
                             <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-bold text-[10px] inline-flex items-center gap-1">
                               <Check className="w-3 h-3" /> Asociado a "{mappedColumn}"

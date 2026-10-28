@@ -1,3 +1,4 @@
+import {Link} from 'react-router-dom';
 import { FinancialOperationsPanel } from '../components/sales/FinancialOperationsPanel';
 import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { MobileSearchInput } from '../components/common/MobileSearchInput';
@@ -132,6 +133,7 @@ export const SalesPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {hasRole(['ADMIN','OPERATOR'])&&<Link className="btn-secondary" to="/import?destination=PURCHASES">Importar Excel de compras</Link>}
           <button
             type="button"
             onClick={() => { void loadFinancialData(); }}

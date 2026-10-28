@@ -1,5 +1,5 @@
 import { z } from 'zod';
-export const ImportDefaultsSchema = z.object({ externalPlatform: z.string().trim().min(1).max(100).optional(), salesResponsible: z.string().trim().max(120).optional(), buyerName: z.string().trim().max(160).optional(), ticketTypeId: z.string().uuid().optional(), tariffApproved: z.literal('true').optional(), paymentMethod: z.string().trim().max(100).optional() }).default({});
+export const ImportDefaultsSchema = z.object({ importKind:z.enum(['PARTICIPANTS','PURCHASES']).optional(), externalPlatform: z.string().trim().min(1).max(100).optional(), salesResponsible: z.string().trim().max(120).optional(), buyerName: z.string().trim().max(160).optional(), ticketTypeId: z.string().uuid().optional(), tariffApproved: z.literal('true').optional(), paymentMethod: z.string().trim().max(100).optional() }).default({});
 
 export const AnalyzeFileSchema = z.object({
   fileBase64: z.string().min(1, 'El contenido del archivo en base64 es requerido'),
