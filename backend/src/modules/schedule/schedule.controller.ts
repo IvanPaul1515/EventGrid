@@ -55,7 +55,7 @@ export class ScheduleController {
     try {
       const eventId = ScheduleController.getEventId(req);
       const input = CreateScheduleItemSchema.parse(req.body);
-      const item = await ScheduleService.createItem(eventId, input);
+      const item = await ScheduleService.createItem(eventId, input, req.user?.id);
 
       return res.status(201).json({
         status: 'success',

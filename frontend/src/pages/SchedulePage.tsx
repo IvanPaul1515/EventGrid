@@ -1,3 +1,4 @@
+import {api} from '../services/api';
 import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { formatTimeDraft } from '../utils/timeDraft';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -46,6 +47,10 @@ export const SchedulePage: React.FC = () => {
   const { currentEvent } = useEdition();
   const { hasRole } = useAuth();
   const canEdit = hasRole(['ADMIN', 'OPERATOR']);
+  const isAdmin=hasRole(['ADMIN']);
+  const [speakerOptions,setSpeakerOptions]=useState<any[]>([]),[newSpeaker,setNewSpeaker]=useState(false),[speakerDraft,setSpeakerDraft]=useState({fullName:'',email:'',organization:''});
+  const officialDates:string[]=[];if(currentEvent){for(let d=Date.parse(String(currentEvent.startDate).slice(0,10));d<=Date.parse(String(currentEvent.endDate).slice(0,10))&&officialDates.length<366;d+=86400000)officialDates.push(new Date(d).toISOString().slice(0,10));}
+  useEffect(()=>{let active=true;setSpeakerOptions([]);setShowItemModal(false);if(currentEvent)api.get(`/events/${currentEvent.id}/speakers`).then(r=>{if(active)setSpeakerOptions(r.data.data.speakers);}).catch(()=>{});return()=>{active=false;};},[currentEvent?.id]);
 
   const [data, setData] = useState<ScheduleResponse>({
     total: 0,
@@ -71,11 +76,12 @@ export const SchedulePage: React.FC = () => {
   const [editingItem, setEditingItem] = useState<ScheduleItem | null>(null);
   const [itemForm, setItemForm] = useState({
     title: '',
+    speakerIds: [] as string[],
     speakerName: '',
     speakerBio: '',
     speakerCompany: '',
     room: '',
-    day: 'Día 1',
+    day: '',
     startTime: '',
     endTime: '',
     category: '',
@@ -191,14 +197,15 @@ export const SchedulePage: React.FC = () => {
     setEditingItem(null);
     setItemForm({
       title: '',
+      speakerIds: [],
       speakerName: '',
       speakerBio: '',
       speakerCompany: '',
-      room: data.rooms[0] || 'Aula Principal',
-      day: data.days[0] || 'Día 1',
+      room: '',
+      day: officialDates.length===1?officialDates[0]:'',
       startTime: '',
       endTime: '',
-      category: data.categories[0] || 'Tecnología',
+      category: '',
       status: 'CONFIRMED',
       description: '',
       isKeynote: false,
@@ -213,6 +220,7 @@ export const SchedulePage: React.FC = () => {
     setEditingItem(item);
     setItemForm({
       title: item.title,
+      speakerIds: item.speakerIds || [],
       speakerName: item.speakerName || '',
       speakerBio: item.speakerBio || '',
       speakerCompany: item.speakerCompany || '',
@@ -238,6 +246,7 @@ export const SchedulePage: React.FC = () => {
       setSavingItem(true);
       const payload: any = {
         ...itemForm,
+        ...(editingItem?.speakerName&&!editingItem.speakerIds?.length&&!itemForm.speakerIds.length?{speakerIds:undefined,speakerName:editingItem.speakerName}:{}),
         publishAt: itemForm.visibility === 'SCHEDULED' && itemForm.publishAt ? new Date(itemForm.publishAt).toISOString() : null,
       };
 
@@ -422,7 +431,7 @@ export const SchedulePage: React.FC = () => {
 
   const handleDeleteItem = async (item: ScheduleItem) => {
     if (!currentEvent?.id) return;
-    if (!window.confirm(`¿Seguro que deseas eliminar "${item.title}" del cronograma?`)) {
+    if (!window.confirm(`¿Seguro que deseas eliminar "${item.title}{item.programmingStatus==='PENDING'&&<span className="block text-xs text-amber-500">Pendiente de programación</span>}" del cronograma?`)) {
       return;
     }
     try {
@@ -757,7 +766,7 @@ export const SchedulePage: React.FC = () => {
             className="min-w-0 max-sm:w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
           >
             <option value="ALL">Todos los estados</option>
-            <option value="CONFIRMED">Confirmada</option>
+            <option value="CONFIRMED">Activa (no implica asistencia)</option>
             <option value="RESCHEDULED">Reagendada</option>
             <option value="CANCELLED">Cancelada</option>
           </select>
@@ -892,7 +901,7 @@ export const SchedulePage: React.FC = () => {
                             isCancelled ? 'line-through text-gray-400' : ''
                           }`}
                         >
-                          {item.title}
+                          {item.title}{item.programmingStatus==='PENDING'&&<span className="block text-xs text-amber-500">Pendiente de programación</span>}
                         </h3>
 
                         {/* Status Badge */}
@@ -905,7 +914,7 @@ export const SchedulePage: React.FC = () => {
                               : 'bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
                           }`}
                         >
-                          {isConfirmed ? 'Confirmada' : isRescheduled ? 'Reagendada' : 'Cancelada'}
+                          {item.programmingStatus==='PENDING'?'Pendiente de programación':isConfirmed ? 'Programada' : isRescheduled ? 'Reagendada' : 'Cancelada'}
                         </span>
 
                         {/* Visibility Pill */}
@@ -1104,13 +1113,12 @@ export const SchedulePage: React.FC = () => {
                   <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                     Expositor / Facilitador
                   </label>
-                  <input
-                    type="text"
-                    value={itemForm.speakerName}
-                    onChange={(e) => setItemForm({ ...itemForm, speakerName: e.target.value })}
-                    placeholder="Nombre completo"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  />
+                  <select multiple aria-label="Charlistas asociados" className="input-field min-h-24" value={itemForm.speakerIds} onChange={e=>setItemForm({...itemForm,speakerIds:Array.from(e.target.selectedOptions,o=>o.value)})}>{speakerOptions.filter(s=>s.status!=='CANCELLED').map(s=><option key={s.id} value={s.id}>{s.fullName} {s.organization?'· '+s.organization:''}</option>)}</select>
+                  <p className="text-xs text-muted-foreground">Opcional. Puedes asociar varios charlistas o guardar sin expositor.</p>
+                  {editingItem?.speakerName&&!editingItem.speakerIds?.length&&<p className="text-xs">Expositor histórico conservado hasta asociar un perfil: {editingItem.speakerName}</p>}
+                  {isAdmin&&<button type="button" className="btn-secondary mt-2" onClick={()=>setNewSpeaker(v=>!v)}>Agregar nuevo charlista</button>}
+                  {newSpeaker&&isAdmin&&<div className="space-y-2 mt-2"><input aria-label="Nombre del nuevo charlista" className="input-field" placeholder="Nombre completo" value={speakerDraft.fullName} onChange={e=>setSpeakerDraft({...speakerDraft,fullName:e.target.value})}/><input aria-label="Correo del nuevo charlista" className="input-field" type="email" placeholder="Correo (opcional)" value={speakerDraft.email} onChange={e=>setSpeakerDraft({...speakerDraft,email:e.target.value})}/><input aria-label="Institución del nuevo charlista" className="input-field" placeholder="Institución (opcional)" value={speakerDraft.organization} onChange={e=>setSpeakerDraft({...speakerDraft,organization:e.target.value})}/><button type="button" className="btn-primary" disabled={savingItem||speakerDraft.fullName.trim().length<3} onClick={async()=>{setSavingItem(true);try{const existing=speakerOptions.find(s=>s.fullName.trim().toLowerCase()===speakerDraft.fullName.trim().toLowerCase());const profile=existing||(await api.post(`/events/${currentEvent!.id}/speakers`,{...speakerDraft,email:speakerDraft.email||null})).data.data;if(!existing)setSpeakerOptions(v=>[...v,profile]);setItemForm(v=>({...v,speakerIds:[...new Set([...v.speakerIds,profile.id])]}));setNewSpeaker(false);setSpeakerDraft({fullName:'',email:'',organization:''});}catch(e:any){setFeedback({type:'error',text:e.response?.data?.message||'No se pudo crear el charlista.'});}finally{setSavingItem(false);}}}>Crear y asociar</button></div>}
+
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
@@ -1128,14 +1136,8 @@ export const SchedulePage: React.FC = () => {
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Día</label>
-                  <input
-                    type="text"
-                    value={itemForm.day}
-                    onChange={(e) => setItemForm({ ...itemForm, day: e.target.value })}
-                    placeholder="Día 1"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  />
+                  <label className="block text-xs font-semibold mb-1">Fecha oficial de la edición</label>
+                  {officialDates.length===1?<p>{officialDates[0]}</p>:<select aria-label="Fecha de la charla" className="input-field" value={itemForm.day} onChange={e=>setItemForm({...itemForm,day:e.target.value})}><option value="">Pendiente de asignar</option>{officialDates.map(day=><option key={day} value={day}>{day}</option>)}</select>}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
@@ -1143,7 +1145,6 @@ export const SchedulePage: React.FC = () => {
                   </label>
                   <input
                     type="text"
-                    required
                     pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
                     value={itemForm.startTime}
                     onChange={(e) => setItemForm({ ...itemForm, startTime: formatTimeDraft(e.target.value, itemForm.startTime) })}
@@ -1159,7 +1160,6 @@ export const SchedulePage: React.FC = () => {
                   </label>
                   <input
                     type="text"
-                    required
                     pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
                     value={itemForm.endTime}
                     onChange={(e) => setItemForm({ ...itemForm, endTime: formatTimeDraft(e.target.value, itemForm.endTime) })}
@@ -1198,18 +1198,7 @@ export const SchedulePage: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Estado</label>
-                <select
-                  value={itemForm.status}
-                  onChange={(e) => setItemForm({ ...itemForm, status: e.target.value as any })}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                >
-                  <option value="CONFIRMED">Confirmada</option>
-                  <option value="RESCHEDULED">Reagendada</option>
-                  <option value="CANCELLED">Cancelada</option>
-                </select>
-              </div>
+              <p className="text-sm text-muted-foreground">Sin fecha, horario completo o salón, se guardará como Pendiente de programación. La confirmación del charlista y su llegada se gestionan por separado.</p>
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">

@@ -1,3 +1,4 @@
+import {SpeakerReception} from './SpeakerReception';
 import {RecipientMerch} from '../inventory/RecipientMerch';
 import { CommunicationHistory } from '../communications/CommunicationHistory';
 import React, { useState, useEffect } from 'react';
@@ -881,6 +882,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                 )}
               </div>
 
+              {registration.participantCategory==='SPEAKER'&&<SpeakerReception registrationId={registration.id} attended={registration.attended}/>}
               <RecipientMerch registrationId={registration.id} attended={registration.attended}/>
               {/* ENTRADA DIGITAL & CÓDIGO QR */}
               <div className="p-4 rounded-2xl border bg-card border-border space-y-3">

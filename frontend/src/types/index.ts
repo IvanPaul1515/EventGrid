@@ -299,6 +299,7 @@ export interface DemoStatus {
 }
 
 export interface QrTicketData {
+  speaker?: {fullName:string;talks:{id:string;title:string;day:string;startTime:string;endTime:string;room?:string|null}[]} | null;
   token: string;
   qrDataUrl: string;
   generatedAt: string;

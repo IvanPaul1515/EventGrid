@@ -226,6 +226,7 @@ export class AttendanceService {
       const settings=await tx.eventSettings.findUnique({where:{eventId}});
       const livePayment=await tx.registration.findUniqueOrThrow({where:{id:registrationId}});
       if(settings?.requirePaymentForEntry===true&&!livePayment.isCourtesy&&Number(livePayment.balanceDue)>0)throw new BadRequestError('Esta edición exige pago confirmado antes del ingreso.');
+      if(await tx.speaker.findFirst({where:{eventId,registrationId,credentialRevokedAt:{not:null}}}))throw new BadRequestError('La credencial de charlista está revocada.');
       const delivery=shirtDecision(deliveryDecision,alreadyDelivered||shouldDeliver);
       if (queueEntryId) {
         if (!queued || queued.id !== queueEntryId || queued.state !== 'CLAIMED' || queued.claimedBySessionId !== sessionId || !queued.claimUntil || queued.claimUntil <= new Date()) throw new BadRequestError('La reserva de atención venció o pertenece a otra estación. Vuelve a la cola.');

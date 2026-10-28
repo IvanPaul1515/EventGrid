@@ -184,7 +184,7 @@ export class ReceptionQueueService {
   const existing=await prisma.queueEntry.findUnique({where:{eventId_registrationId:{eventId,registrationId:qr.registration.id}}});
   if(requestKey)await writeTransaction(tx=>ScanActivity.record(tx,user,eventId,requestKey,'VALID',qr.registration!.id,deviceId,false,Boolean(existing)));
   if(existing)return {status:'QUEUED',number:qr.registration.registrationNumber,result:'Esta entrada ya está en cola'};
-  return {status:'VALID',name:qr.registration.participant.fullName,organization:qr.registration.participant.institution||null,number:qr.registration.registrationNumber,shirts:await queueTshirts(prisma,eventId,qr.registration),selectedTshirtSize:qr.registration.tshirtSize};
+  return {status:'VALID',category:qr.registration.participantCategory,name:qr.registration.participant.fullName,organization:qr.registration.participant.institution||null,number:qr.registration.registrationNumber,shirts:await queueTshirts(prisma,eventId,qr.registration),selectedTshirtSize:qr.registration.tshirtSize};
  }
  static async submit(user:AuthUser,eventId:string,token:string,deviceId?:string,selectedTshirtSize?:string,requestKey?:string){
   const stationId=await this.readAccess(user,eventId,deviceId);
@@ -220,14 +220,14 @@ export class ReceptionQueueService {
    const active=await tx.queueEntry.findMany({where:{eventId,state:{in:['WAITING','CLAIMED','INCIDENT']}},orderBy:{firstScannedAt:'asc'},take:1000});
    const recent=await tx.queueEntry.findMany({where:{eventId,state:{in:['CONFIRMED','REJECTED']}},orderBy:{lastScannedAt:'desc'},take:20});
    const entries=[...active,...recent];
-   const registrations=await tx.registration.findMany({where:{id:{in:entries.map(e=>e.registrationId)},eventId},select:{id:true,registrationNumber:true,attended:true,status:true,tshirtSize:true,tshirtDelivered:true,tshirtDeliveryStatus:true,paymentStatus:true,isCourtesy:true,balanceDue:true,amountPaid:true,source:true,externalPlatform:true,payments:{select:{channel:true,paymentMethod:{select:{name:true}}}},ticketType:{select:{includesTshirt:true}},participant:{select:{fullName:true}}}});
+   const registrations=await tx.registration.findMany({where:{id:{in:entries.map(e=>e.registrationId)},eventId},select:{id:true,registrationNumber:true,attended:true,status:true,tshirtSize:true,tshirtDelivered:true,participantCategory:true,tshirtDeliveryStatus:true,paymentStatus:true,isCourtesy:true,balanceDue:true,amountPaid:true,source:true,externalPlatform:true,payments:{select:{channel:true,paymentMethod:{select:{name:true}}}},ticketType:{select:{includesTshirt:true}},participant:{select:{fullName:true}}}});
    const settings=await tx.eventSettings.findUnique({where:{eventId},select:{tshirtSizesEnabled:true,allowOnsitePayments:true}});
    const stations=await tx.queueStation.findMany({where:{id:{in:[...new Set(entries.map(e=>e.stationId))]}},select:{id:true,label:true}});
    const rows=[];for(let e of entries){
     const reg=registrations.find(r=>r.id===e.registrationId);
    const state=!reg?'INCIDENT':reg.attended?'CONFIRMED':reg.status==='CANCELLED'?'REJECTED':e.state==='CLAIMED'&&(!e.claimUntil||e.claimUntil<=new Date())?'WAITING':e.state;
     if(e.state!==state)e=await tx.queueEntry.update({where:{id:e.id},data:{state,...(state==='WAITING'?{claimedBySessionId:null,claimedByUserId:null,claimUntil:null}:{})}});
-    const station=stations.find(s=>s.id===e.stationId);rows.push({id:e.id,registrationId:e.registrationId,name:reg?.participant.fullName||'Entrada por revisar',number:reg?.registrationNumber||'Sin registro',scannedAt:e.firstScannedAt,state:e.state,station:station?.label||'Recepción',mine:e.claimedBySessionId===user.sessionId,selectedTshirtSize:reg?.attended||reg?.tshirtDelivered?reg.tshirtSize:e.selectedTshirtSize||reg?.tshirtSize,canCollect:Boolean(settings?.allowOnsitePayments&&reg&&!reg.isCourtesy&&!reg.externalPlatform&&reg.source!=='EXCEL_IMPORT'&&Number(reg.balanceDue)>0),payment:reg?paymentSummary(reg):null,tshirtDeliveryStatus:reg?.tshirtDelivered?'DELIVERED':reg?.tshirtDeliveryStatus||'PENDING',tshirtDelivered:reg?.tshirtDelivered||false,tshirtIncluded:Boolean(settings?.tshirtSizesEnabled&&reg?.ticketType?.includesTshirt!==false)});
+    const station=stations.find(s=>s.id===e.stationId);rows.push({id:e.id,registrationId:e.registrationId,category:reg?.participantCategory,name:reg?.participant.fullName||'Entrada por revisar',number:reg?.registrationNumber||'Sin registro',scannedAt:e.firstScannedAt,state:e.state,station:station?.label||'Recepción',mine:e.claimedBySessionId===user.sessionId,selectedTshirtSize:reg?.attended||reg?.tshirtDelivered?reg.tshirtSize:e.selectedTshirtSize||reg?.tshirtSize,canCollect:Boolean(settings?.allowOnsitePayments&&reg&&!reg.isCourtesy&&!reg.externalPlatform&&reg.source!=='EXCEL_IMPORT'&&Number(reg.balanceDue)>0),payment:reg?paymentSummary(reg):null,tshirtDeliveryStatus:reg?.tshirtDelivered?'DELIVERED':reg?.tshirtDeliveryStatus||'PENDING',tshirtDelivered:reg?.tshirtDelivered||false,tshirtIncluded:Boolean(settings?.tshirtSizesEnabled&&reg?.ticketType?.includesTshirt!==false)});
    }return rows;
   });
  }
@@ -250,7 +250,8 @@ export class ReceptionQueueService {
   const settings=await prisma.eventSettings.findUnique({where:{eventId}});
   const payment=paymentSummary(reg);
   const paymentMethods=settings?.allowOnsitePayments&&!payment.external&&!payment.isCourtesy?await prisma.paymentMethod.findMany({where:{eventId,isActive:true,OR:[{code:null},{code:{notIn:['COURTESY','SPONSOR']}}]}}):[];
-  const blockedReason=queueBlockReason(reg,Boolean(pending),settings?.requirePaymentForEntry!==false)||(entry.validatedQrHash&&entry.validatedQrHash!==createHash('sha256').update(reg.qrCode||'').digest('hex')?'El QR fue revocado. Revisa la ficha completa.':null);
+  const revoked=reg.participantCategory==='SPEAKER'?await prisma.speaker.findFirst({where:{eventId,registrationId:reg.id,credentialRevokedAt:{not:null}}}):null;
+  const blockedReason=(revoked?'La credencial de charlista está revocada.':null)||queueBlockReason(reg,Boolean(pending),settings?.requirePaymentForEntry!==false)||(entry.validatedQrHash&&entry.validatedQrHash!==createHash('sha256').update(reg.qrCode||'').digest('hex')?'El QR fue revocado. Revisa la ficha completa.':null);
   return {category:reg.participantCategory,payment,paymentMethods,canCollect:Boolean(settings?.allowOnsitePayments&&!payment.external&&!payment.isCourtesy&&payment.balanceDue>0&&reg.status!=='CANCELLED'),registrationId:reg.id,name:reg.participant.fullName,number:reg.registrationNumber,canCheckIn:!blockedReason,blockedReason,selectedTshirtSize:entry.selectedTshirtSize||reg.tshirtSize,shirts:await queueTshirts(prisma,eventId,reg)};
  }
  static async complete(user:AuthUser,eventId:string,id:string,size?:string,delivered=false,decision?:ShirtDecision){

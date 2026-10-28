@@ -11,5 +11,8 @@ route('get','/',requireAnyRole,r=>S.list(r.eventId));
 route('post','/',requireAdmin,r=>S.save(r.eventId,r.user.id,SpeakerSchema.parse(r.body)));
 route('put','/:id',requireAdmin,r=>S.save(r.eventId,r.user.id,SpeakerSchema.parse(r.body),id.parse(r.params.id)));
 route('post','/:id/talk',requireAdmin,r=>S.linkTalk(r.eventId,r.user.id,id.parse(r.params.id),id.parse(r.body.talkId),z.boolean().optional().parse(r.body.remove)));
+route('get','/registration/:id',requireAnyRole,r=>S.summary(r.eventId,id.parse(r.params.id)));
+route('post','/:id/revoke',requireAdmin,r=>S.revoke(r.eventId,r.user.id,id.parse(r.params.id),z.string().trim().min(5).max(500).parse(r.body.reason)));
+route('post','/:id/regenerate',requireAdmin,r=>S.regenerate(r.eventId,r.user.id,id.parse(r.params.id),z.string().trim().min(5).max(500).parse(r.body.reason)));
 route('post','/:id/credential',requireAdmin,r=>S.credential(r.eventId,r.user.id,id.parse(r.params.id)));
 export default router;

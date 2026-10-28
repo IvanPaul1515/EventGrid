@@ -2,8 +2,9 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {createHash} from 'node:crypto';
 const mocks=vi.hoisted(()=>{
  const model=()=>({findUnique:vi.fn(),findFirst:vi.fn(),findMany:vi.fn(),findUniqueOrThrow:vi.fn(),create:vi.fn(),update:vi.fn(),updateMany:vi.fn(),upsert:vi.fn()});
- return {db:{registration:model(),queueStation:model(),queueDevice:model(),queueEntry:model(),eventSettings:model(),tshirtInventory:model(),auditLog:model()},image:vi.fn(),authorize:vi.fn(),session:vi.fn()};
+ return {db:{registration:model(),queueStation:model(),queueDevice:model(),queueEntry:model(),eventSettings:model(),tshirtInventory:model(),auditLog:model()},summary:vi.fn(),image:vi.fn(),authorize:vi.fn(),session:vi.fn()};
 });
+vi.mock('../src/modules/speakers/speaker-summary.js',()=>({speakerSummary:mocks.summary}));
 vi.mock('../src/config/db.js',()=>({prisma:mocks.db}));
 vi.mock('../src/config/env.js',()=>({ENV:{DATABASE_URL:'file:mock-only',JWT_SECRET:'qr-pairing-unit'}}));
 vi.mock('../src/utils/writeTransaction.js',()=>({writeTransaction:(fn:any)=>fn(mocks.db)}));
@@ -49,6 +50,16 @@ beforeEach(()=>{
 });
 
 describe('official ticket formats and queue validation, unit mocks',()=>{
+ it('validates speaker credentials in direct and queue reception without automatic attendance',async()=>{
+  vi.spyOn(Q,'readAccess').mockResolvedValue('station');
+  registration.participantCategory='SPEAKER';mocks.summary.mockResolvedValue({credentialRevokedAt:null,talks:[]});
+  const direct=await QrService.validateAndScan(registration.qrCode,eventId);expect(direct.canCheckIn).toBe(true);expect(direct.registration?.participantCategory).toBe('SPEAKER');
+  const queue=await Q.preview(mobile,eventId,registration.qrCode);expect(queue).toMatchObject({status:'VALID',category:'SPEAKER'});expect(registration.attended).toBe(false);
+ });
+ it('rejects a revoked speaker credential without changing attendance',async()=>{
+  registration.participantCategory='SPEAKER';mocks.summary.mockResolvedValue({credentialRevokedAt:new Date()});
+  const result=await QrService.validateAndScan(registration.qrCode,eventId);expect(result).toMatchObject({status:'REVOKED',canCheckIn:false});expect(registration.attended).toBe(false);
+ });
  it('reveals only the authorized name, organization and entry number on preview',async()=>{
   vi.spyOn(Q,'readAccess').mockResolvedValue('station');
   registration.participant={fullName:'Unit Participant',institution:'Unit Organization',email:'private@example.invalid',documentId:'private-id',phone:'private-phone'};

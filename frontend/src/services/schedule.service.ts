@@ -1,6 +1,8 @@
 import { api } from './api';
 
 export interface ScheduleItem {
+  speakerIds?: string[];
+  programmingStatus?: string;
   id: string;
   eventId: string;
   title: string;

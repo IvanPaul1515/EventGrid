@@ -1104,6 +1104,7 @@ model MerchMovement {
  @@map("merch_movements")
 }
 model Speaker {
+ credentialRevokedAt DateTime?
  id String @id @default(uuid())
  eventId String
  fullName String
