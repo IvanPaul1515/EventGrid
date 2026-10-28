@@ -1,13 +1,13 @@
 import {BadRequestError} from '../../utils/errors.js';
-export const NON_DELIVERY_REASONS=['Agotada','El participante no la solicitó','Talla no disponible','Entrega pendiente','Otro motivo'] as const;
+export const NON_DELIVERY_REASONS=['Talla solicitada agotada','El participante no desea camiseta','Otro motivo'] as const;
 export type ShirtDecision={decision:'DELIVER'|'NO_DELIVERY';reason?:string;notes?:string};
 export function shirtDecision(input:ShirtDecision|undefined,delivered:boolean){
  if(!input)return {status:delivered?'DELIVERED':'PENDING',reason:delivered?null:'Entrega pendiente',notes:null};
  if(input.decision==='DELIVER')return {status:'DELIVERED',reason:null,notes:null};
  if(!NON_DELIVERY_REASONS.includes(input.reason as any))throw new BadRequestError('Selecciona un motivo de no entrega.');
  const notes=input.notes?.trim()||null;
- if(['Agotada','Talla no disponible','Otro motivo'].includes(input.reason!)&&(!notes||notes.length<5))throw new BadRequestError('Explica la incidencia de no entrega (mínimo 5 caracteres).');
- return {status:['El participante no la solicitó','Otro motivo'].includes(input.reason!)?'NOT_DELIVERED':'PENDING',reason:input.reason!,notes};
+ if(input.reason==='Otro motivo'&&(!notes||notes.length<5))throw new BadRequestError('Explica la incidencia de no entrega (mínimo 5 caracteres).');
+ return {status:['El participante no desea camiseta','Otro motivo'].includes(input.reason!)?'NOT_DELIVERED':'PENDING',reason:input.reason!,notes};
 }
 export function eventDay(date:Date,timeZone:string){
  return new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
