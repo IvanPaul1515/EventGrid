@@ -140,6 +140,7 @@ export const SalesPage: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           {hasRole(['ADMIN','OPERATOR'])&&<button className="btn-secondary" onClick={()=>setReadingReceipt(true)}>Leer comprobante</button>}
           {hasRole(['ADMIN','OPERATOR'])&&<Link className="btn-secondary" to="/import?destination=PURCHASES">Importar Excel de compras</Link>}
+          {hasRole(['ADMIN','OPERATOR'])&&<Link className="btn-secondary" to="/import?destination=ONSITE">Importar ventas presenciales</Link>}
           <button
             type="button"
             onClick={() => { void loadFinancialData(); }}

@@ -1,3 +1,4 @@
+import {MODULE_FIELDS} from './module-rules.js';
 import {assertMapping,detectDestinations,temporalMetadata} from './intelligence.js';
 import { executeReconciledImport } from './reconciliation-import.service.js';
 import { officialTicket } from '../participants/registrationPolicy.js';
@@ -209,8 +210,8 @@ export class ImportService {
         for (const cell of row) {
           if (typeof cell !== 'string' || !cell.trim()) continue;
           const norm = normalizeHeader(cell);
-          for (const key of Object.keys(ALIAS_DICTIONARY)) {
-            if (ALIAS_DICTIONARY[key].some(alias => normalizeHeader(alias) === norm)) {
+          for (const aliases of [...Object.values(ALIAS_DICTIONARY),...Object.values(MODULE_FIELDS).flat().map(f=>f.aliases)]) {
+            if (aliases.some(alias => normalizeHeader(alias) === norm)) {
               matches++;
               break;
             }
@@ -259,7 +260,7 @@ export class ImportService {
       const hasEmail = values.some(v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v));
       const repeatedHeader = columns.filter(c=>String(row[c]).trim()===c).length>=Math.min(2,columns.length);
       if(repeatedHeader)return false;
-      const footer = values.some(v => /^(total( de)? (participantes|registros|inscritos)|total general|total|totales|subtotal)\b/i.test(normalizeHeader(v)));
+      const footer = values.some(v => /^(total( de)? (participantes|registros|inscritos)|total general|total|totales|subtotal)$/i.test(normalizeHeader(v)));
       return hasEmail || !footer;
     });
     const columnProfiles = columns.map(column => ({ column, generatedHeader: /^Columna_\d+$/.test(column), nonempty: validRows.filter(row => String(row[column]).trim()).length }));
@@ -568,6 +569,8 @@ export class ImportService {
     if (!batch) {
       throw new NotFoundError('Lote de importación no encontrado');
     }
+    let config:any=batch.mappingConfig;try{if(typeof config==='string')config=JSON.parse(config);}catch{}
+    if(config?.kind&&['ONSITE','SPONSORS','SPONSOR_CASH','SPONSOR_KIND','INVENTORY'].includes(config.kind))throw new BadRequestError('Este lote contiene operaciones financieras o de inventario; su historial no se elimina desde el asistente de participantes.');
     if (eventId && batch.eventId !== eventId) {
       throw new BadRequestError('El lote no corresponde a la edición activa');
     }
@@ -588,6 +591,7 @@ export class ImportService {
    * Eliminar todas las importaciones de Excel y registros asociados de la edición
    */
   static async deleteAllImported(eventId: string) {
+    if(await prisma.moduleImportRecord.findFirst({where:{eventId}}))throw new BadRequestError('Hay lotes financieros o de inventario. Su historial debe conservarse; elimina únicamente lotes de participantes compatibles.');
     const batchesCount = await prisma.importBatch.count({ where: { eventId } });
     const res = await ParticipantsService.deleteImported(eventId);
     return {

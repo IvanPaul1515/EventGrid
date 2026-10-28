@@ -1,3 +1,5 @@
+import {ImportedContributionsPanel} from '../components/ImportedContributionsPanel';
+import {Link} from 'react-router-dom';
 import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { MobileSearchInput } from '../components/common/MobileSearchInput';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -281,14 +283,15 @@ export const SponsorsPage: React.FC = () => {
         </div>
       )}
 
+      <ImportedContributionsPanel key={currentEvent?.id}/>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-3 border-b border-border">
         <div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <Handshake className="w-7 h-7 text-primary" />
             <h1 className="text-2xl sm:text-3xl font-display font-extrabold text-foreground tracking-tight">
               Patrocinadores y Colaboradores
-            </h1>
+            </h1>{hasRole(['ADMIN'])&&<Link className="btn-secondary inline-flex mt-2" to="/import?destination=SPONSORS">Importar Excel</Link>}
           </div>
           <p className="text-xs text-muted-foreground mt-1.5">
             Gestión de aportes económicos y aliados estratégicos para{' '}
@@ -400,6 +403,7 @@ export const SponsorsPage: React.FC = () => {
         </div>
       </div>
 
+      <ImportedContributionsPanel key={currentEvent?.id}/>
       {/* Filter and Search Bar */}
       <div className="p-4 rounded-2xl bg-card border border-border shadow-sm space-y-3">
         <div className="flex flex-col md:flex-row md:items-center gap-3">

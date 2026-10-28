@@ -318,6 +318,8 @@ export const SponsorDetailDrawer: React.FC<SponsorDetailDrawerProps> = ({
                   Información de Contacto
                 </span>
                 <div className="space-y-2 text-xs">
+                  {sponsor.legalName&&<p className="text-sm break-words">Razón social: {sponsor.legalName}</p>}
+                  {sponsor.rnc&&<p className="text-sm">RNC: {sponsor.rnc}</p>}
                   {sponsor.contactName && (
                     <div className="flex items-center gap-2 text-foreground">
                       <User className="w-4 h-4 text-primary shrink-0" />

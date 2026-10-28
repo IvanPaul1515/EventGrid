@@ -1,3 +1,4 @@
+import {ModuleImportFlow,moduleDestination,IMPORT_DESTINATIONS} from '../components/ModuleImportFlow';
 import { api } from '../services/api';
 import { TicketType } from '../types';
 import React, { useState, useEffect, useRef } from 'react';
@@ -102,7 +103,7 @@ export const ImportPage: React.FC = () => {
   // Formato: { "Nombres": "firstName", "Correo": "email", ... }
   const [batchTickets, setBatchTickets] = useState<TicketType[]>([]);
   const [approvedBatchTicket, setApprovedBatchTicket] = useState('');
-  const [batchDefaults, setBatchDefaults] = useState<Record<string, string>>(()=>({importKind:searchParams.get('destination')==='PURCHASES'?'PURCHASES':'PARTICIPANTS'}));
+  const [batchDefaults, setBatchDefaults] = useState<Record<string, string>>(()=>({importKind:IMPORT_DESTINATIONS[searchParams.get('destination')||'']?searchParams.get('destination')!:'PARTICIPANTS'}));
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
 
   // Validación de filas (Paso 4)
@@ -599,11 +600,11 @@ export const ImportPage: React.FC = () => {
       {/* ======================================================== */}
       {/* PASO 3: ASOCIACIÓN DE COLUMNAS (MAPEO INTELIGENTE)       */}
       {/* ======================================================== */}
-      {currentStep === 3 && analyzeResult && (
+      {currentStep === 3 && analyzeResult && moduleDestination(batchDefaults.importKind||'') ? <ModuleImportFlow key={`${user?.id}:${currentEvent?.id}:${batchDefaults.importKind}:${analyzeResult.fileName}`} kind={batchDefaults.importKind} onKind={kind=>setBatchDefaults({...batchDefaults,importKind:kind})} analysis={analyzeResult} fileSize={selectedFile?.size||0} onBack={()=>setCurrentStep(2)}/> : currentStep === 3 && analyzeResult && (
         <div className="space-y-6 animate-in fade-in">
           <section className="rounded-xl border border-border bg-card p-4 space-y-3">
-            <p className="text-sm">Sugerencias por estructura: {analyzeResult.detectedDestinations?.join(' · ')||'Revisar manualmente'}. La detección no guarda datos.</p>
-            <label className="block space-y-1">Destino de importación<select className="input-field" value={batchDefaults.importKind||'PARTICIPANTS'} onChange={e=>{setBatchDefaults({...batchDefaults,importKind:e.target.value});setValidationResult(null);}}><option value="PARTICIPANTS">Participantes e inscripciones</option><option value="PURCHASES">Ventas y Pagos — compras históricas de participantes existentes</option></select></label>
+            <p className="text-sm">Sugerencias por estructura: {analyzeResult.detectedDestinations?.map(k=>IMPORT_DESTINATIONS[k]||k).join(' · ')||'Revisar manualmente'}. La detección no guarda datos.</p>
+            <label className="block space-y-1">Destino de importación<select className="input-field" value={batchDefaults.importKind||'PARTICIPANTS'} onChange={e=>{setBatchDefaults({...batchDefaults,importKind:e.target.value});setValidationResult(null);}}><option value="PARTICIPANTS">Participantes e inscripciones</option><option value="PURCHASES">Ventas y Pagos — compras históricas de participantes existentes</option>{Object.entries(IMPORT_DESTINATIONS).filter(([key])=>moduleDestination(key)&&(hasRole(['ADMIN'])||key==='ONSITE')).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
             {batchDefaults.importKind==='PURCHASES'&&<p className="text-sm">Requiere referencia externa y fuente inequívocas. Los importes son reportes externos acumulados, nunca cobros nuevos en efectivo.</p>}
             <label className="block">Plantilla de esta edición<select className="input-field" defaultValue="" onChange={e=>{const t=templates.find(t=>t.name===e.target.value&&t.kind===(batchDefaults.importKind||'PARTICIPANTS'));if(t)setColumnMapping(Object.fromEntries(Object.entries(t.columns).filter(([column])=>analyzeResult.columns.includes(column))));}}><option value="">Elegir y aplicar manualmente</option>{templates.filter(t=>t.kind===(batchDefaults.importKind||'PARTICIPANTS')).map(t=><option key={t.name}>{t.name}</option>)}</select></label>
             {hasRole(['ADMIN'])&&<div className="flex flex-col sm:flex-row gap-2"><input aria-label="Nombre de plantilla" className="input-field" maxLength={80} value={templateName} onChange={e=>setTemplateName(e.target.value)} placeholder="Nombre de plantilla (sin datos personales)"/><button type="button" className="btn-secondary" disabled={!templateName.trim()} onClick={()=>void importService.saveTemplate({name:templateName.trim(),kind:batchDefaults.importKind||'PARTICIPANTS',columns:columnMapping}).then(setTemplates).catch(e=>setErrorMessage(e.response?.data?.message||'No se pudo guardar la plantilla.'))}>Guardar mapeo</button></div>}

@@ -471,6 +471,7 @@ export type SponsorPaymentMethod = 'TRANSFER' | 'CHECK' | 'CASH' | 'CREDIT_CARD'
 export type SponsorPaymentStatus = 'ACTIVE' | 'ANNULLED';
 
 export interface SponsorPayment {
+  historicalDate?:string|null;
   id: string;
   sponsorId: string;
   amount: number;
@@ -489,6 +490,8 @@ export interface SponsorPayment {
 }
 
 export interface Sponsor {
+  legalName?:string|null;
+  rnc?:string|null;
   id: string;
   eventId: string;
   name: string;

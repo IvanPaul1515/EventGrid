@@ -1,3 +1,4 @@
+import {Prisma} from '@prisma/client';
 import { FinanceService,cents } from '../finance/finance.service.js';
 import { recordCourtesyRequest } from './courtesy.policy.js';
 import { officialTicket, authorizeCourtesy, auditCourtesy } from './registrationPolicy.js';
@@ -782,7 +783,10 @@ export class ParticipantsService {
   static async onsiteSale(eventId: string, input: OnsiteSaleInput, operatorUserId: string) {
     if (input.paymentMethodId && !await prisma.paymentMethod.findFirst({ where: { id: input.paymentMethodId, eventId } })) throw new BadRequestError('Método de pago fuera de la edición activa.');
     const reservedNumber = await ParticipantsService.getNextRegistrationNumber(eventId);
-    return writeTransaction(async tx => {
+    return writeTransaction(tx=>this.onsiteSaleInTransaction(tx,eventId,input,operatorUserId,reservedNumber));
+  }
+
+  static async onsiteSaleInTransaction(tx:Prisma.TransactionClient,eventId:string,input:OnsiteSaleInput,operatorUserId:string,reservedNumber:string){
     const prisma = tx;
     const event = await prisma.event.findUnique({
       where: { id: eventId },
@@ -964,7 +968,6 @@ export class ParticipantsService {
       },
     };
 
-    });
   }
 
   /**

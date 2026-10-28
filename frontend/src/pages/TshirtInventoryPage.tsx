@@ -1,3 +1,4 @@
+import {Link} from 'react-router-dom';
 import {ResponsiveContainer,BarChart,Bar,XAxis,YAxis,Tooltip,Legend,LabelList} from 'recharts';
 import {inventoryChart} from '../utils/inventoryChart';
 import {MerchPanel} from '../components/inventory/MerchPanel';
@@ -192,7 +193,7 @@ export const TshirtInventoryPage: React.FC = () => {
           <h1 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
             <Shirt className="w-6 h-6 text-primary" />
             <span>Inventario de merch</span>
-          </h1>
+          </h1>{isAdmin&&<Link className="btn-secondary inline-flex mt-2" to="/import?destination=INVENTORY">Importar Excel</Link>}
           <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">
             Control de existencias, entregas físicas en check-in y balance de camisetas por talla asociado exclusivamente a esta edición.
           </p>
