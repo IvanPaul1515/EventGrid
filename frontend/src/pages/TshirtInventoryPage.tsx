@@ -1,3 +1,5 @@
+import {ResponsiveContainer,BarChart,Bar,XAxis,YAxis,Tooltip,Legend,LabelList} from 'recharts';
+import {inventoryChart} from '../utils/inventoryChart';
 import {MerchPanel} from '../components/inventory/MerchPanel';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
@@ -16,7 +18,6 @@ import {
   RefreshCw,
   Edit2,
   Trash2,
-  BarChart3,
   Layers,
   Sparkles,
   ToggleLeft,
@@ -173,7 +174,7 @@ export const TshirtInventoryPage: React.FC = () => {
   };
 
   // Calcular máximo para la escala de la gráfica de barras
-  const maxInitialInSizes = Math.max(...items.map((i) => i.initialQuantity), 1);
+
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -328,88 +329,20 @@ export const TshirtInventoryPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Gráfica de Barras Comparativa: Disponibles vs Entregadas por Talla */}
-      <div className="p-5 rounded-2xl bg-card border border-border space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-primary" />
-            <h3 className="font-bold text-sm text-foreground">
-              Comparativa de Existencias vs Entregas por Talla
-            </h3>
-          </div>
-          <div className="flex items-center gap-4 text-xs">
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />
-              <span>Entregadas</span>
-            </span>
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <span className="w-2.5 h-2.5 rounded-sm bg-primary inline-block" />
-              <span>Disponibles</span>
-            </span>
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />
-              <span>Pendientes</span>
-            </span>
-          </div>
+      <section className="p-4 rounded-2xl bg-card border border-border min-w-0 space-y-3" aria-label="Inventario de camisetas por talla">
+        <h3 className="font-bold text-sm">Camisetas por talla</h3>
+        <p className="text-xs text-muted-foreground">Entregadas y disponibles físicas componen las existencias registradas. Pendientes representa solicitudes; no se suma al stock. Las reservas de staff permanecen dentro del stock físico.</p>
+        <div className="w-full min-w-0" role="img" aria-label="Entregas, existencias físicas y solicitudes pendientes por talla">
+          <ResponsiveContainer width="100%" height={260}><BarChart data={inventoryChart(items)} margin={{top:22,right:8,left:-16,bottom:4}} barGap={2}>
+            <XAxis dataKey="size" tick={{fontSize:11,fill:'hsl(var(--foreground))'}} interval={0}/><YAxis allowDecimals={false} tick={{fontSize:11,fill:'hsl(var(--muted-foreground))'}}/>
+            <Tooltip contentStyle={{background:'hsl(var(--card))',color:'hsl(var(--foreground))',borderColor:'hsl(var(--border))'}}/><Legend wrapperStyle={{fontSize:11}}/>
+            <Bar dataKey="delivered" name="Entregadas" fill="#059669" maxBarSize={32}><LabelList dataKey="delivered" position="top" fontSize={10} fill="hsl(var(--foreground))"/></Bar>
+            <Bar dataKey="available" name="Disponibles físicas" fill="hsl(var(--primary))" maxBarSize={32}><LabelList dataKey="available" position="top" fontSize={10} fill="hsl(var(--foreground))"/></Bar>
+            <Bar dataKey="pending" name="Solicitudes pendientes" fill="#d97706" maxBarSize={32}><LabelList dataKey="pending" position="top" fontSize={10} fill="hsl(var(--foreground))"/></Bar>
+          </BarChart></ResponsiveContainer>
         </div>
-
-        <div className="space-y-3.5 pt-1">
-          {items.map((item) => {
-            const deliveredPct = Math.round((item.deliveredQuantity / Math.max(1, item.initialQuantity)) * 100);
-            const availablePct = Math.round((item.availableQuantity / Math.max(1, item.initialQuantity)) * 100);
-            const relativeBarPct = Math.round((item.initialQuantity / maxInitialInSizes) * 100);
-
-            return (
-              <div key={item.id} className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground w-24 truncate">{item.size}</span>
-                    {!item.isActive && (
-                      <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-zinc-800 text-zinc-400">
-                        Inactiva
-                      </span>
-                    )}
-                    {item.isOutOfStock ? (
-                      <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                        Agotada
-                      </span>
-                    ) : item.isLowStock ? (
-                      <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                        Pocas unidades ({item.availableQuantity})
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-3 font-mono text-[11px]">
-                    <span className="text-emerald-400">
-                      Entregadas: <strong>{item.deliveredQuantity}</strong>
-                    </span>
-                    <span className="text-primary">
-                      Disponibles: <strong>{item.availableQuantity}</strong>
-                    </span>
-                    <span className="text-muted-foreground">
-                      Total: <strong>{item.initialQuantity}</strong>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Barra Visual Segmentada */}
-                <div className="w-full h-3 rounded-full bg-zinc-800/80 overflow-hidden flex">
-                  <div
-                    className="bg-emerald-500 h-full transition-all duration-500"
-                    style={{ width: `${deliveredPct}%` }}
-                    title={`Entregadas: ${item.deliveredQuantity} (${deliveredPct}%)`}
-                  />
-                  <div
-                    className="bg-primary h-full transition-all duration-500"
-                    style={{ width: `${availablePct}%` }}
-                    title={`Disponibles: ${item.availableQuantity} (${availablePct}%)`}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+        <details className="text-xs"><summary className="cursor-pointer">Consultar cantidades por talla</summary>{inventoryChart(items).map(r=><p key={r.size}>{r.size}: existencias {r.total} · entregadas {r.delivered} · físicas {r.available} · libres para participantes {r.participantAvailable} · solicitudes {r.pending}</p>)}</details>
+      </section>
 
       {/* Tabla Detallada de Inventario */}
       <div className="rounded-2xl bg-card border border-border overflow-hidden">

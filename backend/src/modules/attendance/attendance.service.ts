@@ -1,3 +1,4 @@
+import {verifiedCapOrder} from '../merch/official-order.js';
 import {MerchService} from '../merch/merch.service.js';
 import type {QueueConfirmation,QueueReceipt} from '../scanner/queue-confirmation.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
@@ -357,7 +358,8 @@ export class AttendanceService {
 
       if(queueEntryId){
         const cap=await tx.merchAllocation.findFirst({where:{eventId,kind:'PARTICIPANT',recipientId:registrationId,status:{in:['RESERVED','DELIVERED']},item:{systemCode:'OFFICIAL_CAP',isActive:true}},include:{item:true}});
-        const eligible=Boolean(cap&&livePayment.officialRegistrationOrder&&livePayment.officialOrderSource&&livePayment.officialRegistrationOrder<=cap.item.participantQuota&&!livePayment.isDemo);
+        const verified=await verifiedCapOrder(tx,eventId,registrationId,cap?.item.participantQuota??100);
+        const eligible=Boolean(cap&&verified.eligible&&!livePayment.isDemo);
         if(bundle?.capDecision==='DELIVER'){
           if(!eligible)throw new BadRequestError('Esta entrada no tiene una gorra asignada por orden oficial.');
           await MerchService.deliverInTransaction(tx,eventId,operatorUserId,cap!.id,registrationId);
@@ -392,6 +394,8 @@ export class AttendanceService {
             ticket: registration.registrationNumber,
             tshirtSize: validTshirtSize || null,
             requestedTshirtSize: queued?.selectedTshirtSize || livePayment.tshirtSize || null,
+            finalTshirtSize:validTshirtSize||livePayment.tshirtSize||null,
+            ...(queueEntryId&&validTshirtSize&&validTshirtSize!==(queued?.selectedTshirtSize||livePayment.tshirtSize)?{sizeChangedBy:operatorUserId,sizeChangedAt:now.toISOString()}:{}),
             deliveredTshirtSize: shouldDeliver ? validTshirtSize : null,
             tshirtDelivered: alreadyDelivered || shouldDeliver,
             inventoryDeducted: shouldDeliver ? 1 : 0,

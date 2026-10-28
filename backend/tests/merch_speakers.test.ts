@@ -1,4 +1,4 @@
-import {officialOrder,officialEligibility} from '../src/modules/merch/official-order.js';
+import {officialOrder,officialEligibility,verifiedCapOrder} from '../src/modules/merch/official-order.js';
 import {hasUserPermission} from '../src/middleware/rbac.js';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {readFileSync} from 'node:fs';
@@ -88,4 +88,21 @@ describe('official caps, repeat imports and role boundaries',()=>{
  it('reconciles repeat batches without duplicating rights or reserving staff stock',async()=>{await M.ensureOfficialCaps('event','admin');const rows=[{id:'four',eventId:'event',importOriginalData:JSON.stringify({'No. Registro':4})},{id:'last',eventId:'event',importOriginalData:JSON.stringify({'No. Registro':150})}];m.db.registration.findMany.mockResolvedValue(rows);m.db.registration.findFirst.mockImplementation(async({where}:any)=>rows.find(r=>r.id===where.id));await M.reconcileOfficialCaps('event','admin');await M.reconcileOfficialCaps('event','admin');expect(allocations.map(a=>a.recipientId)).toEqual(['four']);expect(movements.filter(m=>m.kind==='RESERVE')).toHaveLength(1);expect(movements.filter(m=>m.kind==='DELIVER')).toHaveLength(0);expect(item.staffQuota).toBe(50);});
  it.each(['ADMIN','OPERATOR','VIEWER'] as const)('applies speaker and demo permissions in backend policy for %s',role=>{expect(hasUserPermission({role},'SPEAKERS_MANAGE')).toBe(role!=='VIEWER');expect(hasUserPermission({role},'SPEAKERS_CREDENTIALS')).toBe(role==='ADMIN');expect(hasUserPermission({role},'DEMO_MANAGE')).toBe(role==='ADMIN');});
  it('denies speaker edits, credential issuance and demo management to restricted scanners',()=>{for(const permission of ['SPEAKERS_MANAGE','SPEAKERS_CREDENTIALS','DEMO_MANAGE'] as const)expect(hasUserPermission({role:'OPERATOR',scannerOnly:true},permission)).toBe(false);});
+});
+
+describe('official cap boundaries and current source verification',()=>{
+ it.each([[48,true],[100,true],[101,false],[150,false]])('checks official rank %s independently of arrival',async(position,eligible)=>{
+  const row={id:'recipient',officialRegistrationOrder:position,officialOrderSource:'No. Registro',importOriginalData:{'No. Registro':position}};
+  m.db.registration.findMany.mockResolvedValue([row]);expect(await verifiedCapOrder(m.db,'event',row.id)).toMatchObject({order:position,eligible,pending:false});
+ });
+ it('blocks stale assignments after duplicate or contradictory imports, preserving delivered rights',async()=>{
+  await M.ensureOfficialCaps('event','admin');const row={id:'first',officialRegistrationOrder:48,officialOrderSource:'No. Registro',importOriginalData:{'No. Registro':48}};
+  m.db.registration.findMany.mockResolvedValue([row,{...row,id:'duplicate'}]);
+  expect(await verifiedCapOrder(m.db,'event','first')).toMatchObject({eligible:false,pending:true,order:null});
+  allocations.push({id:'right',itemId:item.id,eventId:'event',recipientId:'first',kind:'PARTICIPANT',status:'RESERVED'});
+  await expect(M.deliver('event','operator','right')).rejects.toThrow('derecho');expect(movements).toEqual([]);expect(allocations[0].status).toBe('RESERVED');
+  allocations[0].status='DELIVERED';await expect(M.deliver('event','operator','right')).resolves.toMatchObject({alreadyDelivered:true});expect(movements).toEqual([]);
+  m.db.registration.findMany.mockResolvedValue([{...row,importOriginalData:{'No. Registro':150}}]);expect((await verifiedCapOrder(m.db,'event','first')).pending).toBe(true);
+ });
+ it('never expands the first-100 rule if an administrator enlarges a stock quota',()=>{expect(officialEligibility([{id:'later',importOriginalData:{'No. Registro':101}}],150).eligible).toEqual([]);});
 });
