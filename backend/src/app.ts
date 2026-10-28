@@ -1,3 +1,5 @@
+import merchRoutes from './modules/merch/merch.routes.js';
+import speakersRoutes from './modules/speakers/speakers.routes.js';
 import queueRoutes from './modules/scanner/queue.routes.js';
 import walletRoutes from './modules/wallet/wallet.routes.js';
 import financeRoutes from './modules/finance/finance.routes.js';
@@ -133,6 +135,8 @@ app.use(`${ENV.API_PREFIX}/events/:eventId/participants`, participantsRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/import`, importRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/attendance`, attendanceRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/inventory`, inventoryRoutes);
+app.use(`${ENV.API_PREFIX}/events/:eventId/merch`, merchRoutes);
+app.use(`${ENV.API_PREFIX}/events/:eventId/speakers`, speakersRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/schedule`, scheduleRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/sponsors`, sponsorsRoutes);
 app.use(`${ENV.API_PREFIX}/events`, eventsRoutes);

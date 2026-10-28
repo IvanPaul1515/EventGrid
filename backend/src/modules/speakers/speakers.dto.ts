@@ -1,0 +1,3 @@
+import {z} from 'zod';
+const safeUrl=z.string().url().max(1000).refine(v=>v.startsWith('https://'),'Utiliza HTTPS.');
+export const SpeakerSchema=z.object({fullName:z.string().trim().min(3).max(160),email:z.string().trim().email().max(254).nullable().optional(),organization:z.string().trim().max(160).nullable().optional(),photoUrl:safeUrl.nullable().optional(),biography:z.string().max(5000).default(''),status:z.enum(['PENDING','CONFIRMED','CANCELLED']).default('PENDING'),registrationId:z.string().uuid().nullable().optional(),sourceUrl:safeUrl.nullable().optional(),provisional:z.boolean().default(false)});

@@ -1048,3 +1048,87 @@ model QueueScanActivity {
  @@unique([eventId,userId,requestKey])
  @@index([eventId,userId,eventDay])
 }
+
+
+// Additional merchandise leaves historical T-shirt tables untouched.
+model MerchItem {
+ id String @id @default(uuid())
+ eventId String
+ name String
+ variant String @default("")
+ initialQuantity Int
+ participantQuota Int
+ staffQuota Int
+ criterion String
+ criterionNotes String @default("")
+ eligibilityAt DateTime?
+ version Int @default(0)
+ createdAt DateTime @default(now())
+ allocations MerchAllocation[]
+ movements MerchMovement[]
+ @@unique([eventId,name,variant])
+ @@map("merch_items")
+}
+model MerchAllocation {
+ id String @id @default(uuid())
+ eventId String
+ itemId String
+ kind String
+ recipientId String
+ status String @default("RESERVED")
+ reason String
+ assignedBy String
+ assignedAt DateTime @default(now())
+ deliveredAt DateTime?
+ deliveredBy String?
+ item MerchItem @relation(fields:[itemId],references:[id],onDelete:Restrict)
+ movements MerchMovement[]
+ @@unique([itemId,kind,recipientId])
+ @@index([eventId,recipientId])
+ @@map("merch_allocations")
+}
+model MerchMovement {
+ id String @id @default(uuid())
+ eventId String
+ itemId String
+ allocationId String?
+ kind String
+ quantity Int
+ reason String
+ userId String
+ requestKey String? @unique
+ createdAt DateTime @default(now())
+ item MerchItem @relation(fields:[itemId],references:[id],onDelete:Restrict)
+ allocation MerchAllocation? @relation(fields:[allocationId],references:[id],onDelete:Restrict)
+ @@index([eventId,itemId])
+ @@map("merch_movements")
+}
+model Speaker {
+ id String @id @default(uuid())
+ eventId String
+ fullName String
+ email String?
+ organization String?
+ photoUrl String?
+ biography String @default("")
+ status String @default("PENDING")
+ registrationId String? @unique
+ sourceUrl String?
+ provisional Boolean @default(false)
+ version Int @default(0)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ talks SpeakerTalk[]
+ @@index([eventId])
+ @@unique([eventId,email])
+ @@map("speakers")
+}
+model SpeakerTalk {
+ speakerId String
+ scheduleItemId String
+ eventId String
+ speaker Speaker @relation(fields:[speakerId],references:[id],onDelete:Restrict)
+ @@id([speakerId,scheduleItemId])
+ @@index([eventId,scheduleItemId])
+ @@map("speaker_talks")
+}

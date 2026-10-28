@@ -1,0 +1,15 @@
+import {Router} from 'express';
+import {z} from 'zod';
+import {authenticateToken} from '../../middleware/auth.js';
+import {editionContext} from '../../middleware/editionContext.js';
+import {requireAdmin,requireAnyRole} from '../../middleware/rbac.js';
+import {SpeakersService as S} from './speakers.service.js';
+import {SpeakerSchema} from './speakers.dto.js';
+const router=Router({mergeParams:true}),id=z.string().uuid();router.use(authenticateToken,editionContext);
+const route=(method:'get'|'post'|'put',path:string,guard:any,fn:(r:any)=>Promise<any>)=>router[method](path,guard,async(r,s,n)=>{try{s.json({data:await fn(r)});}catch(e){n(e);}});
+route('get','/',requireAnyRole,r=>S.list(r.eventId));
+route('post','/',requireAdmin,r=>S.save(r.eventId,r.user.id,SpeakerSchema.parse(r.body)));
+route('put','/:id',requireAdmin,r=>S.save(r.eventId,r.user.id,SpeakerSchema.parse(r.body),id.parse(r.params.id)));
+route('post','/:id/talk',requireAdmin,r=>S.linkTalk(r.eventId,r.user.id,id.parse(r.params.id),id.parse(r.body.talkId),z.boolean().optional().parse(r.body.remove)));
+route('post','/:id/credential',requireAdmin,r=>S.credential(r.eventId,r.user.id,id.parse(r.params.id)));
+export default router;

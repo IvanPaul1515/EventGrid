@@ -12,6 +12,7 @@ import { Layout } from './components/common/Layout';
 import { AppLoadingScreen } from './components/common/AppLoadingScreen';
 import { useMobileViewport } from './hooks/useMobileViewport';
 
+const SpeakersPage = React.lazy(() => import('./pages/SpeakersPage').then(m => ({ default: m.SpeakersPage })));
 const StaffPage = React.lazy(() => import('./pages/StaffPage').then(m => ({ default: m.StaffPage })));
 const RecoveryPage = React.lazy(() => import('./pages/RecoveryPage').then(m => ({ default: m.RecoveryPage })));
 const ActivationPage = React.lazy(() => import('./pages/ActivationPage').then(m => ({ default: m.ActivationPage })));
@@ -64,6 +65,7 @@ export const App: React.FC = () => {
                       <Route path="/sales" element={<SalesPage />} />
                       <Route path="/sponsors" element={<SponsorsPage />} />
                       <Route path="/staff" element={<StaffPage />} />
+                      <Route path="/speakers" element={<SpeakersPage />} />
                       <Route path="/inventory" element={<TshirtInventoryPage />} />
                       <Route path="/schedule" element={<SchedulePage />} />
                       <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>

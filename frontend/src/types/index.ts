@@ -133,6 +133,7 @@ export interface Payment {
 }
 
 export interface Registration {
+  participantCategory?: string | null;
   tshirtDeliveryStatus?:string;
   tshirtNonDeliveryReason?:string;
   tshirtNonDeliveryNotes?:string;

@@ -79,7 +79,7 @@ export class QrService {
         isCourtesy: registration.isCourtesy,
         attended: registration.attended,
         attendedAt: registration.attendedAt ? registration.attendedAt.toISOString() : undefined,
-        ticketType: registration.ticketType?.name || (registration.isCourtesy ? 'Cortesía' : 'General'),
+        ticketType: registration.participantCategory==='SPEAKER'?'Charlista':registration.ticketType?.name || (registration.isCourtesy ? 'Cortesía' : 'General'),
         price: Number(registration.ticketPrice ?? registration.totalAmount ?? 0),
       },
       participant: {

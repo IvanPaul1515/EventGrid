@@ -1,3 +1,4 @@
+import {RecipientMerch} from '../inventory/RecipientMerch';
 import { CommunicationHistory } from '../communications/CommunicationHistory';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -658,6 +659,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground break-all">{p.email}</p>
+                  {registration.participantCategory==='SPEAKER'&&<p className="text-primary font-bold">Charlista</p>}
 
                   {/* Tres insignias de estado independientes */}
                   <div className="flex items-center flex-wrap gap-2 mt-2.5">
@@ -879,6 +881,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                 )}
               </div>
 
+              <RecipientMerch registrationId={registration.id} attended={registration.attended}/>
               {/* ENTRADA DIGITAL & CÓDIGO QR */}
               <div className="p-4 rounded-2xl border bg-card border-border space-y-3">
                 <div className="flex flex-wrap items-center justify-between">

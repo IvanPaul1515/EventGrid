@@ -1,0 +1,11 @@
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {api} from '../../services/api';
+import {useEdition} from '../../context/EditionContext';
+import {useAuth} from '../../context/AuthContext';
+import {useRealtimeRefresh} from '../../context/RealtimeContext';
+export function RecipientMerch({registrationId,attended,onPendingChange}:{registrationId:string;attended:boolean;onPendingChange?:(pending:boolean)=>void}){
+ const {currentEvent}=useEdition(),{user}=useAuth(),[items,setItems]=useState<any[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),version=useRef(0),base=`/events/${currentEvent?.id}/merch`;
+ const load=useCallback(async()=>{const n=version.current;try{const r=await api.get(base+'/registration/'+registrationId);if(n===version.current){setItems(r.data.data);onPendingChange?.(r.data.data.some((i:any)=>i.status==='RESERVED'));}}catch{if(n===version.current)setError('No se pudo consultar el merch asignado.');}},[base,registrationId]);
+ useEffect(()=>{version.current++;setItems([]);setError('');void load();return()=>{version.current++;};},[load]);useRealtimeRefresh('inventory',load);
+ return <section className="rounded-xl border border-border p-3 space-y-2"><h3 className="font-semibold">Merch asignado</h3>{error&&<p role="alert" className="text-destructive">{error}</p>}{!items.length&&!error&&<p className="text-sm text-muted-foreground">Sin asignaciones de otros artículos.</p>}{items.map(i=><div key={i.id} className="flex flex-wrap items-center justify-between gap-2"><span>{i.item.name} {i.item.variant} · {i.status==='DELIVERED'?'Entregado':'Asignado · pendiente'}</span>{i.status==='RESERVED'&&user?.role!=='VIEWER'&&<button className="btn-secondary" disabled={!attended||busy} onClick={async()=>{setBusy(true);setError('');try{await api.post(base+'/deliver/'+i.id);await load();}catch(e:any){setError(e.response?.data?.message||'No se confirmó la entrega.');}finally{setBusy(false);}}}>Confirmar entrega</button>}</div>)}{items.some(i=>i.status==='RESERVED')&&!attended&&<p className="text-sm">Confirma primero la asistencia para entregar merch.</p>}</section>;
+}

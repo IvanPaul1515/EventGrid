@@ -1,3 +1,4 @@
+import {MerchPanel} from '../components/inventory/MerchPanel';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
@@ -189,7 +190,7 @@ export const TshirtInventoryPage: React.FC = () => {
           </div>
           <h1 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
             <Shirt className="w-6 h-6 text-primary" />
-            <span>Inventario de T-shirts</span>
+            <span>Inventario de merch</span>
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">
             Control de existencias, entregas físicas en check-in y balance de camisetas por talla asociado exclusivamente a esta edición.
@@ -243,6 +244,8 @@ export const TshirtInventoryPage: React.FC = () => {
         </div>
       )}
 
+      <MerchPanel/>
+      <h2 className="text-xl font-bold">Camisetas por talla</h2>
       {/* Tarjetas de Métricas de Inventario */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         {/* Total Inicial */}
