@@ -106,3 +106,8 @@ describe('official cap boundaries and current source verification',()=>{
  });
  it('never expands the first-100 rule if an administrator enlarges a stock quota',()=>{expect(officialEligibility([{id:'later',importOriginalData:{'No. Registro':101}}],150).eligible).toEqual([]);});
 });
+
+describe('explicit official cap policy change',()=>{
+ it('preserves delivered rights and audits the old policy when switching to verified purchases',async()=>{await M.ensureOfficialCaps('event','admin');m.db.user={findUnique:vi.fn(async()=>({role:'ADMIN',isActive:true}))};allocations.push({id:'historic',kind:'PARTICIPANT',recipientId:'historic-person',status:'DELIVERED'});m.db.registration.findMany.mockResolvedValue([]);const result=await M.setCapPolicy('event','admin','OFFICIAL_PURCHASE','Documented policy revision');expect(item.criterion).toBe('OFFICIAL_PURCHASE');expect(allocations[0].status).toBe('DELIVERED');expect(result.issues.some(i=>i.registrationId==='historic-person')).toBe(true);const log=m.db.auditLog.create.mock.calls.map((c:any)=>JSON.parse(c[0].data.changes)).find((x:any)=>x.operation==='CHANGE_OFFICIAL_CAP_POLICY');expect(log).toMatchObject({before:'OFFICIAL_REGISTRATION',after:'OFFICIAL_PURCHASE'});expect(movements.filter(x=>x.kind==='DELIVER')).toEqual([]);});
+ it('rejects a stale operator attempting administrative policy changes',async()=>{m.db.user={findUnique:vi.fn(async()=>({role:'OPERATOR',isActive:true}))};await expect(M.setCapPolicy('event','operator','OFFICIAL_PURCHASE','Documented policy revision')).rejects.toThrow('administrador');});
+});

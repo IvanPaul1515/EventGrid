@@ -23,6 +23,10 @@ export async function migrateReceptionMetadata(db) {
     if (payments) await tx.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "payments_idempotencyKey_key" ON "payments"("idempotencyKey")');
     const batches = await addColumns('import_batches', [['contentHash','TEXT']]);
     if (batches) await tx.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "import_batches_eventId_contentHash_key" ON "import_batches"("eventId","contentHash")');
+    // Nullable identity fields are additive. Build the unique index explicitly
+    // before Prisma reconciliation; existing duplicates fail closed, never deleted.
+    const sponsors = await addColumns('sponsors', [['legalName','TEXT'],['rnc','TEXT']]);
+    if (sponsors) await tx.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "sponsors_eventId_rnc_key" ON "sponsors"("eventId","rnc")');
     await addColumns('courtesy_requests', [['exceptionType',"TEXT NOT NULL DEFAULT 'COURTESY'"],['agreementReference','TEXT']]);
     // Historical rows have NULL references. A duplicate real reference fails
     // closed instead of removing or changing either registration.

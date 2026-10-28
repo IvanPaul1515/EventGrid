@@ -259,7 +259,7 @@ export class ReceptionQueueService {
   const cap=await prisma.merchAllocation.findFirst({where:{eventId,recipientId:reg.id,kind:'PARTICIPANT',status:{in:['RESERVED','DELIVERED']},item:{systemCode:'OFFICIAL_CAP',isActive:true}},include:{item:true}});
   const verified=await verifiedCapOrder(prisma,eventId,reg.id,cap?.item.participantQuota??100);
   const capEligible=Boolean(cap&&verified.eligible&&!reg.isDemo);
-  return {officialOrder:verified.order,cap:{eligible:capEligible,delivered:cap?.status==='DELIVERED',pendingVerification:verified.pending||verified.eligible&&!cap},category:reg.participantCategory,payment:{...payment,ticketPrice:Number(reg.ticketPrice)},paymentMethods,canCollect,registrationId:reg.id,name:reg.participant.fullName,number:reg.registrationNumber,canCheckIn:!blockedReason,blockedReason,selectedTshirtSize:entry.selectedTshirtSize||reg.tshirtSize,shirts:await queueTshirts(prisma,eventId,reg)};
+  return {officialOrder:verified.policy==='OFFICIAL_REGISTRATION'?verified.order:null,cap:{policy:verified.policy,position:verified.order,eligible:capEligible,delivered:cap?.status==='DELIVERED',pendingVerification:verified.pending||verified.eligible&&!cap},category:reg.participantCategory,payment:{...payment,ticketPrice:Number(reg.ticketPrice)},paymentMethods,canCollect,registrationId:reg.id,name:reg.participant.fullName,number:reg.registrationNumber,canCheckIn:!blockedReason,blockedReason,selectedTshirtSize:entry.selectedTshirtSize||reg.tshirtSize,shirts:await queueTshirts(prisma,eventId,reg)};
  }
  static async complete(user:AuthUser,eventId:string,id:string,size?:string,delivered=false,decision?:ShirtDecision,capDecision?:CapDecision,requestKey?:string){
   const detail=await this.details(user,eventId,id);

@@ -14,6 +14,13 @@ export const INITIAL_TSHIRT_INVENTORY = [
 ];
 
 export class InventoryService {
+  static async importStock(tx:any,eventId:string,userId:string,size:string,delta:number,initial=false){
+    const row=await tx.tshirtInventory.findUnique({where:{eventId_size:{eventId,size}}});
+    if(initial){if(row)throw new BadRequestError('La carga inicial no reemplaza una talla existente.');const settings=await tx.eventSettings.findUnique({where:{eventId}});let sizes:string[]=[];try{sizes=JSON.parse(settings?.tshirtSizes||'[]');}catch{}if(!settings?.tshirtSizesEnabled||!sizes.includes(size)||delta<=0)throw new BadRequestError('Configura primero la talla en la edición.');const created=await tx.tshirtInventory.create({data:{eventId,size,initialQuantity:delta}});return created;}
+    if(!row||!row.isActive)throw new BadRequestError('Talla no configurada o inactiva.');const next=row.initialQuantity+delta;if(next<row.deliveredQuantity+row.staffReservedQuantity)throw new BadRequestError('El ajuste afecta camisetas entregadas o reservadas al staff.');
+    const changed=await tx.tshirtInventory.updateMany({where:{id:row.id,initialQuantity:row.initialQuantity,deliveredQuantity:row.deliveredQuantity,staffReservedQuantity:row.staffReservedQuantity},data:{initialQuantity:next}});if(!changed.count)throw new BadRequestError('Inventario cambió; revalida la importación.');await tx.auditLog.create({data:{userId,action:'UPDATE',entity:'EVENT',entityId:eventId,changes:JSON.stringify({module:'TSHIRT_INVENTORY',operation:'IMPORTED_STOCK_MOVEMENT',size,before:row.initialQuantity,after:next,delta})}});return row;
+  }
+
   /**
    * Carga inicial idempotente de las 282 camisetas en la edición seleccionada
    */

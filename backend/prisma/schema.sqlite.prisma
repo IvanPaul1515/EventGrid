@@ -92,6 +92,7 @@ model Event {
 }
 
 model EventSettings {
+  importMappingTemplates String?
   timeZone String @default("America/Santo_Domingo")
   allowOnsitePayments Boolean @default(false)
   requirePaymentForEntry Boolean @default(true)
@@ -152,6 +153,7 @@ model Participant {
 }
 
 model Registration {
+  historicalDates String?
   officialRegistrationOrder Int?
   officialOrderSource String?
   scanActivities QueueScanActivity[]
@@ -697,6 +699,10 @@ model ScheduledNotification {
 }
 
 model Sponsor {
+  legalName String?
+  rnc String?
+  contributions ImportedContribution[]
+  @@unique([eventId,rnc])
   id                String           @id @default(uuid())
   eventId           String
   name              String
@@ -732,6 +738,7 @@ model Sponsor {
 }
 
 model SponsorPayment {
+  historicalDate String?
   id               String    @id @default(uuid())
   sponsorId        String
   amount           Float
@@ -1137,4 +1144,47 @@ model SpeakerTalk {
  @@id([speakerId,scheduleItemId])
  @@index([eventId,scheduleItemId])
  @@map("speaker_talks")
+}
+
+model ModuleImportRecord {
+ metadata String?
+ id String @id @default(uuid())
+ eventId String
+ kind String
+ source String
+ externalKey String
+ payloadHash String
+ entityId String
+ batchId String
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@unique([eventId,kind,source,externalKey])
+ @@index([eventId,kind])
+ @@map("module_import_records")
+}
+model ImportedContribution {
+ id String @id @default(uuid())
+ eventId String
+ sponsorId String
+ kind String
+ state String
+ amount Float?
+ currency String?
+ description String
+ quantity Float?
+ unit String?
+ estimatedValue Float?
+ historicalDate String?
+ destination String?
+ reference String
+ notes String?
+ paymentId String?
+ merchItemId String?
+ stockReceived Boolean @default(false)
+ createdBy String
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ sponsor Sponsor @relation(fields:[sponsorId],references:[id],onDelete:Restrict)
+ @@index([eventId,sponsorId])
+ @@map("imported_contributions")
 }

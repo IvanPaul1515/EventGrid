@@ -1,3 +1,4 @@
+import {purchaseChronology} from '../import/intelligence.js';
 export function officialOrder(raw:unknown,mappingConfig?:unknown):{position:number;source:string}|null {
  let data:any=raw;if(typeof raw==='string'){try{data=JSON.parse(raw);}catch{return null;}}
  if(!data||typeof data!=='object'||Array.isArray(data))return null;
@@ -19,11 +20,20 @@ export function officialEligibility(rows:{id:string;officialRegistrationOrder?:n
  return {eligible,issues};
 }
 
-// Re-evaluate the source and duplicate positions, not just a previously reserved right.
+export function capEligibility(rows:any[],policy='OFFICIAL_REGISTRATION',cutoff=100){
+ if(policy==='OFFICIAL_PURCHASE'){
+  const buyers=rows.filter(r=>!r.isCourtesy&&Number(r.amountPaid)>0),chronology=purchaseChronology(buyers);
+  return {policy,eligible:chronology.filter(r=>r.position!==null&&r.position<=Math.min(100,cutoff)).map(r=>r.id),issues:chronology.filter(r=>r.position===null).map(r=>({registrationId:r.id,reason:'Compra sin prioridad verificable; faltan fechas, zona o desempate oficial.'})),orders:Object.fromEntries(chronology.filter(r=>r.position!==null).map(r=>[r.id,r.position!])) as Record<string,number>};
+ }
+ const result=officialEligibility(rows,cutoff),invalid=new Set(result.issues.map(i=>i.registrationId));
+ return {...result,policy:'OFFICIAL_REGISTRATION',orders:Object.fromEntries(rows.filter(r=>!invalid.has(r.id)&&r.officialOrderSource&&r.officialRegistrationOrder).map(r=>[r.id,r.officialRegistrationOrder])) as Record<string,number>};
+}
+export const capRegistrationSelect={id:true,officialRegistrationOrder:true,officialOrderSource:true,importOriginalData:true,importBatch:{select:{mappingConfig:true}},historicalDates:true,source:true,externalReference:true,amountPaid:true,isCourtesy:true} as const;
+// The same policy is checked again inside the stock transaction.
 export async function verifiedCapOrder(db:any,eventId:string,registrationId:string,cutoff=100){
- const rows=await db.registration.findMany({where:{eventId,isDemo:false,status:{not:'CANCELLED'}},select:{id:true,officialRegistrationOrder:true,officialOrderSource:true,importOriginalData:true,importBatch:{select:{mappingConfig:true}}}});
- const result=officialEligibility(rows,Math.min(100,cutoff)),row=rows.find((r:any)=>r.id===registrationId);
+ const cap=await db.merchItem.findUnique({where:{eventId_systemCode:{eventId,systemCode:'OFFICIAL_CAP'}}});
+ const rows=await db.registration.findMany({where:{eventId,isDemo:false,status:{not:'CANCELLED'}},select:capRegistrationSelect});
+ const result=capEligibility(rows,cap?.criterion,cutoff),order=result.orders[registrationId]??null;
  const issue=result.issues.some(i=>i.registrationId===registrationId);
- const order=!issue&&row?.officialOrderSource&&Number.isSafeInteger(row.officialRegistrationOrder)&&row.officialRegistrationOrder>0?row.officialRegistrationOrder:null;
- return {order,eligible:!!order&&!issue&&result.eligible.includes(registrationId),pending:issue||!order};
+ return {order,policy:result.policy,eligible:!!order&&!issue&&result.eligible.includes(registrationId),pending:issue||!order};
 }

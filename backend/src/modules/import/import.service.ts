@@ -1,3 +1,5 @@
+import {MODULE_FIELDS} from './module-rules.js';
+import {assertMapping,detectDestinations,temporalMetadata} from './intelligence.js';
 import { executeReconciledImport } from './reconciliation-import.service.js';
 import { officialTicket } from '../participants/registrationPolicy.js';
 import { prisma } from '../../config/db.js';
@@ -73,8 +75,15 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
   ],
   saleTimestamp: [
     'horario de venta', 'horario venta', 'horario_de_venta', 'fecha de venta', 'fecha venta',
-    'fecha_venta', 'fecha', 'hora', 'timestamp', 'date', 'hora venta'
+    'fecha_venta', 'fecha compra', 'purchased at', 'timestamp'
   ],
+  officialPurchaseSequence:['orden oficial de compra','secuencia oficial de compra','no compra','numero de compra'],
+  purchaseTime: ['hora', 'hora venta', 'hora compra'],
+  registrationDate: ['fecha inscripcion', 'fecha registro', 'registered at'],
+  registrationTime: ['hora inscripcion', 'hora registro'],
+  paymentDate: ['fecha pago', 'paid at'],
+  paymentTime: ['hora pago'],
+  sourceTimezone: ['zona horaria', 'timezone', 'utc offset'],
   status: [
     'estado', 'status', 'confirmación', 'confirmacion', 'estado registro'
   ],
@@ -145,18 +154,6 @@ export function normalizePhone(raw: any): string | null {
   return str;
 }
 
-export function parseExcelDate(val: any): Date {
-  if (val instanceof Date) return val;
-  if (typeof val === 'number' && val > 20000 && val < 60000) {
-    return new Date((val - 25569) * 86400 * 1000);
-  }
-  if (typeof val === 'string' && val.trim()) {
-    const d = new Date(val.trim());
-    if (!isNaN(d.getTime())) return d;
-  }
-  return new Date();
-}
-
 export class ImportService {
   /**
    * Paso 1 y 2: Analizar archivo Excel/CSV y detectar cabeceras automáticamente
@@ -173,7 +170,7 @@ export class ImportService {
 
     let workbook: XLSX.WorkBook;
     try {
-      workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true, cellText: true });
+      workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false, cellText: true, cellNF:true });
     } catch {
       throw new BadRequestError('No se pudo interpretar el archivo como una hoja de cálculo válida (.xlsx, .xls o .csv)');
     }
@@ -182,6 +179,7 @@ export class ImportService {
       throw new BadRequestError('El archivo no contiene ninguna hoja de cálculo');
     }
 
+    if(requestedSheet&&!workbook.SheetNames.includes(requestedSheet))throw new BadRequestError('La hoja seleccionada no existe.');
     const sheetName = requestedSheet && workbook.SheetNames.includes(requestedSheet)
       ? requestedSheet
       : workbook.SheetNames[0];
@@ -193,6 +191,7 @@ export class ImportService {
 
     // Convertir a matriz bidimensional de celdas
     const rawMatrix: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false });
+    for(const address of Object.keys(worksheet)){if(address.startsWith('!'))continue;const cell=worksheet[address];if(cell.t==='n'&&cell.z&&XLSX.SSF.is_date(cell.z)){const value=XLSX.SSF.parse_date_code(cell.v,{date1904:workbook.Workbook?.WBProps?.date1904});if(value){const pos=XLSX.utils.decode_cell(address);const pad=(n:number)=>String(n).padStart(2,'0');const clock=pad(value.H)+':'+pad(value.M)+':'+pad(value.S),hasDate=/[dy]/i.test(cell.z),hasTime=/[hs]/i.test(cell.z);const text=hasDate?value.y+'-'+pad(value.m)+'-'+pad(value.d)+(hasTime?' '+clock:''):clock;if(rawMatrix[pos.r])rawMatrix[pos.r][pos.c]=text;}}}
     if (!rawMatrix || rawMatrix.length === 0) {
       throw new BadRequestError('La hoja seleccionada está completamente vacía');
     }
@@ -201,7 +200,7 @@ export class ImportService {
     let detectedHeaderIdx = headerRowIndex !== undefined ? headerRowIndex : 0;
     if (headerRowIndex === undefined) {
       let maxMatches = -1;
-      const rowsToScan = Math.min(rawMatrix.length, 10);
+      const rowsToScan = Math.min(rawMatrix.length, 50);
 
       for (let r = 0; r < rowsToScan; r++) {
         const row = rawMatrix[r];
@@ -211,8 +210,8 @@ export class ImportService {
         for (const cell of row) {
           if (typeof cell !== 'string' || !cell.trim()) continue;
           const norm = normalizeHeader(cell);
-          for (const key of Object.keys(ALIAS_DICTIONARY)) {
-            if (ALIAS_DICTIONARY[key].some(alias => normalizeHeader(alias) === norm)) {
+          for (const aliases of [...Object.values(ALIAS_DICTIONARY),...Object.values(MODULE_FIELDS).flat().map(f=>f.aliases)]) {
+            if (aliases.some(alias => normalizeHeader(alias) === norm)) {
               matches++;
               break;
             }
@@ -226,6 +225,7 @@ export class ImportService {
       }
     }
 
+    if(detectedHeaderIdx>=rawMatrix.length)throw new BadRequestError('Fila de encabezado fuera de la hoja.');
     const headerRow = rawMatrix[detectedHeaderIdx] || [];
     const usedHeaders = new Set<string>();
     const columns: string[] = headerRow.map((col, idx) => {
@@ -258,7 +258,9 @@ export class ImportService {
       const values = Object.values(row).map(v => String(v).trim()).filter(Boolean);
       if (!values.length) return false;
       const hasEmail = values.some(v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v));
-      const footer = values.some(v => /^(total( de)? (participantes|registros|inscritos)|total general|subtotal)\b/i.test(normalizeHeader(v)));
+      const repeatedHeader = columns.filter(c=>String(row[c]).trim()===c).length>=Math.min(2,columns.length);
+      if(repeatedHeader)return false;
+      const footer = values.some(v => /^(total( de)? (participantes|registros|inscritos)|total general|total|totales|subtotal)$/i.test(normalizeHeader(v)));
       return hasEmail || !footer;
     });
     const columnProfiles = columns.map(column => ({ column, generatedHeader: /^Columna_\d+$/.test(column), nonempty: validRows.filter(row => String(row[column]).trim()).length }));
@@ -272,6 +274,9 @@ export class ImportService {
       columns,
       autoMapping,
       columnProfiles,
+      detectedDestinations:detectDestinations(columns),
+      mappingSuggestions:columns.map(column=>({column,field:autoMapping[column]||null,confidence:autoMapping[column]&&autoMapping[column]!=='IGNORE'?0.95:0})),
+      mergedCells:(worksheet['!merges']||[]).map(range=>XLSX.utils.encode_range(range)),
       ignoredRows: rawJsonRows.length - validRows.length,
       totalRows: validRows.length,
       previewRows: validRows.slice(0, 10),
@@ -296,6 +301,7 @@ export class ImportService {
     if (!event) throw new NotFoundError('Edición no encontrada');
 
     // Mapear pagos existentes para normalización
+    assertMapping(columnMapping);
     const existingPaymentMethods = event.paymentMethods.map((pm) => pm.name.toLowerCase().trim());
 
     // Índices de participantes existentes en esta edición
@@ -343,6 +349,13 @@ export class ImportService {
         normalized[targetField] = val !== undefined && val !== null ? String(val).trim() : '';
       }
 
+      try{normalized.historicalDates=temporalMetadata(normalized);}catch(error:any){errors.push(error.message);}
+      if(batchDefaults.importKind==='PURCHASES'){
+        const ref=String(normalized.externalReference||'').trim(),platform=String(normalized.externalPlatform||batchDefaults.externalPlatform||'Excel').trim();
+        const candidates=event.registrations.filter(r=>r.externalReference===ref&&r.externalPlatform===platform);
+        if(!ref||candidates.length!==1)errors.push('Compra histórica: se requiere una referencia externa única de un participante existente.');
+        else {normalized.firstName=candidates[0].participant.firstName;normalized.lastName=candidates[0].participant.lastName;normalized.email=candidates[0].participant.email;}
+      }
       // Si tenemos fullName pero falta firstName/lastName, dividir nombres
       if (normalized.fullName && (!normalized.firstName || !normalized.lastName)) {
         const parts = normalized.fullName.split(/\s+/);
@@ -556,6 +569,8 @@ export class ImportService {
     if (!batch) {
       throw new NotFoundError('Lote de importación no encontrado');
     }
+    let config:any=batch.mappingConfig;try{if(typeof config==='string')config=JSON.parse(config);}catch{}
+    if(config?.kind&&['ONSITE','SPONSORS','SPONSOR_CASH','SPONSOR_KIND','INVENTORY'].includes(config.kind))throw new BadRequestError('Este lote contiene operaciones financieras o de inventario; su historial no se elimina desde el asistente de participantes.');
     if (eventId && batch.eventId !== eventId) {
       throw new BadRequestError('El lote no corresponde a la edición activa');
     }
@@ -576,6 +591,7 @@ export class ImportService {
    * Eliminar todas las importaciones de Excel y registros asociados de la edición
    */
   static async deleteAllImported(eventId: string) {
+    if(await prisma.moduleImportRecord.findFirst({where:{eventId}}))throw new BadRequestError('Hay lotes financieros o de inventario. Su historial debe conservarse; elimina únicamente lotes de participantes compatibles.');
     const batchesCount = await prisma.importBatch.count({ where: { eventId } });
     const res = await ParticipantsService.deleteImported(eventId);
     return {
