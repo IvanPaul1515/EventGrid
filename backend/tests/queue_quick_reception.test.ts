@@ -53,7 +53,7 @@ describe('queue scan selection and compact confirmation, unit mocks only',()=>{
   const preview=await Q.preview(operator,'event','unit-qr');
   expect(preview).toMatchObject({status:'VALID',number:'UNIT-42',shirts:{enabled:true,sizes:[{size:'M',available:5},{size:'L',available:5}]}});
   expect(mocks.db.queueEntry.upsert).not.toHaveBeenCalled();expect(mocks.db.tshirtInventory.updateMany).not.toHaveBeenCalled();
-  expect(JSON.stringify(preview)).not.toContain('Unit Participant');
+  expect(preview).toMatchObject({name:'Unit Participant'});expect(JSON.stringify(preview)).not.toContain('passwordHash');
  });
  it.each([false,true])('skips size selection when event/ticket excludes shirts (%s)',async ticketExclusion=>{
   if(ticketExclusion)reg.ticketType.includesTshirt=false;else mocks.db.eventSettings.findUnique.mockResolvedValue({tshirtSizesEnabled:false});
@@ -95,6 +95,16 @@ describe('queue scan selection and compact confirmation, unit mocks only',()=>{
   mocks.db.queueDevice.findFirst.mockResolvedValue(null);
   await Q.complete(operator,'event','entry','M',false);
   expect(reg).toMatchObject({attended:true,tshirtSize:'M',tshirtDelivered:false});expect(mocks.db.tshirtInventory.updateMany).not.toHaveBeenCalled();
+ });
+ it('persists a justified non-delivery decision with actor and time in the same check-in',async()=>{
+  mocks.db.queueDevice.findFirst.mockResolvedValue(null);
+  await Q.complete(operator,'event','entry','M',false,{decision:'NO_DELIVERY',reason:'Agotada',notes:'Se agotó la talla M'});
+  expect(reg).toMatchObject({attended:true,tshirtDeliveryStatus:'PENDING',tshirtNonDeliveryReason:'Agotada',tshirtNonDeliveryNotes:'Se agotó la talla M',tshirtDecisionByUserId:operator.id});expect(reg.tshirtDecisionAt).toBeInstanceOf(Date);
+  expect(mocks.db.tshirtInventory.updateMany).not.toHaveBeenCalled();
+ });
+ it('rejects a non-delivery incident without justification before changing attendance',async()=>{
+  await expect(Q.complete(operator,'event','entry','M',false,{decision:'NO_DELIVERY',reason:'Otro motivo'})).rejects.toThrow('Explica');
+  expect(mocks.db.registration.updateMany).not.toHaveBeenCalled();
  });
  it.each(['expired','other-station'])('refuses an %s attention claim',async scenario=>{
   mocks.db.queueDevice.findFirst.mockResolvedValue(null);

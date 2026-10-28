@@ -241,6 +241,7 @@ export class EventsService {
         isDefault: false,
         settings: cloneData.copySettings && sourceEvent.settings ? {
           create: {
+            timeZone:sourceEvent.settings.timeZone,allowOnsitePayments:sourceEvent.settings.allowOnsitePayments,requirePaymentForEntry:sourceEvent.settings.requirePaymentForEntry,
             primaryColor: sourceEvent.settings.primaryColor,
             secondaryColor: sourceEvent.settings.secondaryColor,
             backgroundColor: sourceEvent.settings.backgroundColor,

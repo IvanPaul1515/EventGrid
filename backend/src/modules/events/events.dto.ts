@@ -16,6 +16,9 @@ export const CreateEventSchema = z.object({
 export const UpdateEventSchema = CreateEventSchema.partial();
 
 export const UpdateEventSettingsSchema = z.object({
+  timeZone:z.string().refine(value=>{try{new Intl.DateTimeFormat('en',{timeZone:value});return true;}catch{return false;}},'Zona horaria inválida').optional(),
+  allowOnsitePayments:z.boolean().optional(),
+  requirePaymentForEntry:z.boolean().optional(),
   primaryColor: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Debe ser un código hexadecimal válido'),
   secondaryColor: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Debe ser un código hexadecimal válido'),
   accentColor: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Debe ser un código hexadecimal válido').default('#f43f5e'),
@@ -31,7 +34,7 @@ export const UpdateEventSettingsSchema = z.object({
   registrationPrefix: z.string().default('EV-'),
   tshirtSizesEnabled: z.boolean().optional(),
   tshirtSizes: z.array(z.string()).optional(),
-});
+}).partial();
 
 export const CreateTicketTypeSchema = z.object({
   includesTshirt: z.boolean().default(true),

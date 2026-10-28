@@ -18,6 +18,7 @@ export interface User {
 export type EventStatus = 'PLANNING' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 
 export interface EventSettings {
+  timeZone?:string;allowOnsitePayments?:boolean;requirePaymentForEntry?:boolean;
   id: string;
   eventId: string;
   primaryColor: string;
@@ -132,6 +133,10 @@ export interface Payment {
 }
 
 export interface Registration {
+  tshirtDeliveryStatus?:string;
+  tshirtNonDeliveryReason?:string;
+  tshirtNonDeliveryNotes?:string;
+  tshirtDecisionAt?:string;
   externalPaymentStatus?: string | null;
   externalReference?: string | null;
   externalPlatform?: string | null;

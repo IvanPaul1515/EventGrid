@@ -1,3 +1,4 @@
+import {PaymentStatusBadge} from '../components/participants/PaymentStatusBadge';
 import {useListNavigation,useListNavigationScope} from '../hooks/useListNavigation';
 import {participantFilters,readListNavigation} from '../utils/listNavigation';
 import { CommunicationHistory } from '../components/communications/CommunicationHistory';
@@ -346,25 +347,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
     }
   };
 
-  const getPaymentStatusBadge = (reg: Registration) => {
-    if (reg.isCourtesy || reg.paymentStatus === 'COURTESY') {
-      return (
-        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30 inline-flex items-center gap-1">
-          <Tag className="w-2.5 h-2.5" /> Cortesía
-        </span>
-      );
-    }
-    const ps = reg.paymentStatus || (Number(reg.balanceDue || 0) <= 0 ? 'PAID' : Number(reg.amountPaid || 0) > 0 ? 'PARTIAL' : 'PENDING');
-    switch (ps) {
-      case 'PAID':
-        return <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">Pagado</span>;
-      case 'PARTIAL':
-        return <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">Parcial</span>;
-      case 'PENDING':
-      default:
-        return <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30">Pendiente</span>;
-    }
-  };
+  const getPaymentStatusBadge = (reg:Registration) => <PaymentStatusBadge registration={reg}/>;
 
   return (
     <div className="space-y-6">

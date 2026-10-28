@@ -1,4 +1,4 @@
-import { FinanceService } from '../finance/finance.service.js';
+import { FinanceService,cents } from '../finance/finance.service.js';
 import { recordCourtesyRequest } from './courtesy.policy.js';
 import { officialTicket, authorizeCourtesy, auditCourtesy } from './registrationPolicy.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
@@ -6,7 +6,7 @@ import { CommunicationsService } from '../communications/communications.service.
 import { RealtimeService } from '../realtime/realtime.service.js';
 import { prisma } from '../../config/db.js';
 import { InventoryService } from '../inventory/inventory.service.js';
-import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors.js';
+import { NotFoundError, ConflictError, BadRequestError, ForbiddenError } from '../../utils/errors.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -969,6 +969,10 @@ export class ParticipantsService {
   static async recordPayment(eventId: string, registrationId: string, input: RecordPaymentInput, userId: string) {
     return writeTransaction(async tx => {
     const prisma = tx;
+    const actor=await prisma.user.findUnique({where:{id:userId}});
+    if(!actor?.isActive||actor.accountStatus!=='ACTIVE'||actor.assignedEventId&&actor.assignedEventId!==eventId||actor.scannerOnly||!['ADMIN','OPERATOR'].includes(actor.role))throw new ForbiddenError('No autorizado para registrar pagos.');
+    const idempotencyKey=input.requestKey?`manual:${eventId}:${userId}:${input.requestKey}`:undefined;
+    if(idempotencyKey){const previous=await prisma.payment.findUnique({where:{idempotencyKey}});if(previous){if(previous.registrationId!==registrationId||cents(previous.amount)!==cents(input.amount)||previous.paymentMethodId!==input.paymentMethodId)throw new BadRequestError('El reintento no coincide con el pago original. Consulta el estado antes de registrar otra operación.');return {payment:previous,registration:await prisma.registration.findFirstOrThrow({where:{id:registrationId,eventId}})};}}
     const registration = await prisma.registration.findFirst({
       where: { id: registrationId, eventId },
       include: { participant: true, ticketType: true },
@@ -986,12 +990,19 @@ export class ParticipantsService {
       throw new BadRequestError('Las cortesías no admiten cobros ni abonos');
     }
 
-    if (!await prisma.paymentMethod.findFirst({ where: { id: input.paymentMethodId, eventId } })) throw new BadRequestError('Método de pago fuera de la edición activa.');
-    const paymentAmount = Number(input.amount);
-    const currentPaid = Number(registration.amountPaid ?? registration.totalAmount ?? 0);
+    const method=await prisma.paymentMethod.findFirst({where:{id:input.paymentMethodId,eventId,isActive:true}});
+    if(!method||['COURTESY','SPONSOR'].includes(method.code||'')) throw new BadRequestError('Método de pago fuera de la edición activa.');
+    if(input.source==='RECEPTION_QUEUE'){
+      const settings=await prisma.eventSettings.findUnique({where:{eventId}});
+      if(!settings?.allowOnsitePayments)throw new BadRequestError('Esta edición no autoriza cobros en recepción.');
+      if(registration.source==='EXCEL_IMPORT'||registration.externalPlatform)throw new BadRequestError('Pago externo: utiliza la conciliación autorizada, no caja presencial.');
+      if(Number(input.amount)>Number(registration.balanceDue)||Number(registration.balanceDue)<=0)throw new BadRequestError('El importe supera el pendiente real.');
+    }
+    const paymentAmount = cents(input.amount)/100;
+    const currentPaid = cents(registration.amountPaid ?? registration.totalAmount ?? 0)/100;
     const ticketPrice = Number(registration.ticketPrice ?? registration.totalAmount ?? 0);
-    const newAmountPaid = currentPaid + paymentAmount;
-    const newBalanceDue = Math.max(0, ticketPrice - newAmountPaid);
+    const newAmountPaid = (cents(currentPaid)+cents(paymentAmount))/100;
+    const newBalanceDue = Math.max(0,cents(ticketPrice)-cents(newAmountPaid))/100;
 
     const newPaymentStatus = registration.isCourtesy
       ? 'COURTESY'
@@ -1005,6 +1016,7 @@ export class ParticipantsService {
       prisma.payment.create({
         data: {
           registrationId,
+          idempotencyKey,channel:'ONSITE',recordedByUserId:userId,
           amount: paymentAmount,
           paymentMethodId: input.paymentMethodId,
           notes: input.notes || null,
@@ -1040,6 +1052,7 @@ export class ParticipantsService {
     ]);
 
 
+    await prisma.auditLog.create({data:{userId,action:'UPDATE',entity:'REGISTRATION',entityId:registrationId,changes:JSON.stringify({operation:'PAYMENT_RECORDED',channel:'ONSITE',amount:paymentAmount,paymentMethodId:input.paymentMethodId,source:input.source||'MANUAL'})}});
     return {
       payment,
       registration: updatedRegistration,
@@ -1616,13 +1629,15 @@ export class ParticipantsService {
   static async deliverTshirt(eventId: string, registrationId: string, userId: string, size?: string) {
     const registration = await prisma.registration.findFirst({
       where: { id: registrationId, eventId },
-      include: { participant: true },
+      include: { participant: true,ticketType:true },
     });
 
     if (!registration) {
       throw new NotFoundError('Inscripción no encontrada');
     }
 
+    if(registration.ticketType?.includesTshirt===false)throw new BadRequestError('Esta entrada no incluye camiseta.');
+    if(registration.status==='CANCELLED')throw new BadRequestError('La inscripción está cancelada.');
     if (registration.tshirtDelivered) {
       throw new BadRequestError('La camiseta ya fue entregada previamente a este participante.');
     }
@@ -1685,12 +1700,13 @@ export class ParticipantsService {
       }
 
       const regUpdate = await tx.registration.updateMany({
-        where: { id: registrationId, tshirtDelivered: false },
+        where: { id: registrationId,eventId,status:{not:'CANCELLED'}, tshirtDelivered: false },
         data: {
           tshirtSize: targetSize,
           tshirtSizeUpdatedAt: now,
           tshirtSizeUpdatedByUserId: userId,
           tshirtDelivered: true,
+          tshirtDeliveryStatus: 'DELIVERED',
           tshirtDeliveredAt: now,
           tshirtDeliveredByUserId: userId,
           updatedByUserId: userId,
@@ -1718,6 +1734,7 @@ export class ParticipantsService {
           entityId: registrationId,
           changes: JSON.stringify({
             action: 'DELIVER_TSHIRT',
+            previousDeliveryStatus:registration.tshirtDeliveryStatus,previousNonDeliveryReason:registration.tshirtNonDeliveryReason,
             result: 'SUCCESS',
             participantName: registration.participant.fullName,
             ticket: registration.registrationNumber,

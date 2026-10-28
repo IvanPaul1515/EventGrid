@@ -120,7 +120,7 @@ export const participantsService = {
     return res.data.data;
   },
 
-  async recordPayment(id: string, data: { amount: number; paymentMethodId: string; notes?: string }): Promise<{ payment: Payment; registration: Registration }> {
+  async recordPayment(id: string, data: { amount: number; paymentMethodId: string; notes?: string;requestKey?:string;source?:'RECEPTION_QUEUE' }): Promise<{ payment: Payment; registration: Registration }> {
     const res = await api.post(`/participants/${id}/payments`, data);
     return res.data.data;
   },
