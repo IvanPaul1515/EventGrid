@@ -368,6 +368,8 @@ export class AttendanceService {
             participantName: registration.participant.fullName,
             ticket: registration.registrationNumber,
             tshirtSize: validTshirtSize || null,
+            requestedTshirtSize: queued?.selectedTshirtSize || livePayment.tshirtSize || null,
+            deliveredTshirtSize: shouldDeliver ? validTshirtSize : null,
             tshirtDelivered: alreadyDelivered || shouldDeliver,
             inventoryDeducted: shouldDeliver ? 1 : 0,
             noDeliveryReason:!alreadyDelivered&&validTshirtSize?delivery.reason:null,noDeliveryNotes:!alreadyDelivered&&validTshirtSize?delivery.notes:null,deliveryStatus:alreadyDelivered?'DELIVERED':delivery.status,

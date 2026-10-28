@@ -98,8 +98,8 @@ describe('queue scan selection and compact confirmation, unit mocks only',()=>{
  });
  it('persists a justified non-delivery decision with actor and time in the same check-in',async()=>{
   mocks.db.queueDevice.findFirst.mockResolvedValue(null);
-  await Q.complete(operator,'event','entry','M',false,{decision:'NO_DELIVERY',reason:'Agotada',notes:'Se agotó la talla M'});
-  expect(reg).toMatchObject({attended:true,tshirtDeliveryStatus:'PENDING',tshirtNonDeliveryReason:'Agotada',tshirtNonDeliveryNotes:'Se agotó la talla M',tshirtDecisionByUserId:operator.id});expect(reg.tshirtDecisionAt).toBeInstanceOf(Date);
+  await Q.complete(operator,'event','entry','M',false,{decision:'NO_DELIVERY',reason:'Talla solicitada agotada'});
+  expect(reg).toMatchObject({attended:true,tshirtDeliveryStatus:'PENDING',tshirtNonDeliveryReason:'Talla solicitada agotada',tshirtNonDeliveryNotes:null,tshirtDecisionByUserId:operator.id});expect(reg.tshirtDecisionAt).toBeInstanceOf(Date);
   expect(mocks.db.tshirtInventory.updateMany).not.toHaveBeenCalled();
  });
  it('rejects a non-delivery incident without justification before changing attendance',async()=>{

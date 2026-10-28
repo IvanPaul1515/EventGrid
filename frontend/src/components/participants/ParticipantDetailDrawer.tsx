@@ -592,8 +592,8 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
           <div className="mobile-drawer w-screen max-w-full sm:w-[480px] md:w-[520px] lg:w-[35vw] lg:min-w-[480px] lg:max-w-[640px] h-full max-h-screen bg-card border-l border-border shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             {/* Cabecera de la Ficha con Navegación Anterior/Siguiente */}
             <div className="border-b border-border bg-gradient-to-b from-primary/15 via-background to-background p-4 sm:p-6 shrink-0">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between mb-3">
+                <div className="flex flex-wrap min-w-0 items-center gap-2">
                   <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold px-2 py-0.5 rounded bg-primary/15 border border-primary/25">
                     Ficha del Participante
                   </span>
@@ -622,7 +622,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap min-w-0 items-center gap-2">
                   {isOperatorOrAdmin && !isInlineEditing && (
                     <button
                       type="button"
@@ -649,7 +649,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                   {p.firstName.charAt(0)}{p.lastName.charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap min-w-0 items-center gap-2">
                     <h2 className="text-xl font-display font-black text-foreground truncate tracking-tight">
                       {p.fullName}
                     </h2>
@@ -657,7 +657,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                       {registration.registrationNumber}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground truncate">{p.email}</p>
+                  <p className="text-xs text-muted-foreground break-all">{p.email}</p>
 
                   {/* Tres insignias de estado independientes */}
                   <div className="flex items-center flex-wrap gap-2 mt-2.5">
@@ -688,11 +688,11 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
             </div>
 
             {/* Cuerpo de la Ficha */}
-            <div className="flex-1 min-h-0 p-4 sm:p-6 space-y-5 sm:space-y-6 overflow-y-auto">
+            <div className="flex-1 min-h-0 min-w-0 break-words p-4 sm:p-6 space-y-5 sm:space-y-6 overflow-y-auto">
               {/* CONTROL DE ENTRADA (CHECK-IN DESTACADO) */}
               <div className="p-4 rounded-2xl border bg-muted/20 border-border space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between">
+                  <div className="flex flex-wrap min-w-0 items-center gap-2">
                     <UserCheck className="w-4 h-4 text-primary" />
                     <span className="text-xs font-black uppercase tracking-wider text-foreground">
                       Control de Entrada (Check-in)
@@ -773,7 +773,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            <div className="flex items-center justify-between text-xs">
+                            <div className="flex flex-wrap items-center justify-between text-xs">
                               <div className="flex items-center gap-1.5">
                                 <Shirt className="w-3.5 h-3.5 text-muted-foreground" />
                                 <span className="text-muted-foreground">Camiseta:</span>
@@ -798,7 +798,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                             </div>
 
                             {/* Estado de Entrega Física */}
-                            <div className="flex items-center justify-between text-xs p-2 rounded-lg bg-background border border-border">
+                            <div className="flex flex-wrap items-center justify-between text-xs p-2 rounded-lg bg-background border border-border">
                               <div className="flex items-center gap-1.5">
                                 <Package className="w-3.5 h-3.5 text-zinc-400" />
                                 <span className="text-muted-foreground text-[11px]">Entrega física:</span>
@@ -813,7 +813,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                                 )}
                               </div>
 
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap min-w-0 items-center gap-2">
                                 {!registration.tshirtDelivered && registration.tshirtSize && isOperatorOrAdmin && (
                                   <button
                                     type="button"
@@ -881,8 +881,8 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
 
               {/* ENTRADA DIGITAL & CÓDIGO QR */}
               <div className="p-4 rounded-2xl border bg-card border-border space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between">
+                  <div className="flex flex-wrap min-w-0 items-center gap-2">
                     <QrCode className="w-4 h-4 text-primary" />
                     <span className="text-xs font-black uppercase tracking-wider text-foreground">
                       Entrada Digital & Código QR
@@ -908,7 +908,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap min-w-0 items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setShowTicketModal(true)}
@@ -933,8 +933,8 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
 
               {/* SECCIÓN 1: INFORMACIÓN PERSONAL (MODO VISTA / EDICIÓN INLINE) */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between pb-1 border-b border-border">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between pb-1 border-b border-border">
+                  <div className="flex flex-wrap min-w-0 items-center gap-2">
                     <User className="w-4 h-4 text-primary" />
                     <span className="text-xs font-black uppercase tracking-wider text-foreground">
                       1. Información Personal
@@ -949,7 +949,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
 
                 {isInlineEditing ? (
                   <div className="space-y-3 p-4 rounded-2xl bg-background border border-primary/40 shadow-sm">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 [&>*]:min-w-0">
                       <div>
                         <label className="block text-[10px] uppercase font-mono font-bold text-muted-foreground mb-1">
                           Nombre
@@ -974,7 +974,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 [&>*]:min-w-0">
                       <div>
                         <label className="block text-[10px] uppercase font-mono font-bold text-muted-foreground mb-1">
                           Cédula / Documento
@@ -1013,7 +1013,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 [&>*]:min-w-0">
                       <div>
                         <label className="block text-[10px] uppercase font-mono font-bold text-muted-foreground mb-1">
                           Teléfono
@@ -1072,7 +1072,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 [&>*]:min-w-0">
                       <div className="p-3 rounded-xl bg-background border border-border">
                         <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block mb-0.5">
                           Cédula / Pasaporte
@@ -1092,7 +1092,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 [&>*]:min-w-0">
                       <div className="p-3 rounded-xl bg-background border border-border">
                         <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground flex items-center gap-1 mb-0.5">
                           <Phone className="w-3 h-3 text-primary" /> Teléfono
@@ -1133,7 +1133,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 [&>*]:min-w-0">
                   <div className="p-3 rounded-xl bg-background border border-border">
                     <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block mb-0.5">
                       Tipo de Entrada
@@ -1157,7 +1157,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 [&>*]:min-w-0">
                   <div className="p-3 rounded-xl bg-background border border-border">
                     <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block mb-0.5">
                       Responsable de Venta
@@ -1196,8 +1196,8 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
 
               {/* SECCIÓN 3: INFORMACIÓN FINANCIERA */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between pb-1 border-b border-border">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between pb-1 border-b border-border">
+                  <div className="flex flex-wrap min-w-0 items-center gap-2">
                     <CreditCard className="w-4 h-4 text-primary" />
                     <span className="text-xs font-black uppercase tracking-wider text-foreground">
                       3. Información Financiera
@@ -1309,7 +1309,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3 [&>*]:min-w-0">
                   <div className="p-3 rounded-xl bg-background border border-border">
                     <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground block mb-0.5">
                       Forma de Pago
@@ -1339,7 +1339,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
 
                 {/* Botón para registrar Abono si hay balance o para abonos adicionales */}
                 {!registration.isCourtesy && (
-                  <div className="flex items-center justify-between pt-1">
+                  <div className="flex flex-wrap items-center justify-between pt-1">
                     <button
                       type="button"
                       onClick={() => setShowPaymentModal(true)}
@@ -1371,7 +1371,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                     {payments.map((pm, idx) => (
                       <div
                         key={pm.id || idx}
-                        className="flex items-center justify-between p-2 rounded-lg bg-muted/40 border border-border"
+                        className="flex flex-wrap items-center justify-between p-2 rounded-lg bg-muted/40 border border-border"
                       >
                         <div>
                           <span className="font-bold text-foreground">
@@ -1411,7 +1411,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                     {history.map((h) => (
                       <div
                         key={h.registrationId}
-                        className="p-3 rounded-xl bg-background border border-border flex items-center justify-between text-xs"
+                        className="p-3 rounded-xl bg-background border border-border flex flex-wrap items-center justify-between text-xs"
                       >
                         <div>
                           <div className="flex items-center gap-1.5">
@@ -1444,8 +1444,8 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
               {/* HISTORIAL CENTRALIZADO DE AUDITORÍA DEL PARTICIPANTE */}
               {registration.auditLogs && registration.auditLogs.length > 0 && (
                 <div className="space-y-2.5">
-                  <div className="flex items-center justify-between pb-1 border-b border-border">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-between pb-1 border-b border-border">
+                    <div className="flex flex-wrap min-w-0 items-center gap-2">
                       <Shield className="w-4 h-4 text-primary" />
                       <span className="text-xs font-black uppercase tracking-wider text-foreground">
                         Historial de Auditoría ({registration.auditLogs.length})
@@ -1478,7 +1478,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                                 : 'bg-background border-border'
                             }`}
                           >
-                            <div className="flex items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-muted text-foreground border border-border">
                                   {log.action}
@@ -1507,7 +1507,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                               </span>
                             </div>
 
-                            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                            <div className="flex flex-wrap items-center justify-between text-[11px] text-muted-foreground">
                               <span>
                                 Operador:{' '}
                                 <strong className="text-foreground">
@@ -1564,7 +1564,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
               )}
 
               {/* AUDITORÍA Y TRAZABILIDAD */}
-              <div className="p-3 rounded-xl bg-muted/20 border border-border text-[11px] text-muted-foreground flex items-center justify-between">
+              <div className="p-3 rounded-xl bg-muted/20 border border-border text-[11px] text-muted-foreground flex flex-wrap items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <Shield className="w-3.5 h-3.5 text-zinc-400" />
                   <span>
@@ -1584,9 +1584,9 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
             </div>
 
             {/* Pie de la Ficha: Acciones */}
-            <div className="p-4 border-t border-border bg-card flex items-center justify-between gap-2 shrink-0">
+            <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-border bg-card flex flex-wrap items-center justify-between gap-2 shrink-0">
               {isInlineEditing ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap min-w-0 items-center gap-2">
                   <button
                     type="button"
                     onClick={handleSaveInline}
@@ -1744,7 +1744,7 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
       {selectedCommsDetail && (
         <div className="mobile-safe-overlay fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="mobile-scroll-dialog bg-card border border-border w-full max-w-md rounded-2xl shadow-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-border">
+            <div className="flex flex-wrap items-center justify-between pb-2 border-b border-border">
               <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
                 <Mail className="w-4 h-4 text-primary" />
                 Detalle de Comunicación

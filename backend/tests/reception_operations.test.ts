@@ -60,13 +60,20 @@ describe('explicit delivery decisions and supervision',()=>{
   expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
  });
  it('records pending, no-shirt-requested and delivery as distinct states',()=>{
-  expect(shirtDecision({decision:'NO_DELIVERY',reason:'Entrega pendiente'},false)).toMatchObject({status:'PENDING'});
-  expect(shirtDecision({decision:'NO_DELIVERY',reason:'El participante no la solicitó'},false)).toMatchObject({status:'NOT_DELIVERED'});
+  expect(shirtDecision({decision:'NO_DELIVERY',reason:'Talla solicitada agotada'},false)).toMatchObject({status:'PENDING'});
+  expect(shirtDecision({decision:'NO_DELIVERY',reason:'El participante no desea camiseta'},false)).toMatchObject({status:'NOT_DELIVERED'});
   expect(shirtDecision({decision:'DELIVER'},true)).toMatchObject({status:'DELIVERED',reason:null});
  });
- it.each(['Otro motivo','Agotada','Talla no disponible'])('requires justification for %s',reason=>{
+ it.each(['Otro motivo'])('requires justification for %s',reason=>{
   expect(()=>shirtDecision({decision:'NO_DELIVERY',reason},false)).toThrow('Explica');
   expect(shirtDecision({decision:'NO_DELIVERY',reason,notes:'Se agotó la talla XL'},false).notes).toContain('XL');
+ });
+ it.each(['Talla solicitada agotada','El participante no desea camiseta'])('accepts predefined reason without observations: %s',reason=>{
+  expect(shirtDecision({decision:'NO_DELIVERY',reason},false)).toMatchObject({reason,notes:null});
+ });
+ it('does not preselect a delivery action',()=>{
+  const html=renderToStaticMarkup(React.createElement(ShirtDeliveryChoice,{value:null,disabled:false,onChange:vi.fn()}));
+  expect(html).not.toContain('aria-pressed="true"');
  });
  it('does not accept arbitrary reasons',()=>expect(()=>shirtDecision({decision:'NO_DELIVERY',reason:'inventado'},false)).toThrow());
  it('uses the event timezone, including a daylight-saving date boundary',()=>{
