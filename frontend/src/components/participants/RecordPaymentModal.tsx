@@ -112,7 +112,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             </label>
             <CurrencyInput
               step="0.01"
-              min="1"
+              min={requireMethodChoice?'0.01':'1'}
               value={amount}
               onValueChange={setAmount}
               required
