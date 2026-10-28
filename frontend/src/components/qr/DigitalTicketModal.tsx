@@ -258,6 +258,7 @@ export const DigitalTicketModal: React.FC<DigitalTicketModalProps> = ({
                   </div>
 
                   {/* Estado de Asistencia */}
+                  {ticketData.speaker&&<section className="text-xs space-y-1"><strong>CHARLISTA</strong><p>Charlas asociadas:</p>{ticketData.speaker.talks.length?ticketData.speaker.talks.map(t=><p key={t.id}>{t.title} · {t.day||'Fecha pendiente'} · {t.startTime||'Horario pendiente'} · {t.room||'Salón pendiente'}</p>):<p>Pendientes de asignar</p>}</section>}
                   <div className="flex items-center justify-between text-xs pt-1 border-t border-border/60">
                     <span className="text-muted-foreground font-medium">Estado de llegada:</span>
                     {isAttended ? (

@@ -5,7 +5,7 @@ import {useRealtimeEvent,useRealtimeRefresh} from '../../context/RealtimeContext
 import {api} from '../../services/api';
 import {queueReadBody} from '../../utils/queueRead';
 type Device={invitationVerified?:boolean;id:string;status:string;expiresAt:string;station:{id:string;label:string}};
-export type QueueRow={id:string;registrationId:string;name:string;number:string;state:string;scannedAt:string;station:string;mine:boolean;selectedTshirtSize?:string|null;tshirtDelivered:boolean;tshirtIncluded:boolean;tshirtDeliveryStatus?:string;canCollect?:boolean;payment?:{isCourtesy:boolean;paymentStatus:string;balanceDue:number;amountPaid:number;external:boolean;methods?:string[]}};
+export type QueueRow={category?:string|null;id:string;registrationId:string;name:string;number:string;state:string;scannedAt:string;station:string;mine:boolean;selectedTshirtSize?:string|null;tshirtDelivered:boolean;tshirtIncluded:boolean;tshirtDeliveryStatus?:string;canCollect?:boolean;payment?:{isCourtesy:boolean;paymentStatus:string;balanceDue:number;amountPaid:number;external:boolean;methods?:string[]}};
 type Snapshot={lastDeviceStatus?:string|null;invitation?:{code:string;expiresAt:string}|null;availableDevices?:{id:string;name:string}[];enabled:boolean;station:{id:string;label:string;mode:string}|null;devices:{invitationVerified?:boolean;deviceLabel?:string;id:string;name:string;status:string;expiresAt:string;code?:string}[];device:Device|null};
 const empty:Snapshot={enabled:false,station:null,devices:[],device:null};
 export type ScannerStats={sessionReads?:number;today:string;timeZone:string;reads:number;sent:number;rejected:number;repeated:number;confirmedByDesk:number;total:number};

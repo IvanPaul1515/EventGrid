@@ -1,3 +1,4 @@
+import {speakerSummary} from '../speakers/speaker-summary.js';
 import { prisma } from '../../config/db.js';
 import { NotFoundError, BadRequestError } from '../../utils/errors.js';
 import QRCode from 'qrcode';
@@ -25,6 +26,9 @@ export class QrService {
     });
 
     if (!registration) throw new NotFoundError('Inscripción no encontrada');
+
+    const speaker=await speakerSummary(registration.eventId,registration.id);
+    if(speaker?.credentialRevokedAt)throw new BadRequestError('La credencial de charlista está revocada.');
 
     // Si aún no tiene token QR asignado, generar uno seguro
     if (!registration.qrCode) {
@@ -69,6 +73,7 @@ export class QrService {
       qrDataUrl,
       generatedAt: (registration.qrGeneratedAt || registration.createdAt).toISOString(),
       revokedAt: registration.qrRevokedAt ? registration.qrRevokedAt.toISOString() : null,
+      speaker,
       registrationId: registration.id,
       registrationNumber: registration.registrationNumber,
       registration: {
@@ -79,7 +84,7 @@ export class QrService {
         isCourtesy: registration.isCourtesy,
         attended: registration.attended,
         attendedAt: registration.attendedAt ? registration.attendedAt.toISOString() : undefined,
-        ticketType: registration.participantCategory==='SPEAKER'?'Charlista':registration.ticketType?.name || (registration.isCourtesy ? 'Cortesía' : 'General'),
+        ticketType: speaker||registration.participantCategory==='SPEAKER'?'Charlista':registration.ticketType?.name || (registration.isCourtesy ? 'Cortesía' : 'General'),
         price: Number(registration.ticketPrice ?? registration.totalAmount ?? 0),
       },
       participant: {
@@ -233,6 +238,8 @@ export class QrService {
         registration,
       };
     }
+
+    const speakerCredential=await speakerSummary(registration.eventId,registration.id);if(speakerCredential?.credentialRevokedAt)return {valid:false,status:'REVOKED',canCheckIn:false,registration:null,message:'Esta credencial fue revocada.'};if(speakerCredential)registration.participantCategory='SPEAKER';
 
     // Validar si la inscripción está cancelada
     if (registration.status === 'CANCELLED') {

@@ -1,3 +1,5 @@
+import {writeTransaction} from '../../utils/writeTransaction.js';
+import {eventDates,officialDay,programmingReady} from './programming.js';
 import { prisma } from '../../config/db.js';
 import { NotFoundError, BadRequestError } from '../../utils/errors.js';
 import {
@@ -12,13 +14,29 @@ import { CommunicationsService } from '../communications/communications.service.
 import * as XLSX from 'xlsx';
 
 export class ScheduleService {
+  private static async selectedSpeakers(db:any,eventId:string,ids?:string[]){
+    if(ids===undefined)return null;const unique=[...new Set(ids)];
+    const rows=await db.speaker.findMany({where:{eventId,id:{in:unique},status:{not:'CANCELLED'}},select:{id:true,fullName:true}});
+    if(rows.length!==unique.length)throw new BadRequestError('Charlista no vigente o de otra edición.');return rows as {id:string;fullName:string}[];
+  }
+  private static async syncSpeakers(db:any,eventId:string,id:string,ids:string[],userId?:string){
+    const before=await db.speakerTalk.findMany({where:{eventId,scheduleItemId:id}});
+    await db.speakerTalk.deleteMany({where:{eventId,scheduleItemId:id}});
+    for(const speakerId of ids)await db.speakerTalk.create({data:{eventId,scheduleItemId:id,speakerId}});
+    if(userId)await db.auditLog.create({data:{userId,action:'UPDATE',entity:'EVENT',entityId:eventId,changes:JSON.stringify({operation:'SCHEDULE_SPEAKERS',scheduleItemId:id,before:before.map((r:any)=>r.speakerId),speakerIds:ids})}});
+  }
+  private static async decorate(eventId:string,items:any[]){
+    const links=await prisma.speakerTalk.findMany({where:{eventId,scheduleItemId:{in:items.map(i=>i.id)}},select:{scheduleItemId:true,speaker:{select:{id:true,fullName:true,organization:true}}}});
+    return items.map(item=>{const speakers=links.filter(l=>l.scheduleItemId===item.id).map(l=>l.speaker);return {...item,speakers,speakerIds:speakers.map(s=>s.id),speakerName:speakers.length?speakers.map(s=>s.fullName).join(', '):item.speakerName,programmingStatus:programmingReady(item)?'SCHEDULED':'PENDING'};});
+  }
   private static async validateTimes(eventId: string, data: any, excludeId?: string) {
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(data.startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(data.endTime) || data.endTime <= data.startTime) {
+    if ((data.startTime&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(data.startTime)) || (data.endTime&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(data.endTime)) || (data.startTime&&data.endTime&&data.endTime <= data.startTime)) {
       throw new BadRequestError('Indique horas completas HH:MM y una hora final posterior al inicio.');
     }
-    if (data.room && data.status !== 'CANCELLED') {
+    if (data.room && data.day && data.startTime && data.endTime && data.status !== 'CANCELLED') {
+      const calendar=await prisma.event.findUniqueOrThrow({where:{id:eventId}});const index=eventDates(calendar.startDate,calendar.endDate).indexOf(data.day);
       const conflict = await prisma.scheduleItem.findFirst({ where: {
-        eventId, room: data.room, day: data.day || 'Día 1', status: { not: 'CANCELLED' },
+        eventId, room: data.room, day: {in:index>=0?[data.day,`Día ${index+1}`]:[data.day]}, status: { not: 'CANCELLED' },
         ...(excludeId ? { id: { not: excludeId } } : {}), startTime: { lt: data.endTime }, endTime: { gt: data.startTime },
       } });
       if (conflict) throw new BadRequestError('Existe otra actividad en esa sala durante el horario indicado.');
@@ -98,7 +116,7 @@ export class ScheduleService {
       rooms,
       categories,
       pdfUrl: settings?.schedulePdfUrl || null,
-      items,
+      items:await this.decorate(eventId,items.map(item=>{let day=item.day;try{if(event)day=officialDay(day,eventDates(event.startDate,event.endDate));}catch{}return {...item,day};})),
     };
   }
 
@@ -120,8 +138,7 @@ export class ScheduleService {
   /**
    * Crear nuevo ítem en el cronograma
    */
-  static async createItem(eventId: string, input: CreateScheduleItemInput) {
-    await this.validateTimes(eventId, input);
+  static async createItem(eventId: string, input: CreateScheduleItemInput, userId?:string) {
     const event = await prisma.event.findUnique({
       where: { id: eventId },
     });
@@ -130,15 +147,20 @@ export class ScheduleService {
       throw new NotFoundError('Edición no encontrada');
     }
 
+    input={...input,day:officialDay(input.day,eventDates(event.startDate,event.endDate))};
+    await this.validateTimes(eventId,input);
+    return writeTransaction(async tx=>{
+    const prisma=tx;
+    const selected=await this.selectedSpeakers(prisma,eventId,input.speakerIds);
     const created = await prisma.scheduleItem.create({
       data: {
         eventId,
         title: input.title.trim(),
-        speakerName: input.speakerName?.trim() || null,
+        speakerName: selected?selected.map(s=>s.fullName).join(', ')||null:input.speakerName?.trim()||null,
         speakerBio: input.speakerBio?.trim() || null,
         speakerCompany: input.speakerCompany?.trim() || null,
         room: input.room?.trim() || null,
-        day: input.day?.trim() || 'Día 1',
+        day: input.day || '',
         startTime: input.startTime.trim(),
         endTime: input.endTime.trim(),
         category: input.category?.trim() || (input.isKeynote ? 'Keynote' : null),
@@ -146,14 +168,16 @@ export class ScheduleService {
         description: input.description?.trim() || null,
         order: input.order ?? 0,
         isKeynote: Boolean(input.isKeynote),
-        visibility: input.visibility || 'PUBLISHED',
+        visibility: programmingReady(input)?input.visibility || 'PUBLISHED':'DRAFT',
         publishAt: input.publishAt ? new Date(input.publishAt) : null,
         imageUrl: input.imageUrl?.trim() || null,
         announcementText: input.announcementText?.trim() || null,
       },
     });
 
+    if(selected)await this.syncSpeakers(prisma,eventId,created.id,selected.map(s=>s.id),userId);
     return created;
+    });
   }
 
   /**
@@ -161,7 +185,12 @@ export class ScheduleService {
    */
   static async updateItem(eventId: string, id: string, input: UpdateScheduleItemInput, userId?: string) {
     const existing = await this.getItemById(eventId, id);
+    const event=await prisma.event.findUniqueOrThrow({where:{id:eventId}});
+    input={...input,day:officialDay(input.day??existing.day,eventDates(event.startDate,event.endDate))};
     await this.validateTimes(eventId, { ...existing, ...input }, id);
+    return writeTransaction(async tx=>{const prisma=tx;const selected=await this.selectedSpeakers(prisma,eventId,input.speakerIds);
+    if(selected)input={...input,speakerName:selected.map(s=>s.fullName).join(', ')||null};
+    if(!programmingReady({...existing,...input}))input={...input,visibility:'DRAFT'};
 
     // Detectar modificaciones en campos de impacto
     const changedFields: string[] = [];
@@ -235,7 +264,7 @@ export class ScheduleService {
         ...(input.speakerBio !== undefined ? { speakerBio: input.speakerBio?.trim() || null } : {}),
         ...(input.speakerCompany !== undefined ? { speakerCompany: input.speakerCompany?.trim() || null } : {}),
         ...(input.room !== undefined ? { room: input.room?.trim() || null } : {}),
-        ...(input.day !== undefined ? { day: input.day?.trim() || 'Día 1' } : {}),
+        ...(input.day !== undefined ? { day: input.day || '' } : {}),
         ...(input.startTime !== undefined ? { startTime: input.startTime.trim() } : {}),
         ...(input.endTime !== undefined ? { endTime: input.endTime.trim() } : {}),
         ...(input.category !== undefined ? { category: input.category?.trim() || null } : {}),
@@ -250,6 +279,7 @@ export class ScheduleService {
       },
     });
 
+    if(selected)await this.syncSpeakers(prisma,eventId,id,selected.map(s=>s.id),userId);
     const diffs = changedFields.map((field) => ({
       field,
       oldValue: previousValues[field],
@@ -262,6 +292,7 @@ export class ScheduleService {
       changeLog,
       diffs,
     };
+    });
   }
 
   /**
@@ -270,9 +301,7 @@ export class ScheduleService {
   static async deleteItem(eventId: string, id: string) {
     await this.getItemById(eventId, id);
 
-    await prisma.scheduleItem.delete({
-      where: { id },
-    });
+    await writeTransaction(async tx=>{await tx.speakerTalk.deleteMany({where:{eventId,scheduleItemId:id}});await tx.scheduleItem.delete({where:{id}});});
 
     return { success: true, message: 'Charla eliminada del cronograma correctamente' };
   }
@@ -306,6 +335,7 @@ export class ScheduleService {
    * Importar masivamente desde buffer Excel / CSV
    */
   static async importFromBuffer(eventId: string, buffer: Buffer) {
+    const calendar=await prisma.event.findUniqueOrThrow({where:{id:eventId}});const officialDates=eventDates(calendar.startDate,calendar.endDate);
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const firstSheetName = workbook.SheetNames[0];
     if (!firstSheetName) {
@@ -352,9 +382,9 @@ export class ScheduleService {
       const speakerBio = normalizeHeader(row, ['bio', 'biografia', 'perfil']);
       const speakerCompany = normalizeHeader(row, ['empresa', 'company', 'institucion', 'organizacion']);
       const room = normalizeHeader(row, ['aula', 'salon', 'sala', 'auditorio', 'room', 'ubicacion', 'lugar']);
-      const day = normalizeHeader(row, ['dia', 'day', 'fecha']) || 'Día 1';
-      let startTime = normalizeHeader(row, ['inicio', 'start', 'horainicio', 'hora_inicio', 'desde']) || '09:00';
-      let endTime = normalizeHeader(row, ['fin', 'end', 'horafin', 'hora_fin', 'hasta']) || '10:00';
+      let day = normalizeHeader(row, ['dia', 'day', 'fecha']) || '';
+      let startTime = normalizeHeader(row, ['inicio', 'start', 'horainicio', 'hora_inicio', 'desde']) || '';
+      let endTime = normalizeHeader(row, ['fin', 'end', 'horafin', 'hora_fin', 'hasta']) || '';
       const category = normalizeHeader(row, ['categoria', 'category', 'track', 'area', 'tipo']);
       const statusRaw = normalizeHeader(row, ['estado', 'status']);
       const description = normalizeHeader(row, ['descripcion', 'description', 'resumen', 'abstract']);
@@ -369,7 +399,7 @@ export class ScheduleService {
         if (/^\d{1,2}$/.test(t)) {
           return `${t.padStart(2, '0')}:00`;
         }
-        return '09:00';
+        return t;
       };
 
       startTime = formatTime(startTime);
@@ -383,6 +413,7 @@ export class ScheduleService {
       }
 
       try {
+        day=officialDay(day,officialDates);await this.validateTimes(eventId,{day,startTime,endTime,room,status});
         await prisma.scheduleItem.create({
           data: {
             eventId,
@@ -397,6 +428,7 @@ export class ScheduleService {
             category: category || null,
             status,
             description: description || null,
+            visibility: programmingReady({day,startTime,endTime,room})?'PUBLISHED':'DRAFT',
             order: i,
           },
         });
@@ -442,7 +474,7 @@ export class ScheduleService {
       where.AND = [{ OR: [{ category: null }, { category: { notIn: ['Demostración', 'Demostracion'] } }] }];
     }
 
-    const items = await prisma.scheduleItem.findMany({
+    const storedItems = await prisma.scheduleItem.findMany({
       where,
       orderBy: [
         { day: 'asc' },
@@ -451,6 +483,9 @@ export class ScheduleService {
       ],
     });
 
+    const dates=event?eventDates(event.startDate,event.endDate):[];
+    const normalized=storedItems.map(item=>{let day='';try{day=officialDay(item.day,dates);}catch{}return {...item,day};}).filter(programmingReady);
+    const items=await this.decorate(eventId,normalized);
     const settings = await prisma.eventSettings.findUnique({
       where: { eventId },
       select: { schedulePdfUrl: true },

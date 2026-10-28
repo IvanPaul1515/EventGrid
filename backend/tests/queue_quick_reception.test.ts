@@ -3,7 +3,7 @@ import { createHash, createHmac } from 'node:crypto';
 
 const mocks=vi.hoisted(()=>{
  const model=()=>({findUnique:vi.fn(),findUniqueOrThrow:vi.fn(),findFirst:vi.fn(),findMany:vi.fn(),create:vi.fn(),update:vi.fn(),updateMany:vi.fn(),upsert:vi.fn()});
- return {db:{registration:model(),queueEntry:model(),queueDevice:model(),queueStation:model(),eventSettings:model(),tshirtInventory:model(),courtesyRequest:model(),user:model(),scannerLink:model(),receptionStation:model(),auditLog:model(),attendanceLog:model()},qr:vi.fn(),session:vi.fn(),hint:vi.fn(),emit:vi.fn()};
+ return {db:{speaker:model(),registration:model(),queueEntry:model(),queueDevice:model(),queueStation:model(),eventSettings:model(),tshirtInventory:model(),courtesyRequest:model(),user:model(),scannerLink:model(),receptionStation:model(),auditLog:model(),attendanceLog:model()},qr:vi.fn(),session:vi.fn(),hint:vi.fn(),emit:vi.fn()};
 });
 vi.mock('../src/config/db.js',()=>({prisma:mocks.db}));
 vi.mock('../src/config/env.js',()=>({ENV:{DATABASE_URL:'file:mock-only',JWT_SECRET:'unit-test-secret'}}));
@@ -48,6 +48,11 @@ beforeEach(()=>{
 });
 
 describe('queue scan selection and compact confirmation, unit mocks only',()=>{
+ it('blocks a revoked speaker credential at quick confirmation and backend check-in',async()=>{
+  reg.participantCategory='SPEAKER';mocks.db.speaker.findFirst.mockResolvedValue({id:'speaker',credentialRevokedAt:new Date()});
+  await expect(Q.complete(operator,'event','entry','M',false)).rejects.toThrow('revocada');
+  expect(mocks.db.registration.updateMany).not.toHaveBeenCalled();expect(mocks.db.tshirtInventory.updateMany).not.toHaveBeenCalled();
+ });
  it('previews a ticket and real configured availability without enqueue or inventory writes',async()=>{
   mocks.db.queueEntry.findUnique.mockResolvedValue(null);
   const preview=await Q.preview(operator,'event','unit-qr');

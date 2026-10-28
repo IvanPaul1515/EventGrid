@@ -1,3 +1,4 @@
+import {SpeakerReception} from '../participants/SpeakerReception';
 import {RecipientMerch} from '../inventory/RecipientMerch';
 import { qrFeedback, qrFailureStatus } from '../../utils/qrFeedback';
 import { finishQrCameraRelease } from '../../utils/qrCameraRelease';
@@ -591,6 +592,7 @@ export const QrScanModal: React.FC<QrScanModalProps> = ({
                 {!scanResult.canCheckIn&&<button type="button" onClick={handleResetForNext} className="btn-primary w-full">Escanear siguiente</button>}
               </div>
               {/* Ficha del Participante Identificado */}
+              {scanResult.registration?.participantCategory==='SPEAKER'&&<SpeakerReception registrationId={scanResult.registration.id} attended={scanResult.registration.attended}/>}
               {scanResult.registration && ['VALID','ALREADY_CHECKED_IN'].includes(scanResult.status) && <RecipientMerch registrationId={scanResult.registration.id} attended={scanResult.registration.attended}/>}
               {scanResult.registration && ['VALID','ALREADY_CHECKED_IN'].includes(scanResult.status) && (
                 <div className="p-4 rounded-xl bg-card border border-border space-y-3">

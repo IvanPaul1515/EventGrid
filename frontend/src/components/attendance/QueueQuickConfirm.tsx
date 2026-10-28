@@ -1,3 +1,4 @@
+import {SpeakerReception} from '../participants/SpeakerReception';
 import {RecipientMerch} from '../inventory/RecipientMerch';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../services/api';
@@ -32,6 +33,7 @@ export function QueueQuickConfirm({row,onClose,onFull,onConfirmed,startPayment=f
   <h2 className="text-xl font-bold">Confirmar entrada</h2>{detail?.category==='SPEAKER'&&<p className="font-bold text-primary">Charlista</p>}<h3 className="text-xl font-semibold break-words">{row.name}</h3><p className="font-mono text-lg">{row.number}</p>
   {!detail&&!error&&<p role="status">Validando entrada…</p>}
   {detail&&<>
+   {detail.category==='SPEAKER'&&<SpeakerReception registrationId={row.registrationId} attended={false}/>}
    <RecipientMerch registrationId={row.registrationId} attended={false} onPendingChange={setHasPendingMerch}/>
    {detail.payment&&<div className="flex flex-wrap items-center gap-3"><PaymentStatusBadge registration={detail.payment} verbose/>{detail.payment.external&&<span className="text-xs text-muted-foreground">Plataforma externa · conciliación autorizada</span>}{detail.canCollect&&<button className="btn-secondary" disabled={sending} onClick={()=>setPaymentOpen(true)}>Registrar pago</button>}</div>}
    <p role="status" className={detail.canCheckIn?'text-primary font-semibold':'text-destructive font-semibold'}>{detail.canCheckIn?'Entrada válida':detail.blockedReason}</p>

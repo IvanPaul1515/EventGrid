@@ -11,7 +11,7 @@ export function QueueScanFlow({ isOpen, onClose, onResult, allowManual = false }
 }) {
   const q = useReceptionQueue();
   const {currentEvent}=useEdition();
-  const [preview, setPreview] = useState<{token:string;requestKey:string;name:string;organization?:string;number:string;shirts:QueueShirts}|null>(null);
+  const [preview, setPreview] = useState<{token:string;requestKey:string;name:string;organization?:string;category?:string;number:string;shirts:QueueShirts}|null>(null);
   const [size, setSize] = useState(''), [error, setError] = useState(''), [sending, setSending] = useState(false);
   const lock = useRef(false), active = useRef(true);
   const scope=useRef(0);
@@ -34,7 +34,7 @@ export function QueueScanFlow({ isOpen, onClose, onResult, allowManual = false }
       return 'Validación procesada';
     }}/>
     {preview&&<ScannerDialog label="Enviar a recepción" onCancel={sending?undefined:()=>setPreview(null)}>
-      <h2 className="text-xl font-bold text-primary">Entrada válida</h2><h3 className="text-xl font-semibold break-words">{preview.name}</h3>{preview.organization&&<p className="text-muted-foreground">{preview.organization}</p>}<p className="text-lg font-mono">Entrada: {preview.number}</p>
+      <h2 className="text-xl font-bold text-primary">Entrada válida</h2>{preview.category==='SPEAKER'&&<p className="text-primary font-bold">CHARLISTA</p>}<h3 className="text-xl font-semibold break-words">{preview.name}</h3>{preview.organization&&<p className="text-muted-foreground">{preview.organization}</p>}<p className="text-lg font-mono">Entrada: {preview.number}</p>
       {preview.shirts.enabled&&!preview.shirts.delivered&&<fieldset className="space-y-3"><legend className="font-semibold">¿Qué talla de camiseta utiliza el participante?</legend><div className="grid grid-cols-2 gap-2">{preview.shirts.sizes.map(item=><button key={item.size} type="button" aria-pressed={size===item.size} disabled={sending} className={size===item.size?'btn-primary min-h-14':'btn-secondary min-h-14'} onClick={()=>setSize(item.size)}><span className="block font-bold">Talla: {item.size}</span><span className="block text-xs font-normal">Disponibles: {item.available} unidades</span></button>)}</div>{!preview.shirts.sizes.length&&<p role="alert">No hay tallas configuradas. Consulta con recepción.</p>}<p className="text-sm text-muted-foreground">La selección no reserva ni entrega una camiseta. La disponibilidad se vuelve a comprobar al entregarla.</p></fieldset>}
       {preview.shirts.delivered&&<p>La camiseta ya figura entregada.</p>}
       {error&&<p role="alert" className="text-destructive">{error}</p>}
