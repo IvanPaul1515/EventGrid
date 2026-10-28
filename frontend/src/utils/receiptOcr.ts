@@ -19,3 +19,10 @@ export function reviewedReceiptAmount(value:string):number|null{
  else if(/^\d+(?:[.,]\d{1,2})?$/.test(s))normalized=s.replace(',','.');else return null;
  const n=Number(normalized);return Number.isFinite(n)&&n>0&&n<=1e12?n:null;
 }
+
+// A reviewed OCR proposal only fills fields; it never authorizes a payment.
+export function receiptRegistrationDraft(draft: ReceiptDraft) {
+ const parts=draft.participant.trim().split(/\s+/);const local=draft.date.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+ const date=local?`${local[3]}-${local[2].padStart(2,'0')}-${local[1].padStart(2,'0')}`:draft.date;
+ return {firstName:parts[0]||'',lastName:parts.slice(1).join(' '),purchaseDate:date,purchaseTime:draft.time,receiptReference:draft.reference||draft.receipt,proposedAmount:reviewedReceiptAmount(draft.amount),historicalPaymentConfirmed:false as const};
+}

@@ -27,7 +27,7 @@ export function mergeHistorical(existing:string|null|undefined,incoming:ReturnTy
 
 export function purchaseChronology(rows:{id:string;historicalDates?:string|null;externalReference?:string|null;source?:string;isCourtesy?:boolean;paymentStatus?:string}[]){
  const purchases=rows.map(row=>{let date:HistoricalDate|null=null,sequence:number|null=null;try{const metadata=JSON.parse(row.historicalDates||'{}');date=metadata.purchasedAt||null;if(metadata.purchaseSequence?.source==='OFFICIAL_PURCHASE_SEQUENCE'&&Number.isSafeInteger(metadata.purchaseSequence.value)&&metadata.purchaseSequence.value>0)sequence=metadata.purchaseSequence.value;}catch{}
- const trusted=date?.source==='EVENTGRID_SERVER'&&row.source==='ONSITE_SALE'||date?.source==='ADMIN_REVIEWED'||row.externalReference&&row.source==='EXCEL_IMPORT';const instant=date?.precision==='SECOND'&&date.zone&&trusted?Date.parse(date.value):NaN;
+ const trusted=date?.source==='EVENTGRID_SERVER'&&row.source==='ONSITE_SALE'||date?.source==='ADMIN_REVIEWED'||row.externalReference&&row.source==='EXCEL_IMPORT'&&date?.source!=='DECLARED';const instant=date?.precision==='SECOND'&&date.zone&&trusted?Date.parse(date.value):NaN;
  return {id:row.id,date,sequence,instant,position:null as number|null,verification:Number.isFinite(instant)?'SOURCE_TIMESTAMP':'PENDING'};});
  const complete=purchases.every(p=>Number.isFinite(p.instant));const groups=new Map<number,typeof purchases>();for(const p of purchases)if(Number.isFinite(p.instant))groups.set(p.instant,[...(groups.get(p.instant)||[]),p]);
  const resolved=(instant:number)=>{const group=groups.get(instant)||[];return group.length===1||group.every(p=>p.sequence!==null)&&new Set(group.map(p=>p.sequence)).size===group.length;};

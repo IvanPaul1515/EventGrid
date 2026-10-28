@@ -14,7 +14,7 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
   externalPlatform: ['plataforma', 'origen', 'plataforma externa', 'plataforma de origen'],
   buyerName: ['comprador', 'nombre comprador'],
   externalReference: [
-    'referencia externa',
+    'referencia externa', 'referencia de venta', 'referencia', 'numero de comprobante', 'número de comprobante', 'comprobante', 'numero de recibo',
     'no. registro', 'no registro', 'no.registro', 'no_registro', 'registro', 'no.', 'no',
     'ticket id', 'ticket no', 'ticket', 'id registro', 'id_registro', 'reg id', 'reg_id'
   ],
@@ -51,7 +51,7 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
     'institución', 'institucion', 'empresa', 'universidad', 'colegio', 'company',
     'organization', 'organización', 'organizacion', 'organizacion empresa', 'organización/empresa', 'centro educativo', 'lugar de trabajo', 'instituto'
   ],
-  ticketType: [
+  ticketType: ['entrada',
     'tipo de entrada', 'tipo entrada', 'tipo_de_entrada', 'tipo_entrada', 'ticket type',
     'tipo ticket', 'tarifa'
   ],
@@ -59,7 +59,7 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
     'precio entrada', 'precio de entrada', 'precio_entrada', 'valor ticket', 'costo entrada', 'tarifa entrada'
   ],
   amountPaid: [
-    'monto pagado', 'monto_pagado', 'abonado', 'total abonado', 'pagado'
+    'importe', 'importe pagado', 'monto pagado', 'monto_pagado', 'abonado', 'total abonado', 'pagado'
   ],
   paymentMethod: [
     'forma pago', 'forma de pago', 'forma_pago', 'método de pago', 'metodo de pago',
@@ -75,10 +75,10 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
   ],
   saleTimestamp: [
     'horario de venta', 'horario venta', 'horario_de_venta', 'fecha de venta', 'fecha venta',
-    'fecha_venta', 'fecha compra', 'purchased at', 'timestamp'
+    'fecha_venta', 'fecha compra', 'fecha de compra', 'purchased at', 'timestamp'
   ],
   officialPurchaseSequence:['orden oficial de compra','secuencia oficial de compra','no compra','numero de compra'],
-  purchaseTime: ['hora', 'hora venta', 'hora compra'],
+  purchaseTime: ['hora', 'hora venta', 'hora compra', 'hora de compra'],
   registrationDate: ['fecha inscripcion', 'fecha registro', 'registered at'],
   registrationTime: ['hora inscripcion', 'hora registro'],
   paymentDate: ['fecha pago', 'paid at'],
@@ -95,7 +95,7 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
   ],
   attended: [
     'asistencia', 'asistió', 'asistio', 'check-in', 'check in', 'checkin',
-    'llegada', 'llegó', 'llego', 'presente', 'entrada', 'asistente', 'asistio?'
+    'llegada', 'llegó', 'llego', 'presente', 'asistente', 'asistio?'
   ],
   notes: [
     'notas', 'nota', 'observaciones', 'observacion', 'comentarios', 'comentario'
@@ -412,6 +412,7 @@ export class ImportService {
 
       const yesNo = (value: unknown) => ['si','yes','true','1'].includes(normalizeHeader(String(value ?? ''))) ? 'YES' : ['no','false','0'].includes(normalizeHeader(String(value ?? ''))) ? 'NO' : 'UNKNOWN';
       normalized.paidFullIndicator = yesNo(normalized.paidFullIndicator);
+      if(normalized.paidFullIndicator==='UNKNOWN'){const state=normalizeHeader(String(normalized.externalPaymentStatus||''));if(['pagado','paid','pago completo','completo'].includes(state))normalized.paidFullIndicator='YES';else if(['pendiente','unpaid','no pagado'].includes(state))normalized.paidFullIndicator='NO';}
       normalized.waitlistState = yesNo(normalized.waitlistFlag);
       for (const key of ['totalAmount','ticketPrice','amountPaid']) {
         const original = normalized[key];

@@ -1,3 +1,5 @@
+import {ReceiptReader} from '../sales/ReceiptReader';
+import {receiptRegistrationDraft} from '../../utils/receiptOcr';
 import { CurrencyInput } from '../common/CurrencyInput';
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -16,11 +18,11 @@ import {
   Save,
   Plus,
   Tag,
-  Calendar,
   CheckCircle2,
 } from 'lucide-react';
 
 interface ParticipantFormModalProps {
+  initialReceipt?: boolean;
   isOpen: boolean;
   registrationToEdit: Registration | null;
   onClose: () => void;
@@ -29,6 +31,7 @@ interface ParticipantFormModalProps {
 
 export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   isOpen,
+  initialReceipt = false,
   registrationToEdit,
   onClose,
   onSuccess,
@@ -57,7 +60,10 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   const [ticketTypeId, setTicketTypeId] = useState<string>('');
   const [ticketPrice, setTicketPrice] = useState<number>(0);
   const [amountPaid, setAmountPaid] = useState<number>(0);
-  const [saleTimestamp, setSaleTimestamp] = useState<string>('');
+  const [readingReceipt,setReadingReceipt]=useState(false);
+  const [historical,setHistorical]=useState(false);
+  const [purchaseDate,setPurchaseDate]=useState(''),[purchaseTime,setPurchaseTime]=useState(''),[sourceTimezone,setSourceTimezone]=useState('');
+  const [receiptReference,setReceiptReference]=useState(''),[historicalPaymentConfirmed,setHistoricalPaymentConfirmed]=useState(false);
 
   const [isVerified, setIsVerified] = useState(false);
   const [isCourtesy, setIsCourtesy] = useState(false);
@@ -136,12 +142,6 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       setTicketPrice(initialTicketPrice);
       setAmountPaid(initialAmountPaid);
 
-      setSaleTimestamp(
-        registrationToEdit.saleTimestamp
-          ? new Date(registrationToEdit.saleTimestamp).toISOString().slice(0, 16)
-          : ''
-      );
-
       setIsVerified(registrationToEdit.isVerified || false);
       setIsCourtesy(Boolean(registrationToEdit.isCourtesy));
       setCourtesyAuthorizedBy(registrationToEdit.courtesyAuthorizedBy || '');
@@ -162,7 +162,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       setTicketTypeId('');
       setTicketPrice(0);
       setAmountPaid(0);
-      setSaleTimestamp(new Date().toISOString().slice(0, 16));
+      setHistorical(false);setPurchaseDate('');setPurchaseTime('');setSourceTimezone('');setReceiptReference('');setHistoricalPaymentConfirmed(false);setReadingReceipt(initialReceipt);
       setIsVerified(false);
       setIsCourtesy(false);
       setCourtesyAuthorizedBy('');
@@ -177,7 +177,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
     setRequestSent(false);
     setRequestMessage('');
     requestKey.current = crypto.randomUUID();
-  }, [registrationToEdit, isOpen]);
+  }, [registrationToEdit, isOpen, initialReceipt, currentEvent?.id]);
 
   // Comprobar si el formulario tiene cambios sin guardar para evitar pérdidas accidentales (Sección 6)
   const isFormDirty = !requestSent && Boolean(
@@ -187,7 +187,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
     documentId.trim() ||
     phone.trim() ||
     institution.trim() ||
-    notes.trim() ||
+    notes.trim() || receiptReference.trim() || purchaseDate || purchaseTime ||
     courtesyReason.trim()
   );
 
@@ -203,7 +203,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   };
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || readingReceipt) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !loading) {
         handleRequestClose();
@@ -216,7 +216,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = '';
     };
-  }, [isOpen, loading, isFormDirty, registrationToEdit]);
+  }, [isOpen, loading, isFormDirty, registrationToEdit, readingReceipt]);
 
   if (!isOpen) return null;
 
@@ -260,7 +260,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       amountPaid: isCourtesy ? 0 : Number(amountPaid),
       totalAmount: isCourtesy ? 0 : Number(amountPaid),
       balanceDue: isCourtesy ? 0 : Math.max(0, Number(ticketPrice) - Number(amountPaid)),
-      saleTimestamp: saleTimestamp ? new Date(saleTimestamp).toISOString() : undefined,
+      ...(!registrationToEdit ? {purchaseOrigin:historical?'HISTORICAL_ONSITE':'EVENTGRID',...(historical?{purchaseDate,purchaseTime,sourceTimezone,receiptReference,historicalPaymentConfirmed}:{})} : {}),
       isVerified,
       isCourtesy,
       courtesyAuthorizedBy: isCourtesy ? courtesyAuthorizedBy.trim() || null : null,
@@ -301,6 +301,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
     }
   };
 
+  if (readingReceipt && !registrationToEdit) return <ReceiptReader onClose={()=>setReadingReceipt(false)} onUse={draft=>{const proposal=receiptRegistrationDraft(draft);if(proposal.firstName)setFirstName(proposal.firstName);if(proposal.lastName)setLastName(proposal.lastName);setHistorical(true);setPurchaseDate(proposal.purchaseDate);setPurchaseTime(proposal.purchaseTime);setSourceTimezone('');setReceiptReference(proposal.receiptReference);setHistoricalPaymentConfirmed(false);if(proposal.proposedAmount!==null)setAmountPaid(proposal.proposedAmount);const methods=paymentMethods.filter(m=>draft.method&&m.name.toLowerCase().includes(draft.method.toLowerCase()));if(methods.length===1)setPaymentMethodId(methods[0].id);setReadingReceipt(false);}}/>;
   return createPortal(
     <div className="mobile-safe-overlay fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4 md:p-6 animate-in fade-in duration-200" onClick={handleRequestClose}>
       <div className="bg-card border border-border w-full h-full max-sm:max-h-full sm:h-auto sm:max-h-[92vh] sm:max-w-3xl lg:max-w-4xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -332,6 +333,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
         {requestSent && <div role="status" className="p-4 border-b border-border bg-muted text-sm">{requestMessage} Consulte el resultado en sus solicitudes antes de reintentar.</div>}
         <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col justify-between">
           <div className="overflow-y-auto px-6 py-5 space-y-4 flex-1 min-h-0">
+          {!registrationToEdit&&<div className="flex flex-wrap gap-2"><button type="button" className="btn-secondary" onClick={()=>setReadingReceipt(false)}>Registrar manualmente</button><button type="button" className="btn-secondary" onClick={()=>setReadingReceipt(true)}>Leer comprobante con OCR</button></div>}
           {/* Fila 1: Nombres y Apellidos */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -549,21 +551,10 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
               {user?.role === 'ADMIN' && <input aria-label="Motivo de cambio del número" placeholder="Motivo de la corrección" value={numberChangeReason} onChange={e => setNumberChangeReason(e.target.value)} className="input-field text-base" />}
             </div> : <p className="text-xs text-muted-foreground">Número interno: se asigna automáticamente al guardar.</p>}
 
-            <div>
-              <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-primary" />
-                <span>Fecha de Compra</span>
-              </label>
-              <input
-                type="datetime-local"
-                value={saleTimestamp}
-                onChange={(e) => setSaleTimestamp(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-              <span className="text-[10px] text-muted-foreground mt-0.5 block">
-                Fecha en que se adquirió la boleta
-              </span>
-            </div>
+            {!registrationToEdit ? <div className="space-y-2 sm:col-span-2">
+              <label className="block text-sm">Origen de la compra<select className="input-field" value={historical?'HISTORICAL_ONSITE':'EVENTGRID'} onChange={e=>{setHistorical(e.target.value==='HISTORICAL_ONSITE');setHistoricalPaymentConfirmed(false);}}><option value="EVENTGRID">Venta nueva en EventGrid (hora del servidor)</option><option value="HISTORICAL_ONSITE">Venta presencial histórica</option></select></label>
+              {historical&&<><p className="text-xs text-muted-foreground">Fechas declaradas, pendientes de revisión administrativa. No se inventan horas ni zonas. La incorporación queda registrada por separado.</p><div className="grid grid-cols-1 sm:grid-cols-3 gap-2"><label className="text-xs">Fecha original<input type="date" className="input-field" value={purchaseDate} onChange={e=>setPurchaseDate(e.target.value)}/></label><label className="text-xs">Hora original (opcional)<input type="time" step="1" className="input-field" value={purchaseTime} onChange={e=>setPurchaseTime(e.target.value)}/></label><label className="text-xs">Zona conocida (opcional)<input className="input-field" placeholder="-04:00" value={sourceTimezone} onChange={e=>setSourceTimezone(e.target.value)}/></label></div><label className="block text-xs">Referencia única / número de comprobante<input required maxLength={120} className="input-field" value={receiptReference} onChange={e=>setReceiptReference(e.target.value)}/></label><label className="flex gap-2 text-sm"><input type="checkbox" checked={historicalPaymentConfirmed} onChange={e=>setHistoricalPaymentConfirmed(e.target.checked)}/>Confirmo que el monto indicado ya se recibió fuera de EventGrid. Se conciliará como pago externo, sin ingreso nuevo de caja.</label></>}
+            </div> : <p className="text-xs text-muted-foreground">Las fechas originales se consultan en la ficha; sus correcciones requieren revisión administrativa con motivo en la cronología de compras.</p>}
 
             <div>
               <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">

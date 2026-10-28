@@ -55,13 +55,13 @@ export class FinanceService {
       return result;
     });
   }
-  static async externalReport(tx: any, input: { eventId: string; registrationId: string; actorId: string; batchId: string; reportedFull: 'YES' | 'NO' | 'UNKNOWN'; cumulativeAmount?: number; method?: string; reference: string }) {
+  static async externalReport(tx: any, input: { eventId: string; registrationId: string; actorId: string; batchId?: string; reportedFull: 'YES' | 'NO' | 'UNKNOWN'; cumulativeAmount?: number; method?: string; reference: string }) {
     const reg = await tx.registration.findFirst({ where: { id: input.registrationId, eventId: input.eventId }, include: { payments: true } });
     if (!reg) throw new NotFoundError('Inscripción fuera de la edición.');
     const recordReview = async (code: string, reason: string) => { await this.review(tx, { eventId: input.eventId, registrationId: reg.id, sourceBatchId: input.batchId, actorId: input.actorId, code, reason, evidence: { reportedFull: input.reportedFull, cumulativeAmount: input.cumulativeAmount, reference: input.reference, method: input.method } }); return { outcome: 'REVIEW', reason }; };
     await tx.registration.update({ where: { id: reg.id }, data: { paymentFullReported: input.reportedFull, externalPaymentMethod: input.method || null, lastExternalSyncAt: new Date() } });
     if (reg.status === 'CANCELLED' || reg.isCourtesy || await tx.courtesyRequest.findUnique({ where: { pendingRegistrationId: reg.id } }) || await tx.refundRequest.findFirst({ where: { registrationId: reg.id, status: { not: 'REJECTED' } } })) return recordReview('PROTECTED_STATE', 'La inscripción tiene cancelación, cortesía, excepción o reembolso; requiere revisión.');
-    if (reg.source !== 'EXCEL_IMPORT' || !reg.externalReference) return recordReview('SOURCE_ASSOCIATION', 'Debe verificarse la asociación con la inscripción externa antes de acreditar dinero.');
+    if (!['EXCEL_IMPORT','HISTORICAL_ONSITE'].includes(reg.source) || !reg.externalReference) return recordReview('SOURCE_ASSOCIATION', 'Debe verificarse la asociación con la inscripción externa antes de acreditar dinero.');
     const oldExternal = reg.payments.filter((p: any) => p.channel === 'EXTERNAL').reduce((n: number, p: any) => n + cents(p.amount), 0);
     const local = reg.payments.filter((p: any) => p.channel === 'ONSITE').reduce((n: number, p: any) => n + cents(p.amount), 0);
     const legacy = reg.payments.filter((p: any) => !['EXTERNAL', 'ONSITE'].includes(p.channel)).reduce((n: number, p: any) => n + cents(p.amount), 0);

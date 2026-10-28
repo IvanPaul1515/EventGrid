@@ -154,7 +154,8 @@ export interface Registration {
   qrCode?: string;
   qrGeneratedAt?: string;
   qrRevokedAt?: string;
-  source: 'EXCEL_IMPORT' | 'MANUAL' | 'ONSITE_SALE';
+  source: 'EXCEL_IMPORT' | 'MANUAL' | 'ONSITE_SALE' | 'HISTORICAL_ONSITE';
+  historicalDates?: string | null;
   importBatchId?: string;
   ticketTypeId?: string;
   ticketType?: TicketType;

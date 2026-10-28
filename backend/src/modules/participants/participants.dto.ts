@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
 export const CreateRegistrationSchema = z.object({
+  purchaseOrigin: z.enum(['EVENTGRID','HISTORICAL_ONSITE']).optional(),
+  purchaseDate: z.string().max(40).optional(),
+  purchaseTime: z.string().max(12).optional(),
+  sourceTimezone: z.string().max(6).optional(),
+  receiptReference: z.string().trim().max(120).optional(),
+  historicalPaymentConfirmed: z.boolean().optional(),
   firstName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
   lastName: z.string().min(2, 'El apellido debe tener al menos 2 caracteres'),
   documentId: z.string().optional().nullable(),
