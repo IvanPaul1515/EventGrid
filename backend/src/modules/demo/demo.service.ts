@@ -29,6 +29,9 @@ const DOMINICAN_INSTITUTIONS = [
 ];
 
 export class DemoService {
+  private static generation=new Map<string,Promise<any>>();
+  static async generate(eventId:string,count=15,userId?:string){const prior=this.generation.get(eventId);if(prior)return prior;const job=this.generateMissing(eventId,count,userId);this.generation.set(eventId,job);try{return await job;}finally{this.generation.delete(eventId);}}
+
   /**
    * Consultar estado y métricas del entorno de demostración
    */
@@ -105,7 +108,7 @@ export class DemoService {
   /**
    * Generar participantes ficticios con diferentes estados de pago, cortesía y asistencia
    */
-  static async generate(eventId: string, count = 15, userId?: string) {
+  private static async generateMissing(eventId: string, count = 15, userId?: string) {
     const event = await prisma.event.findUnique({
       where: { id: eventId },
       include: {
@@ -145,7 +148,8 @@ export class DemoService {
 
     const createdIds: string[] = [];
 
-    for (let i = 0; i < count; i++) {
+    const existingDemo=await prisma.registration.count({where:{eventId,isDemo:true}});
+    for (let i = existingDemo; i < count; i++) {
       const firstName = DOMINICAN_FIRST_NAMES[Math.floor(Math.random() * DOMINICAN_FIRST_NAMES.length)];
       const lastName = DOMINICAN_LAST_NAMES[Math.floor(Math.random() * DOMINICAN_LAST_NAMES.length)];
       const fullName = `${firstName} ${lastName}`;
@@ -302,16 +306,16 @@ export class DemoService {
       // 2. Eliminar pagos y logs vinculados a registros demo
       if (demoRegIds.length > 0) {
         await tx.payment.deleteMany({
-          where: { registrationId: { in: demoRegIds } },
+          where: { registrationId: { in: demoRegIds }, registration:{eventId,isDemo:true} },
         });
         await tx.attendanceLog.deleteMany({
-          where: { registrationId: { in: demoRegIds } },
+          where: { registrationId: { in: demoRegIds }, registration:{eventId,isDemo:true} },
         });
         await tx.emailLog.deleteMany({
-          where: { registrationId: { in: demoRegIds } },
+          where: { registrationId: { in: demoRegIds }, registration:{eventId,isDemo:true} },
         });
         await tx.registration.deleteMany({
-          where: { id: { in: demoRegIds } },
+          where: { id: { in: demoRegIds }, eventId, isDemo:true },
         });
       }
 

@@ -355,6 +355,7 @@ export class ParticipantsService {
     if (!event) throw new NotFoundError('Edición no encontrada');
 
     const actor = actorId ? await tx.user.findUnique({ where: { id: actorId } }) : null;
+    if(input.isDemo&&actor?.role!=='ADMIN')throw new ForbiddenError('Generar datos demo requiere administrador.');
     if ((input.commercialUserId && input.commercialUserId !== actorId) || input.salesResponsibleId) {
       if (actor?.role !== 'ADMIN' || !input.responsibleChangeReason) throw new BadRequestError('Cambiar el responsable comercial requiere administrador y motivo.');
     }
@@ -577,6 +578,8 @@ export class ParticipantsService {
     }
 
     if ((input.status === 'CANCELLED' && existing.status !== 'CANCELLED') || (existing.status === 'CANCELLED' && input.status && input.status !== 'CANCELLED')) throw new BadRequestError('Utilice la operación administrativa de cancelación o reactivación; la edición de la ficha no sustituye sus controles.');
+
+    if(input.isDemo!==undefined&&input.isDemo!==existing.isDemo){const actor=userId?await tx.user.findUnique({where:{id:userId}}):null;if(actor?.role!=='ADMIN')throw new ForbiddenError('Cambiar el carácter demo requiere administrador.');}
 
     const numberChanged = Boolean(input.registrationNumber && input.registrationNumber !== existing.registrationNumber);
     const responsibleChanged = (input.salesResponsibleId !== undefined && input.salesResponsibleId !== existing.salesResponsibleId) || (input.commercialUserId !== undefined && input.commercialUserId !== existing.commercialUserId);

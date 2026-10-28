@@ -1041,7 +1041,8 @@ export const ImportPage: React.FC = () => {
               Los registros han sido procesados y persistidos en la base de datos para <strong>{currentEvent?.name}</strong>.
             </p>
 
-            {/* Estadísticas de la Ejecución */}
+            {executionResult.merchReconciliation&&<div className="rounded-xl border border-border bg-card p-4 text-sm space-y-2"><p>Gorras: {executionResult.merchReconciliation.eligible.length} derechos verificables por orden oficial.</p>{executionResult.merchReconciliation.issues.length>0&&<p role="alert" className="text-amber-600 dark:text-amber-400">Conciliación pendiente: {executionResult.merchReconciliation.issues.length} incidencias. Revisa Inventario de merch; no se asignaron posiciones por orden de archivo o llegada.</p>}</div>}
+              {/* Estadísticas de la Ejecución */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-xl mx-auto pt-4 text-left">
               <div className="p-3.5 rounded-xl bg-background border border-border">
                 <span className="text-[10px] uppercase font-mono text-muted-foreground block">Importados</span>

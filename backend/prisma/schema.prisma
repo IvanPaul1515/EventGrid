@@ -247,6 +247,8 @@ model Participant {
 }
 
 model Registration {
+  officialRegistrationOrder Int?
+  officialOrderSource String?
   scanActivities QueueScanActivity[]
   tshirtDeliveryStatus String?
   tshirtNonDeliveryReason String?
@@ -1149,6 +1151,8 @@ model QueueScanActivity {
 
 // Additional merchandise leaves historical T-shirt tables untouched.
 model MerchItem {
+ systemCode String?
+ isActive Boolean @default(true)
  id String @id @default(uuid())
  eventId String
  name String
@@ -1164,6 +1168,7 @@ model MerchItem {
  allocations MerchAllocation[]
  movements MerchMovement[]
  @@unique([eventId,name,variant])
+ @@unique([eventId,systemCode])
  @@map("merch_items")
 }
 model MerchAllocation {
