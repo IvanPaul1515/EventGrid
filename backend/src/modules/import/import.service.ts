@@ -76,6 +76,7 @@ const ALIAS_DICTIONARY: Record<string, string[]> = {
     'horario de venta', 'horario venta', 'horario_de_venta', 'fecha de venta', 'fecha venta',
     'fecha_venta', 'fecha compra', 'purchased at', 'timestamp'
   ],
+  officialPurchaseSequence:['orden oficial de compra','secuencia oficial de compra','no compra','numero de compra'],
   purchaseTime: ['hora', 'hora venta', 'hora compra'],
   registrationDate: ['fecha inscripcion', 'fecha registro', 'registered at'],
   registrationTime: ['hora inscripcion', 'hora registro'],

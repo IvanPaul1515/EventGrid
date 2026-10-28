@@ -44,6 +44,7 @@ interface SystemFieldDef {
 }
 
 const SYSTEM_FIELDS: SystemFieldDef[] = [
+  {key:'officialPurchaseSequence',label:'Secuencia oficial de compra',required:false,description:'Solo una secuencia oficial de la fuente; nunca el orden de filas'},
   {key:'saleTimestamp',label:'Fecha de compra',required:false,description:'AAAA-MM-DD o DD/MM/AAAA; nunca se sustituye por la importación'},
   {key:'purchaseTime',label:'Hora de compra',required:false,description:'HH:mm:ss; omitir si se desconoce'},
   {key:'registrationDate',label:'Fecha de inscripción original',required:false,description:'Fecha histórica de la fuente'},

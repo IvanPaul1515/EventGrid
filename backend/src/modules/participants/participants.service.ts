@@ -926,6 +926,7 @@ export class ParticipantsService {
         qrGeneratedAt: now,
         notes: input.notes || null,
         saleTimestamp: now,
+        historicalDates:JSON.stringify({purchasedAt:{value:now.toISOString(),precision:'SECOND',zone:'Z',source:'EVENTGRID_SERVER'},registeredAt:{value:now.toISOString(),precision:'SECOND',zone:'Z',source:'EVENTGRID_SERVER'}}),
         updatedByUserId: operatorUserId,
       },
       include: {

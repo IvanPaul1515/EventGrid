@@ -1,4 +1,4 @@
-import type {ReceiptDraft} from '../../utils/receiptOcr';
+import {reviewedReceiptAmount,ReceiptDraft} from '../../utils/receiptOcr';
 import { CurrencyInput } from '../common/CurrencyInput';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -82,7 +82,7 @@ export const OnsiteSaleModal: React.FC<OnsiteSaleModalProps> = ({
     }
   }, [isOpen, ticketTypes, paymentMethods]);
 
-  useEffect(()=>{if(!isOpen||!receiptDraft)return;const parts=receiptDraft.participant.trim().split(/\s+/);if(receiptDraft.participant){setFirstName(parts[0]);setLastName(parts.slice(1).join(' '));}setNotes('Propuesta OCR revisada (no constituye verificación de pago): '+JSON.stringify(receiptDraft));const method=paymentMethods.filter(m=>m.name.toLowerCase().includes(receiptDraft.method.toLowerCase()));if(receiptDraft.method&&method.length===1)setPaymentMethodId(method[0].id);},[isOpen,receiptDraft]);
+  useEffect(()=>{if(!isOpen||!receiptDraft)return;const parts=receiptDraft.participant.trim().split(/\s+/);if(receiptDraft.participant){setFirstName(parts[0]);setLastName(parts.slice(1).join(' '));}const amount=reviewedReceiptAmount(receiptDraft.amount);if(amount!==null){setAmountReceived(amount);setAmountPaid(amount);}setNotes('Propuesta OCR revisada (no constituye verificación de pago): '+JSON.stringify(receiptDraft));const method=paymentMethods.filter(m=>m.name.toLowerCase().includes(receiptDraft.method.toLowerCase()));if(receiptDraft.method&&method.length===1)setPaymentMethodId(method[0].id);},[isOpen,receiptDraft,paymentMethods]);
 
   // Manejo de scroll del body y tecla Escape
   useEffect(() => {

@@ -9,6 +9,7 @@ const router=Router({mergeParams:true}),id=z.string().uuid(),reason=z.string().t
 router.use(authenticateToken,editionContext);
 const route=(method:'get'|'post'|'put',path:string,guard:any,fn:(r:any)=>Promise<any>)=>router[method](path,guard,async(r,s,n)=>{try{const data=await fn(r);if(method!=='get')M.changed(r.eventId!);s.json({data});}catch(e){n(e);}});
 route('get','/official-caps',requireAdmin,r=>M.officialCapStatus(r.eventId));
+route('post','/official-caps/policy',requireAdmin,r=>{const input=z.object({policy:z.enum(['OFFICIAL_REGISTRATION','OFFICIAL_PURCHASE']),reason:z.string().trim().min(10).max(500),confirmed:z.literal(true)}).parse(r.body);return M.setCapPolicy(r.eventId,r.user.id,input.policy,input.reason);});
 route('post','/official-caps/reconcile',requireAdmin,r=>M.reconcileOfficialCaps(r.eventId,r.user.id));
 route('post','/defer/:id',requireOperatorOrAdmin,r=>M.defer(r.eventId,r.user.id,id.parse(r.params.id)));
 route('get','/',requireAnyRole,r=>M.list(r.eventId));
