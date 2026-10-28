@@ -27,7 +27,7 @@ export async function executeReconciledImport(input: { eventId: string; userId: 
       for(const row of validation.rowsSummary) {
         const n=row.normalized;if(row.status==='ERROR'||n.identityConflict||!n.externalReference)continue;
         const match=await tx.registration.findFirst({where:{eventId,externalPlatform:n.externalPlatform,externalReference:n.externalReference},include:{participant:true}});
-        if(!match||match.source!=='EXCEL_IMPORT'||(n.documentId&&match.participant.documentId&&n.documentId!==match.participant.documentId)||Number(match.ticketPrice)<=0)continue;
+        if(!match||!['EXCEL_IMPORT','HISTORICAL_ONSITE'].includes(match.source)||(n.documentId&&match.participant.documentId&&n.documentId!==match.participant.documentId)||Number(match.ticketPrice)<=0)continue;
         const outcome=await FinanceService.externalReport(tx,{eventId,registrationId:match.id,actorId:userId,batchId:previous.id,reportedFull:n.paidFullIndicator||'UNKNOWN',cumulativeAmount:n.amountPaidProvided?Number(n.amountPaid):n.totalAmountProvided?Number(n.totalAmount):undefined,method:n.paymentMethod||undefined,reference:n.externalReference});
         if(outcome.outcome==='CREDITED')updatedCount++;if(outcome.outcome==='REVIEW')reviewCount++;
       }
@@ -53,7 +53,7 @@ export async function executeReconciledImport(input: { eventId: string; userId: 
         await FinanceService.review(tx,{eventId,registrationId:existing?.id,sourceBatchId:batch.id,code:'IDENTITY_CONFLICT',reason:'La referencia y los datos de identidad requieren revisión; no se fusionaron personas.',evidence:{rowNumber:row.rowNumber,reference:n.externalReference},actorId:userId});reviewCount++;skippedCount++;continue;
       }
       if(existing&&input.conflictStrategy!=='UPDATE'){skippedCount++;continue;}
-      if(existing&&(existing.source!=='EXCEL_IMPORT'||(existing.externalReference&&existing.externalReference!==n.externalReference)||(existing.externalPlatform&&existing.externalPlatform!==n.externalPlatform))) {
+      if(existing&&(!['EXCEL_IMPORT','HISTORICAL_ONSITE'].includes(existing.source)||(existing.externalReference&&existing.externalReference!==n.externalReference)||(existing.externalPlatform&&existing.externalPlatform!==n.externalPlatform))) {
         await FinanceService.review(tx,{eventId,registrationId:existing.id,sourceBatchId:batch.id,code:'SOURCE_ASSOCIATION',reason:'La inscripción existente debe vincularse administrativamente a esta fuente; no se modificó.',evidence:{rowNumber:row.rowNumber,reference:n.externalReference},actorId:userId});reviewCount++;skippedCount++;continue;
       }
       const explicitTicket=n.ticketType?paidTickets.find(t=>t.name.toLowerCase()===String(n.ticketType).toLowerCase()):undefined;

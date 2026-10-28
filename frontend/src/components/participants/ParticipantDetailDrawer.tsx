@@ -1177,12 +1177,13 @@ export const ParticipantDetailDrawer: React.FC<ParticipantDetailDrawerProps> = (
                       Fecha de Registro
                     </span>
                     <span className="text-xs text-foreground">
-                      {new Date(registration.saleTimestamp).toLocaleDateString('es-DO')}
+                      {new Date(registration.createdAt).toLocaleString('es-DO')}
                     </span>
                   </div>
                 </div>
 
-                {(registration.externalReference || registration.buyerName || registration.createdByUser) && <div className="p-3 rounded-xl bg-background border border-border text-xs space-y-1">
+                {(registration.historicalDates || registration.externalReference || registration.buyerName || registration.createdByUser) && <div className="p-3 rounded-xl bg-background border border-border text-xs space-y-1">
+                  <p>Compra original: {(()=>{try{const date=JSON.parse(registration.historicalDates||'{}').purchasedAt;return date?.value ? date.value+(date.source==='DECLARED'?' (declarada; pendiente de revisión)':'') : 'No declarada / pendiente de conciliación';}catch{return 'Pendiente de conciliación';}})()}</p>
                   {registration.externalReference && <p>Referencia externa: <strong>{registration.externalReference}</strong> · {registration.externalPlatform}</p>}
                   {registration.externalPaymentStatus && <p>Estado informado en origen: {registration.externalPaymentStatus}</p>}
                   {registration.buyerName && <p>Comprador: {registration.buyerName}</p>}

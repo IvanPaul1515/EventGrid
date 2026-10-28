@@ -1,3 +1,4 @@
+import {useSearchParams} from 'react-router-dom';
 import {PaymentStatusBadge} from '../components/participants/PaymentStatusBadge';
 import {useListNavigation,useListNavigationScope} from '../hooks/useListNavigation';
 import {participantFilters,readListNavigation} from '../utils/listNavigation';
@@ -52,6 +53,8 @@ export const ParticipantsPage: React.FC = () => {
   return <ParticipantsContent key={scope||'pending'} navigationKey={scope}/>;
 };
 const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationKey}) => {
+  const [searchParams,setSearchParams]=useSearchParams();
+  const receiptEntry=searchParams.get('create')==='receipt';
   const { currentEvent } = useEdition();
   const { hasRole } = useAuth();
 
@@ -119,6 +122,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
   const [isOnsiteSaleOpen, setIsOnsiteSaleOpen] = useState(false);
   const [selectedForEdit, setSelectedForEdit] = useState<Registration | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  useEffect(()=>{if(receiptEntry&&hasRole(['ADMIN','OPERATOR']))setIsFormOpen(true);},[receiptEntry,hasRole]);
   const [selectedForDelete, setSelectedForDelete] = useState<Registration | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -1253,9 +1257,10 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
 
       {/* Modal de Creación / Edición */}
       <ParticipantFormModal
+        initialReceipt={receiptEntry}
         isOpen={isFormOpen}
         registrationToEdit={selectedForEdit}
-        onClose={() => setIsFormOpen(false)}
+        onClose={() => {setIsFormOpen(false);if(receiptEntry)setSearchParams({}, {replace:true});}}
         onSuccess={(saved) => {
           fetchParticipants();
           showNotification(

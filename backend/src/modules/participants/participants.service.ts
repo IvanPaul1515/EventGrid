@@ -1,3 +1,4 @@
+import {purchaseContext,HISTORICAL_ONSITE} from './purchase-context.js';
 import {Prisma} from '@prisma/client';
 import { FinanceService,cents } from '../finance/finance.service.js';
 import { recordCourtesyRequest } from './courtesy.policy.js';
@@ -356,6 +357,8 @@ export class ParticipantsService {
     if (!event) throw new NotFoundError('Edición no encontrada');
 
     const actor = actorId ? await tx.user.findUnique({ where: { id: actorId } }) : null;
+    const purchase = purchaseContext(input, actor);
+    if (purchase.historical && await tx.registration.findFirst({where:{eventId,externalPlatform:HISTORICAL_ONSITE,externalReference:purchase.reference}})) throw new ConflictError('Esta venta histórica ya está registrada. Consulte la ficha existente.');
     if(input.isDemo&&actor?.role!=='ADMIN')throw new ForbiddenError('Generar datos demo requiere administrador.');
     if ((input.commercialUserId && input.commercialUserId !== actorId) || input.salesResponsibleId) {
       if (actor?.role !== 'ADMIN' || !input.responsibleChangeReason) throw new BadRequestError('Cambiar el responsable comercial requiere administrador y motivo.');
@@ -490,21 +493,24 @@ export class ParticipantsService {
       ? 'PARTIAL'
       : 'PENDING';
 
-    const registration = await prisma.registration.create({
+    let registration = await prisma.registration.create({
       data: {
         eventId,
         participantId: participant.id,
         registrationNumber: regNumber!,
-        source: 'MANUAL',
-        originLabel: 'Venta presencial',
+        source: purchase.historical ? 'HISTORICAL_ONSITE' : 'ONSITE_SALE',
+        originLabel: purchase.historical ? HISTORICAL_ONSITE : 'Venta presencial',
+        externalPlatform: purchase.historical ? HISTORICAL_ONSITE : null,
+        externalReference: purchase.historical ? purchase.reference : null,
+        historicalDates: purchase.historicalDates,
         createdByUserId: actorId || null,
         commercialUserId: isCourtesy || request || input.salesResponsibleId ? null : (input.commercialUserId || actorId || null),
         ticketTypeId: ticketType ? ticketType.id : null,
         ticketPrice,
-        amountPaid,
-        balanceDue,
-        totalAmount: amountPaid,
-        isVerified: isCourtesy ? true : (input.isVerified || (amountPaid > 0)),
+        amountPaid: purchase.historical ? 0 : amountPaid,
+        balanceDue: purchase.historical ? ticketPrice : balanceDue,
+        totalAmount: purchase.historical ? 0 : amountPaid,
+        isVerified: isCourtesy ? true : purchase.historical ? false : (input.isVerified || (amountPaid > 0)),
         isCourtesy,
         courtesyAuthorizedBy: approval?.name || null,
         courtesyUserId: approval?.id || null,
@@ -512,9 +518,9 @@ export class ParticipantsService {
         courtesyDate: approval?.date || null,
         isDemo: input.isDemo || false,
         paymentMethodId: isCourtesy ? null : paymentMethodId,
-        paymentStatus: initialPaymentStatus,
+        paymentStatus: purchase.historical && !isCourtesy ? 'PENDING' : initialPaymentStatus,
         salesResponsibleId: isCourtesy ? null : (input.salesResponsibleId || null),
-        saleTimestamp: input.saleTimestamp ? new Date(input.saleTimestamp) : new Date(),
+        saleTimestamp: purchase.saleTimestamp,
         status: input.status ? input.status : (balanceDue === 0 || isCourtesy ? 'CONFIRMED' : 'PENDING'),
         qrCode: `eg_qr_${crypto.randomBytes(16).toString('hex')}`,
         qrGeneratedAt: new Date(),
@@ -530,7 +536,7 @@ export class ParticipantsService {
     });
 
     // Si hubo pago inicial, registrar en libro contable de pagos
-    if (amountPaid > 0) {
+    if (amountPaid > 0 && !purchase.historical) {
       await prisma.payment.create({
         data: {
           registrationId: registration.id,
@@ -543,8 +549,12 @@ export class ParticipantsService {
     }
 
 
+    if (purchase.historical && !isCourtesy && actorId) {
+      await FinanceService.externalReport(tx,{eventId,registrationId:registration.id,actorId,reportedFull:amountPaid >= ticketPrice && amountPaid > 0 ? 'YES' : 'NO',cumulativeAmount:amountPaid,method:event.paymentMethods.find(m=>m.id===paymentMethodId)?.name,reference:purchase.reference});
+      registration = await tx.registration.findUniqueOrThrow({where:{id:registration.id},include:{participant:true,ticketType:true,paymentMethod:true,salesResponsible:true}});
+    }
     if (actorId) {
-      const changes = { createdByUserId: actorId, origin: registration.originLabel, commercialUserId: registration.commercialUserId, salesResponsibleId: registration.salesResponsibleId, responsibleChangeReason: input.responsibleChangeReason, ticketPrice: Number(registration.ticketPrice), amountPaid: Number(registration.amountPaid), paymentMethodId: registration.paymentMethodId, paymentStatus: registration.paymentStatus, isCourtesy: registration.isCourtesy };
+      const changes = { purchaseOrigin: purchase.historical ? HISTORICAL_ONSITE : 'EVENTGRID', historicalDates: purchase.historicalDates, receiptReference: purchase.reference, createdByUserId: actorId, origin: registration.originLabel, commercialUserId: registration.commercialUserId, salesResponsibleId: registration.salesResponsibleId, responsibleChangeReason: input.responsibleChangeReason, ticketPrice: Number(registration.ticketPrice), amountPaid: Number(registration.amountPaid), paymentMethodId: registration.paymentMethodId, paymentStatus: registration.paymentStatus, isCourtesy: registration.isCourtesy };
       await tx.auditLog.create({ data: { userId: actorId, action: 'CREATE', entity: 'REGISTRATION', entityId: registration.id, changes: (process.env.DATABASE_URL?.startsWith('file:') ? JSON.stringify(changes) : changes) as any } });
     }
     if (request && actorId) {
@@ -574,6 +584,7 @@ export class ParticipantsService {
       },
     });
 
+    if (input.purchaseOrigin !== undefined || input.purchaseDate !== undefined || input.purchaseTime !== undefined || input.receiptReference !== undefined || input.sourceTimezone !== undefined || input.saleTimestamp !== undefined) throw new BadRequestError('Las fechas originales solo se corrigen mediante revisión histórica administrativa con motivo.');
     if (!existing) {
       throw new NotFoundError('Inscripción no encontrada en la edición activa');
     }
@@ -1472,15 +1483,10 @@ export class ParticipantsService {
         'Plataforma de origen': r.externalPlatform || '',
         'Comprador': r.buyerName || '',
         'Estado de pago externo': r.externalPaymentStatus || '',
-        'Fecha y Hora de Venta': new Date(r.saleTimestamp).toLocaleString('es-DO', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
+        'Fecha y Hora de Venta': (() => {try { const metadata=JSON.parse(r.historicalDates||'{}');return metadata.purchasedAt?.value || (r.source==='HISTORICAL_ONSITE'||r.source==='EXCEL_IMPORT'?'No declarada':r.saleTimestamp.toISOString()); } catch {return 'Pendiente de conciliación';}})(),
+        'Fecha de incorporación en EventGrid': r.createdAt.toISOString(),
         'Estado': r.status,
-        'Origen': r.source === 'ONSITE_SALE' ? 'Venta Presencial' : (r.source === 'EXCEL_IMPORT' ? 'Importado Excel' : 'Manual'),
+        'Origen': r.source === 'HISTORICAL_ONSITE' ? HISTORICAL_ONSITE : r.source === 'ONSITE_SALE' ? 'Venta Presencial' : (r.source === 'EXCEL_IMPORT' ? 'Importado Excel' : 'Manual'),
         'Notas': r.notes || '',
       };
     });
