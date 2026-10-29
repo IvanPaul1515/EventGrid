@@ -9,7 +9,7 @@ import { StatisticsService } from './statistics.service.js';
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value=>Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value);
 export const statisticsQuery=z.object({from:date.optional(),to:date.optional(),ticketTypeId:z.string().uuid().optional(),
   size:z.string().min(1).max(40).optional(),delivery:z.enum(['DELIVERED','PENDING','NOT_DELIVERED']).optional(),
-  reason:z.enum(['SIZE_UNAVAILABLE','DECLINED','OTHER','LEGACY_UNKNOWN']).optional(),page:z.coerce.number().int().min(1).max(100000).default(1),
+  reason:z.enum(['SIZE_UNAVAILABLE','DECLINED','OTHER','LEGACY_UNKNOWN','PENDING']).optional(),page:z.coerce.number().int().min(1).max(100000).default(1),
 }).refine(q=>!q.from||!q.to||q.from<=q.to,{message:'El rango de fechas no es válido'});
 const router=Router();
 router.use(authenticateToken,(req,res,next)=>statisticsAllowed(req.user)?next():next(new ForbiddenError('Las estadísticas son exclusivas del administrador.')),editionContext);

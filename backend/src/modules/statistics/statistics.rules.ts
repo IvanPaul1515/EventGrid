@@ -16,7 +16,7 @@ export interface StatisticsRegistration {
 export interface ShirtAudit { entityId: string | null; changes: unknown; createdAt: Date; }
 export const REASONS = {
   SIZE_UNAVAILABLE: 'Talla solicitada agotada', DECLINED: 'El participante no quiso camiseta',
-  OTHER: 'Otro motivo', LEGACY_UNKNOWN: 'Sin motivo registrado',
+  OTHER: 'Otro motivo', LEGACY_UNKNOWN: 'Sin motivo registrado', PENDING: 'Entrega pendiente',
 } as const;
 export type Reason = keyof typeof REASONS;
 export const statisticsAllowed = (user?: {role: string; scannerOnly?: boolean}) => user?.role === 'ADMIN' && !user.scannerOnly;
@@ -29,10 +29,11 @@ export function inDates(value: Date | string | null | undefined, filters: Statis
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? String(value) : day(value,filters.timezone);
   return (!filters.from || date >= filters.from) && (!filters.to || date <= filters.to);
 }
-export function reasonFor(row: Pick<StatisticsRegistration, 'tshirtNonDeliveryReason'>): Reason {
+export function reasonFor(row: Pick<StatisticsRegistration, 'tshirtNonDeliveryReason' | 'tshirtDeliveryStatus'>): Reason {
   if (row.tshirtNonDeliveryReason === 'Talla solicitada agotada') return 'SIZE_UNAVAILABLE';
   if (row.tshirtNonDeliveryReason === 'El participante no desea camiseta') return 'DECLINED';
   if (row.tshirtNonDeliveryReason === 'Otro motivo') return 'OTHER';
+  if (row.tshirtNonDeliveryReason === 'Entrega pendiente' || !row.tshirtNonDeliveryReason && row.tshirtDeliveryStatus === 'PENDING') return 'PENDING';
   return 'LEGACY_UNKNOWN';
 }
 export function shirtHistory(audits: ShirtAudit[]) {
