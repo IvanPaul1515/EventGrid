@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import {initializePrivateAdmin} from '../src/modules/users/initial-admin.js';
 import {initializePrivateSmtp,privateSmtpInput,smtpSecurity} from '../src/modules/communications/private-smtp.js';
+import {InitializationError,initializationDiagnostic} from '../src/utils/initializationError.js';
 const credential=()=>randomUUID()+randomUUID().toUpperCase()+'1';
 function db(){
  const rows:any[]=[],audits:any[]=[],configs:any[]=[];
@@ -17,6 +18,7 @@ describe('private initialization never seeds demo users or resets an existing ad
  it('preserves a valid administrator without requiring another secret or creating an unsolicited account',async()=>{const client=db();client.rows.push({role:'ADMIN',id:'admin',email:'existing@example.invalid',isActive:true,accountStatus:'ACTIVE'});expect(await initializePrivateAdmin(client as any,{})).toEqual({status:'EXISTING_ADMIN'});expect(client.user.create).not.toHaveBeenCalled();});
 });
 describe('private SMTP provisioning uses external input without sending or enabling mail',()=>{
+ it('redacts unexpected provider/database errors instead of logging credentials or input payloads',()=>{const secret=credential();expect(initializationDiagnostic(new Error('Connection data: '+secret))).not.toContain(secret);expect(initializationDiagnostic(new InitializationError('INITIAL_ADMIN_PASSWORD is required.'))).toBe('INITIAL_ADMIN_PASSWORD is required.');});
  it('lists missing variable names while never inventing provider parameters',()=>{const result=privateSmtpInput({});expect(result.ready).toBe(false);if(!result.ready)expect(result.missing).toContain('SMTP_PASSWORD');expect(JSON.stringify(result)).not.toContain('smtp.example.invalid');});
  it('stores encrypted settings once, disabled, and preserves existing configuration',async()=>{const client=db(),env=smtp(),encrypt=vi.fn((value:string)=>'encrypted:'+value);expect(await initializePrivateSmtp(client,env,encrypt)).toMatchObject({status:'PREPARED_DISABLED'});expect(client.configs[0]).toMatchObject({isEnabled:false,port:587,secure:false});expect(client.configs[0].password).not.toBe(env.SMTP_PASSWORD);await initializePrivateSmtp(client,{...env,SMTP_PASSWORD:credential()},encrypt);expect(client.emailConfig.create).toHaveBeenCalledTimes(1);expect(encrypt).toHaveBeenCalledTimes(1);});
  it('rejects invalid settings or failed encryption without writing a configuration',async()=>{const client=db();await expect(initializePrivateSmtp(client,{...smtp(),SMTP_PORT:'invalid'},()=>null)).rejects.toThrow('invalid');await expect(initializePrivateSmtp(client,smtp(),()=>null)).rejects.toThrow('encryption failed');expect(client.emailConfig.create).not.toHaveBeenCalled();});
