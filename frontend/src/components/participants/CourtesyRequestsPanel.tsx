@@ -76,9 +76,9 @@ export const CourtesyRequestsPanel: React.FC<{focusId?:string}> = ({focusId}) =>
     };
     if (!user || user.role === 'VIEWER')
         return null;
-    if(!focusId&&!rows.length&&!error&&!message)return null;
-    return <details open={focusId?true:undefined} className="border border-border rounded-xl bg-card p-4">
-    <summary className="font-semibold cursor-pointer">{user.role === 'ADMIN' ? 'Cortesías pendientes' : 'Mis solicitudes de cortesía'} ({rows.filter(r => r.status === 'PENDING').length})</summary>
+    if(!focusId&&!rows.length&&!error&&!message&&!history)return user.role==='ADMIN'?<button type="button" className="text-sm text-primary" onClick={()=>setHistory(true)}>Historial y gestión de cortesías</button>:null;
+    return <details open={focusId||history?true:undefined} className="border border-border rounded-xl bg-card p-4">
+    <summary className="font-semibold cursor-pointer">{user.role === 'ADMIN' ? history?'Historial de cortesías':'Cortesías pendientes' : 'Mis solicitudes de cortesía'} ({rows.filter(r => r.status === 'PENDING').length})</summary>
     <div className="mt-3 space-y-3">
       <button type="button" onClick={() => void load()} className="text-sm text-primary">Consultar resultado / Actualizar</button>
       {user.role === 'ADMIN' && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={history} onChange={e => setHistory(e.target.checked)}/>Mostrar historial</label>}
