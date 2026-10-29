@@ -1,3 +1,5 @@
+import {ReceptionTool,ReceptionTools,ReceptionHeading} from '../components/attendance/ReceptionTools';
+import {editionPeriod,supervisionQuery} from '../utils/editionPeriod';
 import {useListNavigation,useListNavigationScope} from '../hooks/useListNavigation';
 import {attendanceFilters,readListNavigation} from '../utils/listNavigation';
 import { ReceptionQueuePanel } from '../components/attendance/ReceptionQueuePanel';
@@ -60,6 +62,9 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
   const activeEdition = useRef(currentEvent?.id); activeEdition.current = currentEvent?.id;
   const { user, hasRole } = useAuth();
   const queue = useReceptionQueue();
+  const [toolsTarget,setToolsTarget]=useState<HTMLDivElement|null>(null);
+  const [historyOpen,setHistoryOpen]=useState(false),[customPeriod,setCustomPeriod]=useState(false),[allDates,setAllDates]=useState(false);
+  const period=editionPeriod(currentEvent?.startDate,currentEvent?.endDate,currentEvent?.settings?.timeZone);
 
   // Estados de datos
   const [registrations, setRegistrations] = useState<Registration[]>([]);
@@ -98,6 +103,7 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
   const [registrationToEdit, setRegistrationToEdit] = useState<Registration | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  useEffect(()=>{if(location.state?.openHistory){setHistoryOpen(true);navigate(location.pathname,{replace:true,state:null});}},[location.key]);
   const [mobileLinked, setMobileLinked] = useState(false);
   const [isQrScanOpen, setIsQrScanOpen] = useState(false);
   useEffect(() => {
@@ -163,7 +169,7 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
       const res = await attendanceService.searchAndList({
         search: search.trim() || undefined,
         status: statusFilter,
-        dateFrom:dateFrom||undefined,dateTo:dateTo||undefined,tshirtDelivery:(tshirtDelivery||undefined) as any,
+        ...supervisionQuery(historyOpen,dateFrom,dateTo,tshirtDelivery,period,allDates),
         page,
         limit: 20,
       });
@@ -179,7 +185,7 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
     } finally {
       if (version === requestVersion.current) setLoading(false);
     }
-  }, [currentEvent, search, statusFilter, page,dateFrom,dateTo,tshirtDelivery]);
+  }, [currentEvent, search, statusFilter, page,dateFrom,dateTo,tshirtDelivery,historyOpen,allDates]);
 
   const navigationFilters=React.useMemo(()=>({search,statusFilter,page,dateFrom,dateTo,tshirtDelivery}),[search,statusFilter,page,dateFrom,dateTo,tshirtDelivery]);
   useListNavigation(navigationKey,navigationFilters,loading,isDrawerOpen,queue.state.station?.mode!=='QUEUE');
@@ -268,7 +274,7 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
     try {
       await attendanceService.exportAttendance({
         status: statusFilter,
-        dateFrom:dateFrom||undefined,dateTo:dateTo||undefined,tshirtDelivery:(tshirtDelivery||undefined) as any,
+        ...supervisionQuery(historyOpen,dateFrom,dateTo,tshirtDelivery,period,allDates),
         search: search.trim() || undefined,
       });
       showFeedback('success', 'Descarga Iniciada', 'El archivo Excel de asistencia se generó correctamente.');
@@ -287,21 +293,69 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
 
   return (
     <div className={`space-y-6 max-w-7xl mx-auto ${quick?'[&_button]:min-h-11':''}`}>
-      {quick && currentEvent && hasRole(['ADMIN','OPERATOR']) && <ReceptionQueuePanel onSale={()=>setIsOnsiteSaleOpen(true)} drawerOpen={isDrawerOpen} onOpen={async id=>{const registration=await participantsService.getById(id);setSelectedRegistration(registration);setIsDrawerOpen(true);}} />}
-      {quick && currentEvent && queue.state.station?.mode !== 'QUEUE' && hasRole(['ADMIN', 'OPERATOR']) && <LinkedScannerPanel onLinkedMode={setMobileLinked} eventId={currentEvent.id} busy={isDrawerOpen || isNewParticipantOpen || isOnsiteSaleOpen || isQrScanOpen} onRead={async id => {
+      {quick&&<ReceptionHeading name={currentEvent?.name} connected={isOnline&&queue.connected} counters={counters}/>}
+      <div className={quick?'grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-5 items-start':'space-y-5'}><div className={quick?'order-2 xl:order-1 min-w-0 space-y-5':'min-w-0 space-y-5'}>
+      {quick && currentEvent && hasRole(['ADMIN','OPERATOR']) && <ReceptionQueuePanel toolsTarget={toolsTarget} onSale={()=>setIsOnsiteSaleOpen(true)} drawerOpen={isDrawerOpen} onOpen={async id=>{const registration=await participantsService.getById(id);setSelectedRegistration(registration);setIsDrawerOpen(true);}} />}
+      {quick && currentEvent && queue.state.station?.mode !== 'QUEUE' && hasRole(['ADMIN', 'OPERATOR']) && <ReceptionTool target={toolsTarget}><LinkedScannerPanel onLinkedMode={setMobileLinked} eventId={currentEvent.id} busy={isDrawerOpen || isNewParticipantOpen || isOnsiteSaleOpen || isQrScanOpen} onRead={async id => {
         const editionId = currentEvent.id;
         const registration = await participantsService.getById(id);
         if (activeEdition.current !== editionId) return;
         setSelectedRegistration(registration); setIsDrawerOpen(true);
-      }} />}
+      }} /></ReceptionTool>}
       {quick&&queue.state.station?.mode==='QUEUE'&&feedback&&<div role="status" className="scanner-ui rounded-2xl border border-primary/30 bg-primary/10 p-4 space-y-2"><h4 className="font-semibold">{feedback.title}</h4><p className="text-sm">{feedback.message}</p><button className="btn-secondary" onClick={()=>setFeedback(null)}>Siguiente participante</button></div>}
+      {quick&&<ReceptionTool target={toolsTarget}><section className="space-y-2"><h3 className="font-semibold text-sm">Acciones rápidas</h3>        {/* Botones de Acción de Recepción */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {quick && hasRole(['ADMIN', 'OPERATOR']) && (
+            <>
+              <button
+                type="button"
+                onClick={() => {if(queue.state.station?.mode==='QUEUE')window.dispatchEvent(new Event('eventgrid:queue-scan'));else setIsQrScanOpen(true);}}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-purple-600/20 transition-all cursor-pointer"
+                title="Escanear entrada QR con cámara o lector USB"
+              >
+                <QrCode className="w-4 h-4" />
+                <span>Escanear QR</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsOnsiteSaleOpen(true)}
+                className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-primary/20 transition-all cursor-pointer"
+              >
+                <ShoppingBag className="w-4 h-4" />
+                <span>Nueva venta presencial</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setRegistrationToEdit(null);
+                  setIsNewParticipantOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              >
+                <UserPlus className="w-4 h-4 text-primary" />
+                <span>Nuevo Participante</span>
+              </button>
+            </>
+          )}
+
+          <button
+            type="button"
+            hidden={false}
+            onClick={handleExport}
+            className="px-3.5 py-2 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+            title="Descargar lista de asistencia en Excel"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Exportar Asistencia (.xlsx)</span>
+          </button>
+        </div></section></ReceptionTool>}
       <div hidden={quick&&(mobileLinked || queue.state.station?.mode==='QUEUE')} className="space-y-6">
-      {!quick&&<section className="rounded-2xl border border-border bg-card p-4 space-y-3"><h2 className="font-semibold">Supervisión de asistencia</h2><div className="grid sm:grid-cols-3 gap-3"><label className="text-sm font-medium space-y-2 min-w-0">Desde (fecha de ingreso)<input type="date" className="input-field min-h-12 min-w-0 w-full bg-background text-foreground [color-scheme:light] dark:[color-scheme:dark]" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setPage(1);}}/></label><label className="text-sm font-medium space-y-2 min-w-0">Hasta<input type="date" className="input-field min-h-12 min-w-0 w-full bg-background text-foreground [color-scheme:light] dark:[color-scheme:dark]" value={dateTo} onChange={e=>{setDateTo(e.target.value);setPage(1);}}/></label><label className="text-sm font-medium space-y-2 min-w-0">Camisetas<select className="input-field" value={tshirtDelivery} onChange={e=>{setTshirtDelivery(e.target.value);if(e.target.value==='PENDING')setStatusFilter('ATTENDED');setPage(1);}}><option value="">Todas</option><option value="PENDING">Pendientes de entrega</option><option value="NOT_DELIVERED">No entregadas</option><option value="DELIVERED">Entregadas</option></select></label></div><p className="text-sm text-muted-foreground">Consulta el historial y el responsable del check-in. Para una entrega posterior, abre la ficha del participante.</p></section>}
-      {!quick && <ReceptionOverview />}
-      <ReceptionIncidentsPanel />
-      <CourtesyRequestsPanel />
+      {!quick&&<details open={historyOpen} onToggle={e=>{setHistoryOpen(e.currentTarget.open);setPage(1);}} className="rounded-2xl border border-border bg-card p-3 space-y-3"><summary className="font-semibold cursor-pointer min-h-11">Historial y supervisión</summary>{period?.singleDay&&!customPeriod?<div className="flex flex-wrap gap-2 text-sm"><p>Jornada de la edición: {period.from}</p><button className="text-primary" onClick={()=>setCustomPeriod(true)}>Cambiar período</button></div>:null}<div className="grid sm:grid-cols-3 gap-3"><label className={`text-sm font-medium space-y-2 min-w-0 ${period?.singleDay&&!customPeriod?'hidden':''}`}>Desde (fecha de ingreso)<input type="date" className="input-field min-h-12 min-w-0 w-full bg-background text-foreground [color-scheme:light] dark:[color-scheme:dark]" value={allDates?'':dateFrom||period?.from||''} onChange={e=>{setDateFrom(e.target.value);setAllDates(false);setPage(1);}}/></label><label className={`text-sm font-medium space-y-2 min-w-0 ${period?.singleDay&&!customPeriod?'hidden':''}`}>Hasta<input type="date" className="input-field min-h-12 min-w-0 w-full bg-background text-foreground [color-scheme:light] dark:[color-scheme:dark]" value={allDates?'':dateTo||period?.to||''} onChange={e=>{setDateTo(e.target.value);setAllDates(false);setPage(1);}}/></label><label className="text-sm font-medium space-y-2 min-w-0">Camisetas<select className="input-field" value={tshirtDelivery} onChange={e=>{setTshirtDelivery(e.target.value);if(e.target.value==='PENDING')setStatusFilter('ATTENDED');setPage(1);}}><option value="">Todas</option><option value="PENDING">Pendientes de entrega</option><option value="NOT_DELIVERED">No entregadas</option><option value="DELIVERED">Entregadas</option></select></label></div><button type="button" className="text-primary text-sm" onClick={()=>{setAllDates(true);setCustomPeriod(true);setDateFrom('');setDateTo('');}}>Todas las fechas</button><p className="text-sm text-muted-foreground">Consulta el historial y el responsable del check-in. Para una entrega posterior, abre la ficha del participante.</p><ReceptionOverview/><ReceptionIncidentsPanel/><CourtesyRequestsPanel/></details>}
+      {quick&&<ReceptionTool target={toolsTarget}><section className="space-y-2"><h3 className="font-semibold text-sm">Operaciones</h3><ReceptionIncidentsPanel/><CourtesyRequestsPanel/><button className="btn-secondary w-full" onClick={()=>navigate('/attendance',{state:{openHistory:true}})}>Historial y supervisión</button></section></ReceptionTool>}
       {/* Encabezado Principal de Recepción */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {!quick&&<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold px-2 py-0.5 rounded bg-primary/10 border border-primary/20">
@@ -331,55 +385,9 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
           </p>
         </div>
 
-        {/* Botones de Acción de Recepción */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          {quick && hasRole(['ADMIN', 'OPERATOR']) && (
-            <>
-              <button
-                type="button"
-                onClick={() => setIsQrScanOpen(true)}
-                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-purple-600/20 transition-all cursor-pointer"
-                title="Escanear entrada QR con cámara o lector USB"
-              >
-                <QrCode className="w-4 h-4" />
-                <span>Escanear QR</span>
-              </button>
+        {!quick&&<button type="button" className="btn-secondary" onClick={handleExport}>Exportar asistencia</button>}
 
-              <button
-                type="button"
-                onClick={() => setIsOnsiteSaleOpen(true)}
-                className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-primary/20 transition-all cursor-pointer"
-              >
-                <ShoppingBag className="w-4 h-4" />
-                <span>Nueva Venta</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setRegistrationToEdit(null);
-                  setIsNewParticipantOpen(true);
-                }}
-                className="px-3.5 py-2 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-              >
-                <UserPlus className="w-4 h-4 text-primary" />
-                <span>Nuevo Participante</span>
-              </button>
-            </>
-          )}
-
-          <button
-            type="button"
-            hidden={quick}
-            onClick={handleExport}
-            className="px-3.5 py-2 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-            title="Descargar lista de asistencia en Excel"
-          >
-            <Download className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Exportar Asistencia (.xlsx)</span>
-          </button>
-        </div>
-      </div>
+      </div>}
 
       {/* Resumen Diario de Recepción: Ventas y Cobros de Hoy */}
       {!quick && dailySales && (
@@ -419,7 +427,7 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
       )}
 
       {/* Tarjetas KPI de Asistencia en Tiempo Real */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {!quick&&<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Total Registrados */}
         <div className="p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between">
           <div>
@@ -481,7 +489,7 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
             <Clock className="w-6 h-6" />
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Banner de Feedback / Confirmación Visual */}
       {feedback && queue.state.station?.mode!=='QUEUE' && (
@@ -811,6 +819,8 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
         )}
       </div>
 
+      </div>
+      </div>{quick&&<ReceptionTools onTarget={setToolsTarget}/>}</div>
       {/* Ficha 360° del Participante */}
       <ParticipantDetailDrawer
         registration={selectedRegistration}
@@ -888,7 +898,6 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
           }
         }}
       />
-      </div>
     </div>
   );
 };

@@ -118,23 +118,32 @@ export const SalesPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <details><summary className="cursor-pointer font-semibold">Consultar orden de compras</summary><PurchaseChronology key={currentEvent?.id}/></details>
       {/* Cabecera del Módulo de Ventas */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold mb-1.5">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Módulo Financiero y Conciliación • Fase 4</span>
+            <span>Gestión financiera</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground">
-            Ventas y Conciliación Financiera
+            Ventas y conciliación
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Libro contable, arqueo de caja y conciliación de cobros para <strong>{currentEvent?.name}</strong>.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-start gap-2 min-w-0 sm:max-w-md">
+          {hasRole(['ADMIN', 'OPERATOR']) && (
+            <button
+              type="button"
+              onClick={() => setIsOnsiteSaleOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-primary/20 transition-all cursor-pointer"
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span>Nueva venta presencial</span>
+            </button>
+          )}<details className="min-w-0 w-full sm:w-auto"><summary className="btn-secondary cursor-pointer min-h-11">Herramientas financieras</summary><div className="grid sm:grid-cols-2 gap-2 py-3 min-w-0">
           {hasRole(['ADMIN','OPERATOR'])&&<Link className="btn-secondary" to="/participants?create=receipt">Registrar desde comprobante</Link>}
           {hasRole(['ADMIN','OPERATOR'])&&<Link className="btn-secondary" to="/import?destination=PURCHASES">Importar Excel de compras</Link>}
           {hasRole(['ADMIN','OPERATOR'])&&<Link className="btn-secondary" to="/import?destination=ONSITE">Importar ventas presenciales</Link>}
@@ -143,9 +152,9 @@ export const SalesPage: React.FC = () => {
             onClick={() => { void loadFinancialData(); }}
             disabled={loading}
             className="p-2.5 rounded-xl bg-card hover:bg-muted border border-border text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            title="Refrescar balance contable"
+            title="Actualizar datos" aria-label="Actualizar datos"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-primary' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-primary' : ''}`} /><span>Actualizar datos</span>
           </button>
 
           <button
@@ -159,16 +168,7 @@ export const SalesPage: React.FC = () => {
             <span>Exportar Excel</span>
           </button>
 
-          {hasRole(['ADMIN', 'OPERATOR']) && (
-            <button
-              type="button"
-              onClick={() => setIsOnsiteSaleOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-primary/20 transition-all cursor-pointer"
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span>Nueva Venta Presencial</span>
-            </button>
-          )}
+<details className="sm:col-span-2"><summary className="cursor-pointer text-sm text-primary py-2">Consultar orden de compras</summary><PurchaseChronology key={currentEvent?.id}/></details></div></details>
         </div>
       </div>
 

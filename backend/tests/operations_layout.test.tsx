@@ -1,0 +1,15 @@
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {describe,it,expect,vi} from 'vitest';
+import {ReceptionHeading,ReceptionTool,ReceptionTools} from '../../frontend/src/components/attendance/ReceptionTools';
+import {editionPeriod,supervisionQuery} from '../../frontend/src/utils/editionPeriod';
+
+describe('compact operational layout without changing business actions',()=>{
+ it('renders one reception title with the edition and real distinct counters',()=>{const html=renderToStaticMarkup(<ReceptionHeading name="Edición QA" connected counters={{totalRegistrations:100,attendedCount:60,pendingCount:40}}/>);expect(html.match(/<h1/g)).toHaveLength(1);for(const text of ['Edición QA','Registrados','Presentes','Pendientes de llegada','100','60','40','En línea'])expect(html).toContain(text);});
+ it('starts mobile tools collapsed but keeps the desktop region and an accessible control',()=>{const html=renderToStaticMarkup(<ReceptionTools onTarget={vi.fn()}/>);expect(html).toContain('aria-expanded="false"');expect(html).toContain('aria-controls=');expect(html).toContain('xl:block');expect(html).toContain('aria-label="Herramientas de recepción"');expect(html).toContain('order-1 xl:order-2');});
+ it('does not mount a second inline control while the portal target is attaching',()=>{expect(renderToStaticMarkup(<ReceptionTool target={null}><button>Leer QR</button></ReceptionTool>)).toBe('');const legacy=renderToStaticMarkup(<ReceptionTool><button>Leer QR</button></ReceptionTool>);expect(legacy.match(/Leer QR/g)).toHaveLength(1);});
+ it('recognizes a single local event day and respects the configured timezone',()=>{expect(editionPeriod('2026-11-01T13:00:00Z','2026-11-01T22:00:00Z')).toEqual({from:'2026-11-01',to:'2026-11-01',singleDay:true});expect(editionPeriod('2026-11-02T02:00:00Z','2026-11-02T03:00:00Z')?.from).toBe('2026-11-01');expect(editionPeriod('2026-11-01T13:00:00Z','2026-11-03T22:00:00Z')?.singleDay).toBe(false);});
+ it('never invents periods from invalid dates or unavailable edition settings',()=>{expect(editionPeriod()).toBeNull();expect(editionPeriod('invalid','2026-11-01')).toBeNull();expect(editionPeriod('2026-11-03','2026-11-01')).toBeNull();expect(editionPeriod('2026-11-01','2026-11-01','invalid-zone')).toBeNull();});
+ it('keeps the primary search unrestricted so not-yet-arrived participants remain searchable',()=>{const period=editionPeriod('2026-11-01T13:00:00Z','2026-11-01T22:00:00Z');expect(supervisionQuery(false,'2026-10-01','2026-10-02','PENDING',period)).toEqual({dateFrom:undefined,dateTo:undefined,tshirtDelivery:undefined});expect(supervisionQuery(true,'','','PENDING',period)).toEqual({dateFrom:'2026-11-01',dateTo:'2026-11-01',tshirtDelivery:'PENDING'});expect(supervisionQuery(true,'','','',period,true)).toEqual({dateFrom:undefined,dateTo:undefined,tshirtDelivery:undefined});});
+ it('preserves explicit history filters and uses the same query for reads and exports',()=>{expect(supervisionQuery(true,'2026-10-01','2026-10-02','DELIVERED',null)).toEqual({dateFrom:'2026-10-01',dateTo:'2026-10-02',tshirtDelivery:'DELIVERED'});});
+});
