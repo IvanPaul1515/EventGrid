@@ -3,6 +3,7 @@ import { EventsController } from './events.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
 import { requireAdmin, requireGlobalAdmin, requireAnyRole, requirePermission } from '../../middleware/rbac.js';
 import { enforceEditionAccess } from '../../middleware/editionAccess.js';
+import {setupEdition} from './edition-setup.js';
 
 const router = Router();
 
@@ -19,6 +20,7 @@ router.get('/:id/stats', requireAnyRole, EventsController.getStats);
 
 // Modificación estructural y configuración: requiere permisos de administración
 router.post('/', requireGlobalAdmin, requirePermission('SETTINGS_MANAGE'), EventsController.create);
+router.post('/setup',requireGlobalAdmin,requirePermission('SETTINGS_MANAGE'),async(req,res,next)=>{try{res.status(201).json({data:await setupEdition(req.body,req.user!.id)});}catch(error){next(error);}});
 router.put('/:id', requirePermission('SETTINGS_MANAGE'), EventsController.update);
 router.put('/:id/settings', requirePermission('SETTINGS_MANAGE'), EventsController.updateSettings);
 router.post('/:id/logo', requirePermission('SETTINGS_MANAGE'), EventsController.uploadLogo);

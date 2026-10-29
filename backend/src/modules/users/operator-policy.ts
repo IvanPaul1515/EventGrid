@@ -41,6 +41,9 @@ export function assertOperationalAccess(user:CapabilityUser,method:string,rawPat
  if(/^\/auth\/(me|logout|change-password|profile)$/.test(path)||/^\/notifications(?:\/|$)/.test(path)||/^\/events(?:\/[^/]+)?$/.test(path)&&read||/^\/realtime(?:\/|$)/.test(path)&&read||/^\/stream$/.test(path)&&read)return;
  if(/\/export(?:\/|$)/.test(path)){need('EXPORT');return;}
  if(path.startsWith('/statistics'))throw new ForbiddenError('Las estadísticas son exclusivas del administrador.');
+ if(read&&path==='/financial-summary'){need('REPORTS_READ','PAYMENT_REGISTER','SALE_REGISTER');return;}
+ if(read&&path==='/stats'){need('REPORTS_READ','CHECK_IN','QUEUE_MANAGE');return;}
+ if(read&&/^\/(ticket-types|payment-methods|sales-responsibles|custom-fields)(?:\/|$)/.test(path)){need(...participantRead,'IMPORT_MANAGE');return;}
  if(path.startsWith('/opinions')){if(read)need('OPINIONS_READ','OPINIONS_MANAGE');else need('OPINIONS_MANAGE');return;}
  if(path.startsWith('/import')){need('IMPORT_MANAGE');return;}
  if(path.startsWith('/speakers')){need('SPEAKERS_MANAGE');return;}
@@ -49,7 +52,7 @@ export function assertOperationalAccess(user:CapabilityUser,method:string,rawPat
  if(path.startsWith('/attendance/daily-sales')){need('REPORTS_READ','PAYMENT_REGISTER','SALE_REGISTER');return;}
  if(path.startsWith('/reception-queue')) {
   if(read)need('QUEUE_MANAGE','CHECK_IN');else need('QUEUE_MANAGE');
-  if(!read&&/\/entries\/[^/]+\/confirm$/.test(path)){need('CHECK_IN');if(body.tshirtDelivered===true)need('SHIRT_DELIVER');if(body.capDecision==='DELIVER')need('CAP_DELIVER');}
+  if(!read&&/\/entries\/[^/]+\/confirm$/.test(path)){need('CHECK_IN');if(body.tshirtDelivered===true||body.deliveryDecision?.decision==='DELIVER')need('SHIRT_DELIVER');if(body.capDecision==='DELIVER')need('CAP_DELIVER');}
   if(!read&&path.endsWith('/incident'))need('INCIDENTS_MANAGE');
   return;
  }
