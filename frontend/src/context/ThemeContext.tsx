@@ -12,7 +12,7 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 // Función auxiliar para convertir HEX a HSL de Tailwind
-function hexToHSL(hex: string): string {
+export function hexToHSL(hex: string): string {
   let c = hex.replace('#', '');
   if (c.length === 3) {
     c = c.split('').map((x) => x + x).join('');

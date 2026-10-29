@@ -1,4 +1,5 @@
 import { prisma } from '../../config/db.js';
+import {NotFoundError} from '../../utils/errors.js';
 import { aggregateStatistics, inDates, REASONS, reasonFor, relevantRows, shirtHistory, shirtRows, type Reason, type StatisticsFilters } from './statistics.rules.js';
 
 async function readEdition(eventId: string) {
@@ -17,7 +18,7 @@ async function readEdition(eventId: string) {
       tx.payment.findMany({where:{registration:{eventId}},select:{registrationId:true,amount:true,createdAt:true,paymentMethod:{select:{name:true}},externalMethod:true}}),
       tx.auditLog.findMany({where:{OR:[{entity:'EVENT',entityId:eventId},{entity:'TSHIRT_INVENTORY',entityId:{in:(await tx.tshirtInventory.findMany({where:{eventId},select:{id:true}})).map(r=>r.id)}}]},select:{action:true,entity:true,entityId:true,changes:true,createdAt:true},orderBy:{createdAt:'asc'}}),
     ]);
-    return {registrations,inventory,audits,caps,ticketTypes,payments,stockAudits,settings:await tx.eventSettings.findUnique({where:{eventId},select:{timeZone:true}})};
+    return {registrations,inventory,audits,caps,ticketTypes,payments,stockAudits,settings:await tx.eventSettings.findUnique({where:{eventId},select:{timeZone:true,currencyCode:true}})};
   }, {maxWait:5000,timeout:20000});
 }
 
@@ -47,6 +48,21 @@ export function stockProvenance(inventory:{id:string;size:string;initialQuantity
 function safeTimezone(value?:string) {try {new Intl.DateTimeFormat('en',{timeZone:value}).format();return value||'America/Santo_Domingo';}catch{return 'America/Santo_Domingo';}}
 
 export const StatisticsService = {
+  async compare(ids:string[]) {
+    const rows=[];
+    for(const id of ids) {
+      const event=await prisma.event.findUnique({where:{id},select:{id:true,name:true,startDate:true,endDate:true}});
+      if(!event)throw new NotFoundError('Edición no encontrada.');
+      const summary=await this.summary(id,{}),responses=await prisma.opinionResponse.findMany({where:{eventId:id,kind:'EVENT'},select:{answers:true}});
+      let total=0,count=0;
+      for(const response of responses){const answers=JSON.parse(response.answers);for(const answer of answers)if(answer.id==='general'&&answer.label==='Experiencia general'&&answer.type==='RATING'&&Number.isInteger(answer.value)&&answer.value>=1&&answer.value<=5){total+=answer.value;count++;}}
+      const eligible=summary.participants.attended+summary.participants.absent;
+      rows.push({...event,timezone:summary.timezone,currency:summary.currency,registered:summary.participants.registered,confirmed:summary.participants.confirmed,
+       attended:summary.participants.attended,absent:summary.participants.absent,attendanceRate:eligible?summary.participants.attended/eligible*100:null,
+       paymentTotal:summary.sales.paymentTotal,pendingAmount:summary.sales.pendingAmount,shirtsDelivered:summary.shirts.delivered,satisfaction:{count,mean:count?total/count:null}});
+    }
+    return rows;
+  },
   async summary(eventId:string, filters:StatisticsFilters) {
     const data=await readEdition(eventId);
     filters={...filters,timezone:safeTimezone(data.settings?.timeZone)};
@@ -58,7 +74,7 @@ export const StatisticsService = {
       const name=payment.paymentMethod?.name||payment.externalMethod||'Sin método registrado';
       paymentTotal+=Number(payment.amount);paymentCount++;methods.set(name,(methods.get(name)||0)+Number(payment.amount));
     }
-    return {...result,ticketTypes:data.ticketTypes,shirtProvenance:stockProvenance(data.inventory,data.stockAudits),
+    return {...result,currency:data.settings?.currencyCode||'DOP',ticketTypes:data.ticketTypes,shirtProvenance:stockProvenance(data.inventory,data.stockAudits),
       sales:{...result.sales,paymentTotal,paymentCount,methods:[...methods].map(([name,value])=>({name,value}))}};
   },
   async details(eventId:string, filters:StatisticsFilters, reason:Reason, page:number) {

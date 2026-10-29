@@ -5,6 +5,7 @@ import { useEdition } from '../../context/EditionContext';
 import { Role } from '../../types';
 import { AppLoadingScreen } from './AppLoadingScreen';
 import { ErrorPanel } from './ErrorPanel';
+import {canOpenSection,operatorHome} from '../../utils/capabilities';
 export const ProtectedRoute: React.FC<{ allowedRoles?: Role[] }> = ({ allowedRoles }) => {
   const { isAuthenticated, isLoading, user, authError, retryAuth } = useAuth();
   const edition = useEdition();
@@ -13,6 +14,11 @@ export const ProtectedRoute: React.FC<{ allowedRoles?: Role[] }> = ({ allowedRol
   if (authError) return <ErrorPanel kind={authError} fullScreen home="/login" onRetry={authError === '401' ? undefined : retryAuth} />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (allowedRoles && user && !allowedRoles.includes(user.role)) return <ErrorPanel kind="403" fullScreen />;
+  if(!canOpenSection(user,pathname)) {
+    const home=operatorHome(user);
+    if(pathname==='/'&&home&&home!=='/')return <Navigate to={home} replace/>;
+    return <ErrorPanel kind="403" fullScreen home={home??'/login'}/>;
+  }
   if (edition.isLoading) return <AppLoadingScreen message="Cargando ediciones..." />;
   if (edition.error) return <ErrorPanel kind={edition.error} fullScreen onRetry={edition.refreshEditions} />;
   if (!edition.currentEvent && !(user?.role === 'ADMIN' && pathname === '/editions')) return <section role="alert" className="p-8 bg-background text-foreground text-center space-y-4"><h1 className="text-xl font-bold">No hay ediciones disponibles</h1><p className="text-muted-foreground">Solicita al administrador una edición autorizada para continuar.</p><Link className="text-primary underline" to={user?.role === 'ADMIN' ? '/editions' : '/login'}>{user?.role === 'ADMIN' ? 'Gestionar ediciones' : 'Ir al inicio'}</Link></section>;

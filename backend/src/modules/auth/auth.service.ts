@@ -29,6 +29,7 @@ export class AuthService {
     return {
       token,
       user: {
+        operationalPermissions:user.operationalPermissions,
         id: user.id,
         email: user.email,
         fullName: user.fullName,
@@ -44,6 +45,7 @@ export class AuthService {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
+        operationalPermissions:true,
         id: true,
         email: true,
         fullName: true,

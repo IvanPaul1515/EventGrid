@@ -4,6 +4,7 @@ export type RegistrationStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED';
 export type PaymentStatus = 'PENDING' | 'PARTIAL' | 'PAID' | 'COURTESY';
 
 export interface User {
+  operationalPermissions?:string|null;
   scannerOnly?: boolean;
   assignedEventId?: string | null;
   id: string;

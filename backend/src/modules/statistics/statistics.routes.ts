@@ -13,6 +13,11 @@ export const statisticsQuery=z.object({from:date.optional(),to:date.optional(),t
 }).refine(q=>!q.from||!q.to||q.from<=q.to,{message:'El rango de fechas no es válido'});
 const router=Router();
 router.use(authenticateToken,(req,res,next)=>statisticsAllowed(req.user)?next():next(new ForbiddenError('Las estadísticas son exclusivas del administrador.')),editionContext);
+router.get('/comparison',async(req,res,next)=>{try{
+ const ids=z.string().transform(value=>[...new Set(value.split(','))]).pipe(z.array(z.string().uuid()).min(2).max(4)).parse(req.query.ids);
+ if(req.user!.assignedEventId&&ids.some(id=>id!==req.user!.assignedEventId))throw new ForbiddenError('Solo puedes consultar tu edición asignada.');
+ res.json({data:await StatisticsService.compare(ids)});
+}catch(error){next(error);}});
 router.get('/',async(req,res,next)=>{try{const filters=statisticsQuery.parse(req.query);res.json({data:await StatisticsService.summary(req.eventId!,filters)});}catch(error){next(error);}});
 router.get('/shirt-details',async(req,res,next)=>{try{const filters=statisticsQuery.parse(req.query);if(!filters.reason)throw new z.ZodError([{code:'custom',path:['reason'],message:'Selecciona un motivo'}]);res.json({data:await StatisticsService.details(req.eventId!,filters,filters.reason,filters.page)});}catch(error){next(error);}});
 export default router;

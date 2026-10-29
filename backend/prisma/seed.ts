@@ -5,6 +5,7 @@ import { seedDemoScanners } from '../src/modules/auth/demo-scanners.js';
 import { INITIAL_TSHIRT_INVENTORY } from '../src/modules/inventory/inventory.service.js';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import {demoSeedAllowed} from './demo-seed-policy.js';
 
 const prisma = new PrismaClient();
 
@@ -257,7 +258,7 @@ async function main() {
   console.log('🏁 Inicialización completada con éxito.');
 }
 
-main()
+(demoSeedAllowed(process.env)?main():Promise.resolve(console.log('Demo initialization skipped: quick access is not explicitly enabled. Existing accounts and editions are unchanged.')))
   .catch((e) => {
     console.error('❌ Error durante seed:', e);
     process.exit(1);

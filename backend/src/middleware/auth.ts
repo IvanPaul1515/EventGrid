@@ -1,3 +1,4 @@
+import {assertOperationalAccess} from '../modules/users/operator-policy.js';
 import {scannerNotificationRoute} from '../modules/notifications/notifications.policy.js';
 import { DeviceSessionService } from '../modules/auth/device-session.service.js';
 import { Request, Response, NextFunction } from 'express';
@@ -8,6 +9,7 @@ import { enforceEditionAccess } from './editionAccess.js';
 import { prisma } from '../config/db.js';
 
 export interface AuthUser {
+  operationalPermissions?:string|null;
   scannerOnly?: boolean;
   id: string;
   email: string;
@@ -64,7 +66,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
     // Verificar que el usuario continúe activo en la base de datos
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, email: true, fullName: true, scannerOnly: true, role: true, assignedEventId: true, isActive: true, accountStatus: true, sessionVersion: true },
+      select: { id: true, email: true, fullName: true, scannerOnly: true, role: true, assignedEventId: true, isActive: true, accountStatus: true, sessionVersion: true, operationalPermissions:true },
     });
 
     if (user && (decoded.sessionVersion || 0) !== user.sessionVersion) return next(new UnauthorizedError('La sesión fue revocada. Inicie sesión nuevamente'));
@@ -74,6 +76,7 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
 
     const session = await DeviceSessionService.validate(token, decoded, user);
     req.user = {
+      operationalPermissions:user.operationalPermissions,
       sessionId: session.id,
       id: user.id,
       email: user.email,
@@ -85,6 +88,8 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       expiresAt: session.expiresAt,
     };
 
+    const requestPath=new URL(req.originalUrl,'http://localhost').pathname;
+    assertOperationalAccess(req.user,req.method,requestPath.startsWith(ENV.API_PREFIX)?requestPath.slice(ENV.API_PREFIX.length):requestPath.replace(/^\/api(?=\/)/,''),req.body);
     if (user.scannerOnly) {
       const path = new URL(req.originalUrl, 'http://localhost').pathname;
       const prefix = ENV.API_PREFIX;

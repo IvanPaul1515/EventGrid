@@ -1,3 +1,4 @@
+import {EditionWizard} from '../components/editions/EditionWizard';
 import React, { useState } from 'react';
 import { useEdition } from '../context/EditionContext';
 import { useAuth } from '../context/AuthContext';
@@ -16,7 +17,7 @@ import {
 
 export const EditionsPage: React.FC = () => {
   const { events, currentEvent, switchEdition, refreshEditions } = useEdition();
-  const { hasRole } = useAuth();
+  const { hasRole,user,token } = useAuth();
   const [modalOpen, setModalOpen] = useState(false);
   const [cloneModalOpen, setCloneModalOpen] = useState(false);
   const [sourceEventId, setSourceEventId] = useState<string>('');
@@ -30,29 +31,6 @@ export const EditionsPage: React.FC = () => {
   const [venue, setVenue] = useState('Centro de Convenciones Principal');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-
-  const handleCreateEdition = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage(null);
-    try {
-      await api.post('/events', {
-        name,
-        slug,
-        year: Number(year),
-        startDate: new Date(startDate).toISOString(),
-        endDate: new Date(endDate).toISOString(),
-        venue,
-      });
-      setMessage('✅ Edición creada exitosamente');
-      await refreshEditions();
-      setModalOpen(false);
-    } catch (err: any) {
-      setMessage(`❌ ${err.response?.data?.message || 'Error al crear edición'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCloneEdition = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,7 +72,7 @@ export const EditionsPage: React.FC = () => {
           </p>
         </div>
 
-        {hasRole(['ADMIN']) && (
+        {hasRole(['ADMIN']) && !user?.assignedEventId && (
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => {
@@ -212,76 +190,7 @@ export const EditionsPage: React.FC = () => {
         })}
       </div>
 
-      {/* Modal para Crear Nueva Edición */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl max-w-md w-full p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-foreground mb-1">Crear Nueva Edición</h3>
-            <p className="text-xs text-muted-foreground mb-4">
-              Registra una nueva edición anual independiente para BarCamp RD.
-            </p>
-            <form onSubmit={handleCreateEdition} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">Nombre</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-xs"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1">Slug</label>
-                  <input
-                    type="text"
-                    value={slug}
-                    onChange={(e) => setSlug(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-xs font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1">Año</label>
-                  <input
-                    type="number"
-                    value={year}
-                    onChange={(e) => setYear(Number(e.target.value))}
-                    required
-                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-xs"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">Lugar</label>
-                <input
-                  type="text"
-                  value={venue}
-                  onChange={(e) => setVenue(e.target.value)}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-xs"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary-hover"
-                >
-                  {loading ? 'Creando...' : 'Crear Edición'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {modalOpen&&<EditionWizard key={user?.id+':'+token} onClose={()=>setModalOpen(false)}/>}
 
       {/* Modal para Duplicar Configuración */}
       {cloneModalOpen && (

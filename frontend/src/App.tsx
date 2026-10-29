@@ -37,6 +37,8 @@ const NotFound = () => { const { isAuthenticated } = useAuth(); return <ErrorPan
 
 const StatisticsPage=React.lazy(()=>import('./pages/StatisticsPage'));
 const NotificationDetailPage=React.lazy(()=>import('./pages/NotificationDetailPage'));
+const OpinionsPage=React.lazy(()=>import('./pages/OpinionsPage'));
+const PublicOpinionsPage=React.lazy(()=>import('./pages/PublicOpinionsPage'));
 
 export const App: React.FC = () => {
   useMobileViewport();
@@ -50,6 +52,7 @@ export const App: React.FC = () => {
                 <Routes>
                   {/* Ruta Pública */}
                   <Route path="/login" element={<LoginPage />} />
+                  <Route path="/opinions/:key" element={<PublicOpinionsPage/>}/>
                   <Route path="/activate" element={<ActivationPage />} />
                   <Route path="/forgot-password" element={<RecoveryPage />} />
                   <Route path="/reset-password" element={<RecoveryPage />} />
@@ -61,6 +64,7 @@ export const App: React.FC = () => {
                       <Route path="/attendance" element={<AttendancePage />} />
                       <Route element={<ProtectedRoute allowedRoles={['ADMIN','OPERATOR']} />}><Route path="/reception" element={<AttendancePage quick />} /></Route>
                       <Route path="/notifications/:id" element={<NotificationDetailPage />} />
+                      <Route path="/opinions" element={<OpinionsPage/>}/>
                       <Route path="/participants" element={<ParticipantsPage />} />
                       <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'OPERATOR']} />}>
                         <Route path="/import" element={<ImportPage />} />

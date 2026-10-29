@@ -1,3 +1,4 @@
+import {serializeCapabilities} from './operator-policy.js';
 import crypto from 'crypto';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
 import { InvitationsService } from './invitations.service.js';
@@ -8,7 +9,7 @@ import { prisma } from '../../config/db.js';
 import { authenticateToken } from '../../middleware/auth.js';
 import { requireAdmin } from '../../middleware/rbac.js';
 import { editionContext } from '../../middleware/editionContext.js';
-import { BadRequestError, NotFoundError } from '../../utils/errors.js';
+import { BadRequestError, NotFoundError, ForbiddenError } from '../../utils/errors.js';
 
 const input = z.object({ firstName: z.string().trim().min(1), lastName: z.string().trim().min(1),
   email: z.string().trim().email().toLowerCase(), phone: z.string().optional().nullable(), function: z.string().optional().nullable(),
@@ -60,6 +61,8 @@ personnelRoutes.post('/:id/access', requireAdmin, async (req, res, next) => {
   try {
     const data = z.object({ role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER']).default('OPERATOR'), linkExisting: z.boolean().default(false) }).parse(req.body);
     const account = await prisma.$transaction(async tx => {
+      const actor=await tx.user.findUnique({where:{id:req.user!.id}});
+      if(!actor?.isActive||actor.scannerOnly||actor.accountStatus==='PENDING'||actor.role!=='ADMIN'||actor.assignedEventId&&actor.assignedEventId!==req.eventId)throw new ForbiddenError('Se requiere un administrador vigente de la edición.');
       const staff = await tx.staffMember.findFirst({ where: { id: req.params.id, eventId: req.eventId! } });
       if (!staff) throw new NotFoundError('Colaborador no encontrado');
       if (staff.userId) throw new BadRequestError('El colaborador ya tiene una cuenta vinculada.');
@@ -72,7 +75,7 @@ personnelRoutes.post('/:id/access', requireAdmin, async (req, res, next) => {
         if (!data.linkExisting) throw new BadRequestError('Confirme la vinculación con la cuenta existente.');
         if (await tx.staffMember.findFirst({ where: { userId: user.id, eventId: req.eventId! } })) throw new BadRequestError('La cuenta ya está vinculada a otro colaborador.');
       } else {
-        user = await tx.user.create({ data: { fullName: staff.firstName + ' ' + staff.lastName, email, role: data.role, assignedEventId: req.eventId!, isActive: false, accountStatus: 'PENDING', passwordHash: 'pending-activation:' + crypto.randomUUID() } });
+        user = await tx.user.create({ data: { fullName: staff.firstName + ' ' + staff.lastName, email, role: data.role, operationalPermissions:serializeCapabilities(data.role,false), assignedEventId: req.eventId!, isActive: false, accountStatus: 'PENDING', passwordHash: 'pending-activation:' + crypto.randomUUID() } });
       }
       await tx.staffMember.update({ where: { id: staff.id }, data: { userId: user.id } });
       await tx.auditLog.create({ data: { userId: req.user!.id, action: 'USER_UPDATE', entity: 'USER', entityId: user.id, changes: JSON.stringify({ operation: 'STAFF_ACCESS_LINK', staffId: staff.id }) } });

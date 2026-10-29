@@ -1,6 +1,12 @@
 import { z } from 'zod';
+import {OPERATOR_CAPABILITIES} from './operator-policy.js';
+const capability=z.enum(Object.keys(OPERATOR_CAPABILITIES) as [keyof typeof OPERATOR_CAPABILITIES,...(keyof typeof OPERATOR_CAPABILITIES)[]]);
+export const OperatorProfileSchema=z.enum(['FULL','RECEPTION','REGISTRATION','DELIVERIES','FINANCE']);
+const permissions=z.array(capability).max(20).refine(values=>new Set(values).size===values.length,'Permisos repetidos');
 
 export const CreateUserSchema = z.object({
+  operatorProfile:OperatorProfileSchema.default('RECEPTION'),
+  operationalPermissions:permissions.optional(),
   scannerOnly: z.boolean().default(false),
   email: z.string().trim().email('Correo electrónico inválido').toLowerCase(),
   staffArea: z.string().trim().max(100).nullable().optional(),
@@ -11,6 +17,8 @@ export const CreateUserSchema = z.object({
 });
 
 export const UpdateUserSchema = z.object({
+  operatorProfile:OperatorProfileSchema.optional(),
+  operationalPermissions:permissions.optional(),
   scannerOnly: z.boolean().optional(),
   staffArea: z.string().trim().max(100).nullable().optional(),
   assignedEventId: z.string().uuid().nullable().optional(),

@@ -1,3 +1,4 @@
+import {userCapability} from '../../utils/capabilities';
 import {createContext,useContext,useEffect,useRef,useState,ReactNode} from 'react';
 import {useAuth} from '../../context/AuthContext';
 import {useEdition} from '../../context/EditionContext';
@@ -19,7 +20,7 @@ export function ReceptionQueueProvider({children}:{children:ReactNode}){
  const reload=useRef(async()=>{}),busy=useRef(false),generation=useRef(0),base=`/events/${currentEvent?.id}/reception-queue`;
  useEffect(()=>{
   let active=true,running=false,again=false;const epoch=++generation.current;setState(empty);setRows([]);setStats(null);setScannerOpen(false);setReady(false);setError('');
-  if(!token||!currentEvent||!['ADMIN','OPERATOR'].includes(user?.role||'')){setReady(true);reload.current=async()=>{};return;}
+  if(!token||!currentEvent||(!user?.scannerOnly&&!userCapability(user,'QUEUE_MANAGE')&&!userCapability(user,'CHECK_IN'))){setReady(true);reload.current=async()=>{};return;}
   const load=async()=>{if(!active)return;if(running){again=true;return;}running=true;again=false;try{
    const next=(await api.get(base+'/state')).data.data;
    const available=(await api.get(base+'/stations')).data.data;
@@ -31,7 +32,7 @@ export function ReceptionQueueProvider({children}:{children:ReactNode}){
   const wake=()=>{if(document.visibilityState==='visible')void load();},offline=()=>setConnected(false);
   window.addEventListener('online',wake);window.addEventListener('offline',offline);document.addEventListener('visibilitychange',wake);
   return()=>{active=false;clearInterval(timer);window.removeEventListener('online',wake);window.removeEventListener('offline',offline);document.removeEventListener('visibilitychange',wake);};
- },[base,token,user?.role,user?.scannerOnly]);
+ },[base,token,user?.role,user?.scannerOnly,user?.operationalPermissions]);
  useRealtimeRefresh('attendance',()=>reload.current());
  useRealtimeEvent(['RECEPTION_QUEUE_CHANGED','RESYNC','CHECK_IN_CONFIRMED','PAYMENT_RECORDED','TSHIRT_DELIVERED'],()=>{void reload.current();});
  const act=async(path:string,body:object={})=>{if(busy.current)throw Error('Hay una operación en curso.');busy.current=true;setPending(true);setError('');try{const result=(await api.post(base+path,body)).data.data;await reload.current();return result;}catch(e:any){setError(e.response?.data?.message||'No se pudo completar la operación. Comprueba la conexión.');throw e;}finally{busy.current=false;setPending(false);}};
