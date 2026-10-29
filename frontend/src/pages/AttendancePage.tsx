@@ -295,7 +295,7 @@ const AttendanceContent: React.FC<{quick:boolean;navigationKey:string|null}> = (
   return (
     <div className={`space-y-6 max-w-7xl mx-auto ${quick?'[&_button]:min-h-11':''}`}>
       {quick&&<ReceptionHeading name={currentEvent?.name} connected={isOnline&&queue.connected} counters={counters}/>}
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-5 items-start"><div className="order-1 min-w-0 space-y-5">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-5 items-start"><div className={quick?'order-2 xl:order-1 min-w-0 space-y-5':'order-1 min-w-0 space-y-5'}>
       {quick && currentEvent && hasRole(['ADMIN','OPERATOR']) && <ReceptionQueuePanel toolsTarget={toolsTarget} onSale={()=>setIsOnsiteSaleOpen(true)} drawerOpen={isDrawerOpen} onOpen={async id=>{const registration=await participantsService.getById(id);setSelectedRegistration(registration);setIsDrawerOpen(true);}} />}
       {quick && currentEvent && queue.state.station?.mode !== 'QUEUE' && hasRole(['ADMIN', 'OPERATOR']) && <ReceptionTool target={toolsTarget}><LinkedScannerPanel onLinkedMode={setMobileLinked} eventId={currentEvent.id} busy={isDrawerOpen || isNewParticipantOpen || isOnsiteSaleOpen || isQrScanOpen} onRead={async id => {
         const editionId = currentEvent.id;
