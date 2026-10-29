@@ -1,3 +1,4 @@
+import {EditionBrand} from './EditionBrand';
 import { resolveImageUrl } from '../../utils/imageUrl';
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
@@ -161,45 +162,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
           mobileOpen ? 'translate-x-0 shadow-2xl w-[82vw] max-w-[285px]' : '-translate-x-full md:translate-x-0'
         } ${collapsed ? 'md:w-20' : 'md:w-64'} pt-safe pb-safe`}
       >
-        {/* Cabecera Sidebar: Logo Oficial BarCamp 2026 */}
+        {/* Marca adaptable de la edición */}
         <div className="flex flex-col flex-1 min-h-0">
-          <div className="h-16 flex items-center px-4 border-b border-border justify-between bg-card/60 shrink-0">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <div className="h-9 flex items-center justify-center shrink-0">
-                {currentEvent?.settings?.logoUrl ? (
-                  <img
-                    src={resolveImageUrl(currentEvent.settings.logoUrl)}
-                    alt={currentEvent.name}
-                    className="h-8 w-auto object-contain"
-                  />
-                ) : (
-                  <>
-                    <img
-                      src="/barcamp-logo-white.svg"
-                      alt="BarCamp RD"
-                      className="h-7 w-auto on-dark-only object-contain"
-                    />
-                    <img
-                      src="/barcamp-logo-black.svg"
-                      alt="BarCamp RD"
-                      className="h-7 w-auto on-light-only object-contain"
-                    />
-                  </>
-                )}
-              </div>
+          <div className={`relative h-16 flex items-center border-b border-border bg-card/60 shrink-0 ${collapsed&&!mobileOpen?'px-2 justify-center':'px-4 justify-between'}`}>
+            <div className={`flex items-center min-w-0 ${collapsed&&!mobileOpen?'justify-center':'gap-3 overflow-hidden'}`}>
+              <EditionBrand name={currentEvent?.name} logoUrl={currentEvent?.settings?.logoUrl} compactLogoUrl={currentEvent?.settings?.faviconUrl} compact={collapsed&&!mobileOpen}/>
               {(!collapsed || mobileOpen) && (
                 <div className="flex flex-col">
                   <span className="font-display font-black text-sm tracking-tight text-foreground flex items-center gap-1">
                     EventGrid
                   </span>
                   <span className="text-[10px] text-muted-foreground font-mono uppercase">
-                    EventGrid · {user?.role === 'ADMIN' ? 'Administrador' : user?.role === 'OPERATOR' ? 'Operador' : 'Consulta'}
+                    EventGrid · {user?.role === 'ADMIN' ? 'Administrador' : user?.scannerOnly?'Escáner QR':user?.role === 'OPERATOR' ? 'Operador' : 'Consulta'}
                   </span>
                 </div>
               )}
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className={`flex items-center gap-1 ${collapsed&&!mobileOpen?'absolute -right-3 top-4':''}`}>
               <button
                 onClick={() => setCollapsed(!collapsed)}
                 className="hidden md:flex p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
@@ -238,7 +218,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                     className={({ isActive }) =>
                     `flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all group ${
                       isActive
-                        ? 'bg-gradient-to-r from-primary to-[#BA1513] text-white shadow-md shadow-primary/25 font-bold'
+                        ? 'bg-gradient-to-r from-primary to-primary/80 text-white shadow-md shadow-primary/25 font-bold'
                         : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
                     }`
                   }
