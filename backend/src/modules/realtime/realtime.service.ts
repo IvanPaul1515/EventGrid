@@ -172,4 +172,11 @@ export class RealtimeService {
     }
     return total;
   }
+  static shutdown() {
+    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    this.heartbeatInterval = null;
+    for (const clients of this.clients.values()) for (const client of clients) client.end();
+    this.clients.clear();
+    this.identities.clear();
+  }
 }

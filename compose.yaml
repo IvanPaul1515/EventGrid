@@ -1,0 +1,83 @@
+x-backend: &backend
+  image: ${DOCKER_NAMESPACE:-eventgrid-local}/eventgrid-backend:${IMAGE_VERSION:-dev}
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+    args:
+      VCS_REF: ${VCS_REF:-unknown}
+  environment:
+    NODE_ENV: production
+    CONTAINER_MODE: 'true'
+    PORT: '4000'
+    API_PREFIX: /api/v1
+    DATABASE_URL: postgresql://${POSTGRES_USER:-eventgrid}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-eventgrid}?schema=public
+    JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+    APP_SECRET: ${APP_SECRET:?Set persistent APP_SECRET}
+    COOKIE_SECRET: ${COOKIE_SECRET:?Set COOKIE_SECRET}
+    CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+    BLOCK_REAL_EMAIL: ${BLOCK_REAL_EMAIL:-true}
+    DEMO_QUICK_ACCESS: ${DEMO_QUICK_ACCESS:-false}
+    DEMO_SEED: ${DEMO_SEED:-false}
+    INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-}
+    INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+    INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-Administrador}
+  networks: [application, database]
+services:
+  postgres:
+    image: postgres:16.15-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-eventgrid}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-eventgrid}
+    volumes:
+      - barcamp_pgdata:/var/lib/postgresql/data
+    networks: [database]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  migrate:
+    <<: *backend
+    command: ['migrate']
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+  backend:
+    <<: *backend
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 25s
+    volumes:
+      - eventgrid_uploads:/app/backend/uploads
+    ports:
+      - '${BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-4000}:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+  frontend:
+    image: ${DOCKER_NAMESPACE:-eventgrid-local}/eventgrid-frontend:${IMAGE_VERSION:-dev}
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VCS_REF: ${VCS_REF:-unknown}
+    restart: unless-stopped
+    ports:
+      - '${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-3000}:80'
+    networks: [application]
+    depends_on:
+      backend:
+        condition: service_healthy
+volumes:
+  # Preserve the old volume key and Compose project name when updating existing installations.
+  barcamp_pgdata:
+  eventgrid_uploads:
+networks:
+  application:
+  database:
+    internal: true
