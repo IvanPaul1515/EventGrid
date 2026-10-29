@@ -44,7 +44,7 @@ export async function updateUserSafely(id: string, patch: {
         if (patch.isActive === false)
             await tx.passwordReset.updateMany({ where: { userId: id, usedAt: null, revokedAt: null }, data: { revokedAt: new Date() } });
         const updated = await tx.user.update({ where: { id }, data: { ...patch, ...(user.isActive && patch.isActive === false ? { sessionVersion: { increment: 1 } } : {}) }, select: { id: true, email: true, fullName: true, scannerOnly: true, operationalPermissions:true, role: true, assignedEventId: true, accountStatus: true, staffArea: true, isActive: true, lastLoginAt: true, createdAt: true, updatedAt: true } });
-        const changes = { before: { operationalPermissions:user.operationalPermissions, scannerOnly: user.scannerOnly, role: user.role, isActive: user.isActive, assignedEventId: user.assignedEventId }, after: { operationalPermissions:patch.operationalPermissions??user.operationalPermissions, scannerOnly: updated.scannerOnly, role: updated.role, isActive: updated.isActive, assignedEventId: updated.assignedEventId }, operation: action };
+        const changes = { before: { operationalPermissions:user.operationalPermissions, scannerOnly: user.scannerOnly, role: user.role, isActive: user.isActive, assignedEventId: user.assignedEventId }, after: { operationalPermissions:updated.operationalPermissions, scannerOnly: updated.scannerOnly, role: updated.role, isActive: updated.isActive, assignedEventId: updated.assignedEventId }, operation: action };
         await tx.auditLog.create({ data: { userId: actor.id, entity: 'USER', entityId: id, action: 'USER_UPDATE', changes: (process.env.DATABASE_URL?.startsWith('file:') ? JSON.stringify(changes) : changes) as any } });
         return updated;
     });
