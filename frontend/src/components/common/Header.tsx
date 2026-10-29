@@ -1,3 +1,4 @@
+import {NotificationCenter} from './NotificationCenter';
 import { resolveImageUrl } from '../../utils/imageUrl';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
@@ -144,12 +145,13 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
         </div>
       )}
 
-      <p title={`Santiago, República Dominicana · ${time}`} className="shrink-0 text-[10px] sm:text-xs text-muted-foreground font-mono text-center leading-tight mx-1">
+      <p title={`Santiago, República Dominicana · ${time}`} className="hidden min-[380px]:block shrink-0 text-[10px] sm:text-xs text-muted-foreground font-mono text-center leading-tight mx-1">
         <span className="hidden xl:inline">Santiago, República Dominicana · </span><span className="block sm:inline xl:hidden">Santiago<span className="hidden sm:inline"> · </span></span><time dateTime={now.toISOString()} aria-label={`Hora de Santiago, República Dominicana: ${time}`}>{time}</time>
       </p>
 
       {/* Controles de la Derecha: Tema, Rol y Perfil */}
       <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        <NotificationCenter />
         {/* Conmutador Modo Oscuro / Claro */}
         <button
           onClick={toggleTheme}

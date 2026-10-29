@@ -1,3 +1,4 @@
+import {useNotificationFocus} from '../hooks/useNotificationFocus';
 import {Link} from 'react-router-dom';
 import {ResponsiveContainer,BarChart,Bar,XAxis,YAxis,Tooltip,Legend,LabelList} from 'recharts';
 import {inventoryChart} from '../utils/inventoryChart';
@@ -35,6 +36,7 @@ export const TshirtInventoryPage: React.FC = () => {
   const isAdmin = hasRole(['ADMIN']);
 
   const [items, setItems] = useState<TshirtInventoryItem[]>([]);
+  useNotificationFocus(items.map(item=>item.id));
   const [stats, setStats] = useState<InventoryStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -400,7 +402,7 @@ export const TshirtInventoryPage: React.FC = () => {
                 </tr>
               ) : (
                 items.map((item) => (
-                  <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                  <tr id={"notice-source-"+item.id} key={item.id} className="hover:bg-muted/30 transition-colors">
                     {/* Nombre de la Talla */}
                     <td className="p-3.5 whitespace-nowrap font-bold text-foreground">
                       <div className="flex items-center gap-2">

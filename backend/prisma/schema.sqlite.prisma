@@ -92,6 +92,7 @@ model Event {
 }
 
 model EventSettings {
+  notificationStockThreshold Int?
   importMappingTemplates String?
   timeZone String @default("America/Santo_Domingo")
   allowOnsitePayments Boolean @default(false)
@@ -1187,4 +1188,40 @@ model ImportedContribution {
  sponsor Sponsor @relation(fields:[sponsorId],references:[id],onDelete:Restrict)
  @@index([eventId,sponsorId])
  @@map("imported_contributions")
+}
+
+// Notifications retain their history even when a related business record is removed.
+model AppNotification {
+ id String @id @default(uuid())
+ eventId String
+ recipientId String
+ eventKey String
+ kind String
+ audience String
+ referenceId String
+ title String
+ description String
+ priority String @default("NORMAL")
+ relatedStatus String
+ createdAt DateTime @default(now())
+ readAt DateTime?
+ @@unique([eventId,recipientId,eventKey])
+ @@index([eventId,recipientId,readAt,createdAt])
+ @@map("app_notifications")
+}
+model NotificationPreference {
+ userId String @id
+ sound Boolean @default(true)
+ desktop Boolean @default(false)
+ @@map("notification_preferences")
+}
+
+model NotificationStockState {
+ eventId String
+ itemId String
+ threshold Int
+ active Boolean @default(false)
+ episode Int @default(0)
+ @@id([eventId,itemId,threshold])
+ @@map("notification_stock_states")
 }

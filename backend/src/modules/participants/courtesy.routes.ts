@@ -15,7 +15,7 @@ const include = { registration: { select: { id: true, registrationNumber: true, 
 router.use(requireOperatorOrAdmin);
 router.get('/', async (req, res, next) => {
     try {
-        const requests = await prisma.courtesyRequest.findMany({ where: { eventId: req.eventId!, ...(req.user!.role === 'ADMIN' ? {} : { requestedByUserId: req.user!.id }), ...(req.query.status === 'PENDING' ? { status: 'PENDING' } : {}) }, include, orderBy: { createdAt: 'desc' }, take: 100 });
+        const requests = await prisma.courtesyRequest.findMany({ where: { eventId: req.eventId!, ...(typeof req.query.id==='string'?{id:z.string().uuid().parse(req.query.id)}:{}), ...(req.user!.role === 'ADMIN' ? {} : { requestedByUserId: req.user!.id }), ...(req.query.status === 'PENDING' ? { status: 'PENDING' } : {}) }, include, orderBy: { createdAt: 'desc' }, take: 100 });
         res.json({ data: requests });
     }
     catch (e) {
