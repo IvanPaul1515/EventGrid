@@ -24,7 +24,7 @@ La plataforma centraliza en un único entorno modular y seguro la administració
   - **Estado de Inscripción**: `CONFIRMED`, `PENDING`, `CANCELLED`.
   - **Estado de Pago**: `PAID`, `PARTIAL`, `PENDING`, `COURTESY`.
   - **Estado de Asistencia**: `attended: boolean` con fecha y auditoría.
-* **Prevención de Duplicados y Reversión**: Detección de intentos de reingreso y reversión controlada de asistencia exclusiva para administradores con justificación obligatoria en la bitácora de seguridad.
+* **Prevención de Duplicados y Reversión**: Detección de intentos de reingreso y confirmación irreversible de asistencia; la auditoría conserva el responsable y la fecha. No se ofrece una reversión operativa.
 
 ### 2. Inventario de Camisetas y Control de Entrega
 * **Gestión por Tallas y Edición**: Inventario independiente por evento para el seguimiento de cantidades iniciales, entregadas y disponibles.
@@ -90,62 +90,79 @@ La plataforma centraliza en un único entorno modular y seguro la administració
 
 ---
 
-## 💻 Instalación y Ejecución Local
+## Instalación y ejecución
 
-### 1. Clonar el Repositorio
-```bash
-git clone https://github.com/IvanPaul1515/EventGrid.git
-cd EventGrid
-```
+La distribución recomendada utiliza **Node.js 22**, PostgreSQL persistente y
+Docker Compose. Consulta [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) para los
+comandos de instalación, migración, respaldo y restauración verificada.
 
-### 2. Configurar Variables de Entorno
-```bash
-cp .env.example .env
-cp backend/.env.example backend/.env
-```
+1. Conserva cualquier `.env` existente. Prepara un archivo privado a partir de
+   `.env.example` únicamente si aún no existe configuración.
+2. Genera secretos aleatorios propios para PostgreSQL, JWT, cookies y `APP_SECRET`.
+   No reutilices ejemplos ni regeneres `APP_SECRET` al actualizar una instalación.
+3. Configura la cuenta administrativa inicial mediante variables privadas. El
+   arranque normal no crea cuentas demo ni inicia envíos de correo.
+4. Valida Compose, construye las imágenes y arranca los servicios siguiendo la guía.
+   Las migraciones deben finalizar antes de iniciar el backend compatible.
+5. Publica mediante HTTPS y proxy inverso; conserva los volúmenes de PostgreSQL y
+   uploads. No expongas el puerto de la base de datos.
 
-### 3. Instalar Dependencias
-```bash
-npm install
-npm install --prefix backend
-npm install --prefix frontend
-```
+Para desarrollo nativo, ejecuta `npm ci` una sola vez en la raíz de los workspaces,
+configura una base **local aislada**, genera el cliente Prisma correspondiente y
+utiliza `npm run dev:backend` y `npm run dev:frontend`. No apuntes las pruebas a una
+base operativa. SQLite se admite para desarrollo y demo; un archivo en almacenamiento
+ efímero no constituye una instalación persistente.
 
-### 4. Inicializar Base de Datos con Prisma
-```bash
-cd backend
-npx prisma generate
-npx prisma db push
-npm run prisma:seed
-cd ..
-```
+La salud del backend se consulta en `/api/v1/health`. El frontend local utiliza
+`http://localhost:5173`; Compose lo publica por defecto en `http://localhost:3000`.
+Los puertos y dominios son configurables.
 
-### 5. Iniciar Servidores de Desarrollo
-```bash
-# Terminal 1: Backend API (Puerto 4000)
-npm run dev:backend
+## Demostración y operación
 
-# Terminal 2: Frontend Web (Puerto 5173)
-npm run dev:frontend
-```
+Los cinco accesos demo corresponden a Administrador, Operador, Consulta y dos
+escáneres independientes. Solo deben habilitarse en una instalación demo aislada.
+El seed nativo requiere `DEMO_QUICK_ACCESS=true`; la distribución Docker exige además
+`DEMO_SEED=true` y `BLOCK_REAL_EMAIL=true` para activar el seed de demostración.
+No habilites esos valores con datos reales.
 
-El sistema estará accesible en:
-- **Frontend Web**: [http://localhost:5173](http://localhost:5173)
-- **Backend API**: [http://localhost:4000/api/v1](http://localhost:4000/api/v1)
-- **Health Check**: [http://localhost:4000/api/v1/health](http://localhost:4000/api/v1/health)
+En una instalación operativa, conserva el seed demo desactivado y configura un
+administrador propio mediante el procedimiento de inicialización. Las cuentas
+existentes no se borran ni se desactivan automáticamente. Una cuenta antigua no se
+considera demo solamente por su nombre o correo; cualquier retiro requiere evidencia,
+respaldo, conservación de un administrador válido y revocación controlada de sesiones.
 
----
+## Configuración y módulos recientes
 
-## 🐳 Despliegue con Docker Compose (Producción)
+- Recepción rápida: búsqueda y cola principal, herramientas secundarias y confirmación
+  expresa; no se confirma una asistencia por el mero hecho de escanear.
+- Control de asistencia: historial y supervisión con período de la edición, sin ocultar
+  participantes pendientes en la búsqueda operativa.
+- Personal y accesos: cuatro perfiles visibles y capacidades explícitas de operador,
+  verificadas también en la API. Los derechos heredados se conservan hasta su revisión.
+- Estadísticas: siete secciones, muestras y criterios descriptivos transparentes,
+  monedas identificadas y comparaciones entre ediciones autorizadas.
+- Opiniones: encuesta pública voluntaria, buzón independiente y revisión privada;
+  enlace persistido por edición, QR PNG/SVG y cartel imprimible mediante Guardar PDF.
+  La URL requiere conservar tanto la base de datos como el dominio público configurado.
+- Ediciones: asistente de seis pasos con borrador local por cuenta y sesión y creación
+  transaccional; no copia asistentes, pagos ni entregas de otra edición.
 
-```bash
-docker compose up -d --build
-```
+Los temas, logos, tarifas, permisos y existencias se configuran por edición. SMTP
+permanece desactivado hasta una autorización explícita; las vistas previas, el seed,
+las importaciones y los reinicios no deben enviar mensajes reales.
 
-Para detener los contenedores:
-```bash
-docker compose down
-```
+## Seguridad y distribución
+
+No incluyas `.env`, bases de datos, respaldos, uploads operativos, certificados ni
+secretos en Git o en imágenes. Conserva `APP_SECRET` de forma segura junto con la
+estrategia de recuperación; un dump sin las claves necesarias puede no ser restaurable
+funcionalmente. Una exportación de participantes por API no es un respaldo completo.
+
+El código conserva la licencia actual `UNLICENSED`. La propuesta
+[AGPL-3.0 para revisión](LICENSE_PROPOSAL.md) **no ha sido aplicada**. La preparación
+pública y privada, sus límites y el procedimiento de actualización están descritos en
+[DISTRIBUTION_PREPARATION.md](DISTRIBUTION_PREPARATION.md). No cambies la visibilidad
+ni publiques un historial operativo sin una revisión y autorización expresas.
 
 ---
 
