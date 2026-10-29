@@ -1062,6 +1062,7 @@ model QueueScanActivity {
 
 // Additional merchandise leaves historical T-shirt tables untouched.
 model MerchItem {
+ historyComplete Boolean @default(false)
  systemCode String?
  isActive Boolean @default(true)
  id String @id @default(uuid())

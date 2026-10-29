@@ -1,0 +1,14 @@
+@keyframes eventgrid-document-scan {
+  from { top: 5%; }
+  to { top: 95%; }
+}
+.eventgrid-document-scan-line {
+  position: absolute;
+  width: 100%;
+  height: 2px;
+  background: hsl(var(--primary));
+  animation: eventgrid-document-scan 1.7s ease-in-out infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eventgrid-document-scan-line { animation: none; top: 50%; }
+}
