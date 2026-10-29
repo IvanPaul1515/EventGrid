@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {createHash} from 'node:crypto';
 import {writeTransaction} from '../../utils/writeTransaction.js';
 import {BadRequestError,ConflictError,ForbiddenError} from '../../utils/errors.js';
 import {defaultQuestions} from '../opinions/opinions.rules.js';
@@ -18,13 +19,14 @@ export const editionSetupSchema=z.object({
 });
 export async function setupEdition(raw:unknown,actorId:string){
  const input=editionSetupSchema.parse(raw);
+ const requestHash=createHash('sha256').update(JSON.stringify(input)).digest('hex');
  try{return await writeTransaction(async tx=>{
   const actor=await tx.user.findUnique({where:{id:actorId}});
   if(!actor?.isActive||actor.role!=='ADMIN'||actor.scannerOnly||actor.assignedEventId||actor.accountStatus==='PENDING')throw new ForbiddenError('Se requiere un administrador global vigente.');
   const existing=await tx.event.findUnique({where:{id:input.id}});
   if(existing){
    const audits=await tx.auditLog.findMany({where:{entity:'EVENT',entityId:existing.id,action:'CREATE',userId:actorId},select:{changes:true}});
-   const created=audits.some(a=>{try{return (typeof a.changes==='string'?JSON.parse(a.changes):a.changes as any)?.operation==='EVENT_SETUP';}catch{return false;}});
+   const created=audits.some(a=>{try{const value=typeof a.changes==='string'?JSON.parse(a.changes):a.changes as any;return value?.operation==='EVENT_SETUP'&&value.requestHash===requestHash;}catch{return false;}});
    if(!created||existing.slug!==input.slug||existing.name!==input.name)throw new ConflictError('La confirmación ya corresponde a otra edición.');
    return existing; // Retry after an uncertain response never creates another event or overwrites configuration.
   }
@@ -37,7 +39,7 @@ export async function setupEdition(raw:unknown,actorId:string){
   if(input.shirts.length)await tx.auditLog.create({data:{userId:actorId,entity:'EVENT',entityId:event.id,action:'TSHIRT_INVENTORY_INIT',changes:JSON.stringify({sizes:input.shirts})}});
   if(input.caps.enabled)await tx.merchItem.create({data:{eventId:event.id,name:'Gorra',systemCode:'OFFICIAL_CAP',historyComplete:true,initialQuantity:input.caps.quantity,participantQuota:input.caps.participantQuota,staffQuota:input.caps.staffQuota,criterion:input.caps.criterion,eligibilityAt:new Date()}});
   await tx.opinionSurvey.create({data:{eventId:event.id,enabled:input.surveyEnabled,questions:JSON.stringify(defaultQuestions)}});
-  await tx.auditLog.create({data:{userId:actorId,entity:'EVENT',entityId:event.id,action:'CREATE',changes:JSON.stringify({operation:'EVENT_SETUP',ticketTypeId:ticket.id,surveyEnabled:input.surveyEnabled})}});
+  await tx.auditLog.create({data:{userId:actorId,entity:'EVENT',entityId:event.id,action:'CREATE',changes:JSON.stringify({operation:'EVENT_SETUP',requestHash,ticketTypeId:ticket.id,surveyEnabled:input.surveyEnabled})}});
   return event;
  });}catch(error:any){if(error.code==='P2002')throw new BadRequestError('Ya existe una edición o catálogo con ese identificador. Revisa antes de volver a confirmar.');throw error;}
 }

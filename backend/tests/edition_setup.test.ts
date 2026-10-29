@@ -1,4 +1,5 @@
 import {beforeEach,describe,it,expect,vi} from 'vitest';
+import {createHash} from 'node:crypto';
 import {editionDraftKey,newEditionDraft,readEditionDraft,editionSetupPayload} from '../../frontend/src/utils/editionDraft';
 const state=vi.hoisted(()=>({actor:{id:'admin',role:'ADMIN',isActive:true,scannerOnly:false,assignedEventId:null as string|null,accountStatus:'ACTIVE'},existing:null as any,audits:[] as any[],writes:[] as any[]}));
 const tx=vi.hoisted(()=>({
@@ -48,8 +49,9 @@ describe('edition wizard drafts and transactional publication',()=>{
   state.actor.assignedEventId=null;state.actor.role='OPERATOR';await expect(setupEdition(editionSetupPayload(validDraft()),'admin')).rejects.toThrow();
  });
  it('makes an uncertain-response retry idempotent without overwriting the first configuration',async()=>{
-  const payload=editionSetupPayload(validDraft());state.existing={id:payload.id,slug:payload.slug,name:payload.name};state.audits=[{changes:JSON.stringify({operation:'EVENT_SETUP'})}];
+  const payload=editionSetupPayload(validDraft());state.existing={id:payload.id,slug:payload.slug,name:payload.name};state.audits=[{changes:JSON.stringify({operation:'EVENT_SETUP',requestHash:createHash('sha256').update(JSON.stringify(editionSetupSchema.parse(payload))).digest('hex')})}];
   expect(await setupEdition(payload,'admin')).toEqual(state.existing);expect(state.writes).toHaveLength(0);
+  await expect(setupEdition({...payload,ticket:{...payload.ticket,price:100}},'admin')).rejects.toThrow();
   state.audits=[];await expect(setupEdition(payload,'admin')).rejects.toThrow();
  });
 });
