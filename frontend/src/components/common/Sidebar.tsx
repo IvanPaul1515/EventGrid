@@ -57,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
   }, [mobileOpen, setMobileOpen]);
 
   const navItems = [
+    {to:'/opinions',label:'Opiniones y sugerencias',icon:Mail,roles:['ADMIN','OPERATOR']},
     {to:'/statistics',label:'Estadísticas',icon:BarChart3,roles:['ADMIN']},
     {
       to: '/',

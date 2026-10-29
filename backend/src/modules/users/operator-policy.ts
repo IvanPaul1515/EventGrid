@@ -41,7 +41,7 @@ export function assertOperationalAccess(user:CapabilityUser,method:string,rawPat
  if(/^\/auth\/(me|logout|change-password|profile)$/.test(path)||/^\/notifications(?:\/|$)/.test(path)||/^\/events(?:\/[^/]+)?$/.test(path)&&read||/^\/realtime(?:\/|$)/.test(path)&&read||/^\/stream$/.test(path)&&read)return;
  if(/\/export(?:\/|$)/.test(path)){need('EXPORT');return;}
  if(path.startsWith('/statistics'))throw new ForbiddenError('Las estadísticas son exclusivas del administrador.');
- if(path.startsWith('/opinions')){need(read?'OPINIONS_READ':'OPINIONS_MANAGE');return;}
+ if(path.startsWith('/opinions')){if(read)need('OPINIONS_READ','OPINIONS_MANAGE');else need('OPINIONS_MANAGE');return;}
  if(path.startsWith('/import')){need('IMPORT_MANAGE');return;}
  if(path.startsWith('/speakers')){need('SPEAKERS_MANAGE');return;}
  if(path.startsWith('/finance')){need(read?'REPORTS_READ':'PAYMENT_REGISTER');return;}

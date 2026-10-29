@@ -1,3 +1,4 @@
+import {publicOpinionsRoutes,opinionsRoutes} from './modules/opinions/opinions.routes.js';
 import statisticsRoutes from './modules/statistics/statistics.routes.js';
 import notificationsRoutes from './modules/notifications/notifications.routes.js';
 import merchRoutes from './modules/merch/merch.routes.js';
@@ -145,6 +146,8 @@ app.use(`${ENV.API_PREFIX}/events`, eventsRoutes);
 app.use(`${ENV.API_PREFIX}/participants`, participantsRoutes);
 app.use(`${ENV.API_PREFIX}/notifications`, notificationsRoutes);
 app.use(`${ENV.API_PREFIX}/statistics`, statisticsRoutes);
+app.use(`${ENV.API_PREFIX}/public/opinions`, publicOpinionsRoutes);
+app.use(`${ENV.API_PREFIX}/opinions`, opinionsRoutes);
 app.use(`${ENV.API_PREFIX}/import`, importRoutes);
 app.use(`${ENV.API_PREFIX}/attendance`, attendanceRoutes);
 app.use(`${ENV.API_PREFIX}/activity`, activityRoutes);

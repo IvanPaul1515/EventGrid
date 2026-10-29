@@ -48,6 +48,7 @@ model User {
 }
 
 model Event {
+  opinionSurvey OpinionSurvey?
   financialReviews FinancialReview[]
   refunds RefundRequest[]
   receptionIncidents ReceptionIncident[]
@@ -1226,4 +1227,41 @@ model NotificationStockState {
  episode Int @default(0)
  @@id([eventId,itemId,threshold])
  @@map("notification_stock_states")
+}
+
+
+model OpinionSurvey {
+  eventId String @id
+  publicKey String @unique @default(uuid())
+  enabled Boolean @default(false)
+  questions String
+  updatedAt DateTime @updatedAt
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  responses OpinionResponse[]
+  suggestions OpinionSuggestion[]
+  @@map("opinion_surveys")
+}
+model OpinionResponse {
+  id String @id @default(uuid())
+  eventId String
+  kind String @default("EVENT")
+  answers String
+  createdAt DateTime @default(now())
+  survey OpinionSurvey @relation(fields: [eventId], references: [eventId], onDelete: Restrict)
+  @@index([eventId, createdAt])
+  @@map("opinion_responses")
+}
+model OpinionSuggestion {
+  id String @id @default(uuid())
+  eventId String
+  category String
+  text String
+  status String @default("PENDING")
+  useful Boolean @default(false)
+  internalNotes String @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  survey OpinionSurvey @relation(fields: [eventId], references: [eventId], onDelete: Restrict)
+  @@index([eventId, status, createdAt])
+  @@map("opinion_suggestions")
 }
