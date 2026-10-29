@@ -168,13 +168,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
             <div className={`flex items-center min-w-0 ${collapsed&&!mobileOpen?'justify-center':'gap-3 overflow-hidden'}`}>
               <EditionBrand name={currentEvent?.name} logoUrl={currentEvent?.settings?.logoUrl} compactLogoUrl={currentEvent?.settings?.faviconUrl} compact={collapsed&&!mobileOpen}/>
               {(!collapsed || mobileOpen) && (
-                <div className="flex flex-col">
+                <div className="flex flex-col min-w-0">
                   <span className="font-display font-black text-sm tracking-tight text-foreground flex items-center gap-1">
                     EventGrid
                   </span>
-                  <span className="text-[10px] text-muted-foreground font-mono uppercase">
-                    EventGrid · {user?.role === 'ADMIN' ? 'Administrador' : user?.scannerOnly?'Escáner QR':user?.role === 'OPERATOR' ? 'Operador' : 'Consulta'}
+                  <span className="text-[10px] text-muted-foreground truncate" title={currentEvent?.name}>
+                    {currentEvent?.name||'Gestión de eventos'}
                   </span>
+                  <span className="text-[10px] text-muted-foreground">{user?.role === 'ADMIN' ? 'Administrador' : user?.scannerOnly?'Escáner QR':user?.role === 'OPERATOR' ? 'Operador' : 'Consulta'}</span>
                 </div>
               )}
             </div>

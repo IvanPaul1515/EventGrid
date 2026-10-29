@@ -5,11 +5,11 @@ export function ReceptionTool({target,children}:{target?:HTMLElement|null;childr
   return target===undefined?<>{children}</>:target?createPortal(children,target):null;
 }
 
-export function ReceptionTools({onTarget}:{onTarget:(node:HTMLDivElement|null)=>void}) {
+export function ReceptionTools({onTarget,label='Herramientas de recepción'}:{onTarget:(node:HTMLDivElement|null)=>void;label?:string}) {
   const [open,setOpen]=useState(false),id=useId();
-  return <aside aria-label="Herramientas de recepción" className="order-1 xl:order-2 min-w-0 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-7rem)] xl:overflow-y-auto self-start rounded-2xl border border-border bg-card p-3 space-y-3">
-    <button type="button" className="xl:hidden w-full min-h-11 text-left font-semibold" aria-expanded={open} aria-controls={id} onClick={()=>setOpen(value=>!value)}>Herramientas de recepción {open?'−':'+'}</button>
-    <h2 className="hidden xl:block font-semibold">Herramientas de recepción</h2>
+  return <aside aria-label={label} className="order-1 xl:order-2 min-w-0 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-7rem)] xl:overflow-y-auto self-start rounded-2xl border border-border bg-card p-3 space-y-3">
+    <button type="button" className="xl:hidden w-full min-h-11 text-left font-semibold" aria-expanded={open} aria-controls={id} onClick={()=>setOpen(value=>!value)}>{label} {open?'−':'+'}</button>
+    <h2 className="hidden xl:block font-semibold">{label}</h2>
     <div id={id} className={`${open?'block':'hidden'} xl:block space-y-4`} ref={onTarget}/>
   </aside>;
 }

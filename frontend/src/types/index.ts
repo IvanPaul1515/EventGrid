@@ -19,6 +19,7 @@ export interface User {
 export type EventStatus = 'PLANNING' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 
 export interface EventSettings {
+  notificationStockThreshold?:number|null;
   timeZone?:string;allowOnsitePayments?:boolean;requirePaymentForEntry?:boolean;
   id: string;
   eventId: string;
