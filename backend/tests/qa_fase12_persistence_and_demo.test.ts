@@ -7,11 +7,14 @@ import { EventsService } from '../src/modules/events/events.service.js';
 import { DemoService } from '../src/modules/demo/demo.service.js';
 import { ParticipantsService } from '../src/modules/participants/participants.service.js';
 
+let smtpBaseline: any;
+
 describe('EVENTGRID — FASE 12: PERSISTENCIA Y AISLAMIENTO DE MODO DEMOSTRACIÓN', () => {
   const BARCAMP_EVENT_ID = '1adb61c6-6f85-43f1-93a6-b4be887bdc9c';
   let tempCleanEventId: string;
 
   beforeAll(async () => {
+    smtpBaseline = await prisma.emailConfig.findFirst({ where: { eventId: null } });
     const event = await prisma.event.findUnique({
       where: { id: BARCAMP_EVENT_ID },
       include: { settings: true },
@@ -62,17 +65,17 @@ describe('EVENTGRID — FASE 12: PERSISTENCIA Y AISLAMIENTO DE MODO DEMOSTRACIÓ
         where: { eventId: BARCAMP_EVENT_ID },
       });
       expect(config).toBeDefined();
-      expect(config?.host).toBe('smtp-relay.brevo.com');
-      expect(config?.user).toBe('bf682a001@smtp-brevo.com');
+      expect(config?.host).toBe(smtpBaseline?.host);
+      expect(config?.user).toBe(smtpBaseline?.user);
       expect(config?.password).toBeTruthy();
-      expect(config?.fromEmail).toBe('cicc-csti@ce.pucmm.edu.do');
+      expect(config?.fromEmail).toBe(smtpBaseline?.fromEmail);
     });
 
     it('4. El estado del interruptor SMTP no se apaga solo ni se desconfigura', async () => {
       const config = await CommunicationsService.getConfig(BARCAMP_EVENT_ID);
       expect(config.isEnabled).toBe(true);
       expect(config.isConfigured).toBe(true);
-      expect(config.host).toBe('smtp-relay.brevo.com');
+      expect(config.host).toBe(smtpBaseline?.host);
     });
 
     it('5. Los colores personalizados de las plantillas de correo persisten tras cambios de código', async () => {

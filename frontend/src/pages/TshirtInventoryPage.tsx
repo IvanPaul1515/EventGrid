@@ -1,3 +1,5 @@
+import {ShirtStockPanel} from '../components/inventory/ShirtStockPanel';
+import {api} from '../services/api';
 import {useNotificationFocus} from '../hooks/useNotificationFocus';
 import {Link} from 'react-router-dom';
 import {ResponsiveContainer,BarChart,Bar,XAxis,YAxis,Tooltip,Legend,LabelList} from 'recharts';
@@ -31,7 +33,7 @@ import {
 } from 'lucide-react';
 
 export const TshirtInventoryPage: React.FC = () => {
-  const { currentEvent } = useEdition();
+  const { currentEvent,refreshEditions } = useEdition();
   const { hasRole } = useAuth();
   const isAdmin = hasRole(['ADMIN']);
 
@@ -332,20 +334,7 @@ export const TshirtInventoryPage: React.FC = () => {
         </div>
       </div>
 
-      <section className="p-4 rounded-2xl bg-card border border-border min-w-0 space-y-3" aria-label="Inventario de camisetas por talla">
-        <h3 className="font-bold text-sm">Camisetas por talla</h3>
-        <p className="text-xs text-muted-foreground">Entregadas y disponibles físicas componen las existencias registradas. Pendientes representa solicitudes; no se suma al stock. Las reservas de staff permanecen dentro del stock físico.</p>
-        <div className="w-full min-w-0" role="img" aria-label="Entregas, existencias físicas y solicitudes pendientes por talla">
-          <ResponsiveContainer width="100%" height={260}><BarChart data={inventoryChart(items)} margin={{top:22,right:8,left:-16,bottom:4}} barGap={2}>
-            <XAxis dataKey="size" tick={{fontSize:11,fill:'hsl(var(--foreground))'}} interval={0}/><YAxis allowDecimals={false} tick={{fontSize:11,fill:'hsl(var(--muted-foreground))'}}/>
-            <Tooltip contentStyle={{background:'hsl(var(--card))',color:'hsl(var(--foreground))',borderColor:'hsl(var(--border))'}}/><Legend wrapperStyle={{fontSize:11}}/>
-            <Bar dataKey="delivered" name="Entregadas" fill="#059669" maxBarSize={32}><LabelList dataKey="delivered" position="top" fontSize={10} fill="hsl(var(--foreground))"/></Bar>
-            <Bar dataKey="available" name="Disponibles físicas" fill="hsl(var(--primary))" maxBarSize={32}><LabelList dataKey="available" position="top" fontSize={10} fill="hsl(var(--foreground))"/></Bar>
-            <Bar dataKey="pending" name="Solicitudes pendientes" fill="#d97706" maxBarSize={32}><LabelList dataKey="pending" position="top" fontSize={10} fill="hsl(var(--foreground))"/></Bar>
-          </BarChart></ResponsiveContainer>
-        </div>
-        <details className="text-xs"><summary className="cursor-pointer">Consultar cantidades por talla</summary>{inventoryChart(items).map(r=><p key={r.size}>{r.size}: existencias {r.total} · entregadas {r.delivered} · físicas {r.available} · libres para participantes {r.participantAvailable} · solicitudes {r.pending}</p>)}</details>
-      </section>
+      {currentEvent&&<ShirtStockPanel key={currentEvent.id} items={items} eventId={currentEvent.id} admin={isAdmin} threshold={currentEvent.settings?.notificationStockThreshold??null} onThreshold={async threshold=>{await api.put('/notifications/inventory-threshold',{threshold});await refreshEditions(true);}} onEdit={item=>{setEditingItem(item);setEditQuantity(item.initialQuantity);setEditActive(item.isActive);}}/>}
 
       {/* Tabla Detallada de Inventario */}
       <div className="rounded-2xl bg-card border border-border overflow-hidden">

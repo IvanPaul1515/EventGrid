@@ -3,6 +3,9 @@ import { InventoryController } from './inventory.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
 import { requireAdmin, requireAnyRole } from '../../middleware/rbac.js';
 import { editionContext } from '../../middleware/editionContext.js';
+import {prisma} from '../../config/db.js';
+import {NotFoundError} from '../../utils/errors.js';
+import {inventoryHistory} from './inventory-history.js';
 
 const router = Router({ mergeParams: true });
 
@@ -19,6 +22,11 @@ router.get('/staff/deliveries', requireAnyRole, InventoryController.getStaffDeli
 
 // 2. Consulta de inventario general y estadísticas
 router.get('/', requireAnyRole, InventoryController.getInventory);
+router.get('/:id/history',requireAnyRole,async(req,res,next)=>{try{
+ const item=await prisma.tshirtInventory.findFirst({where:{id:req.params.id,eventId:req.eventId!},select:{id:true,size:true}});if(!item)throw new NotFoundError('Talla no encontrada en esta edición.');
+ const rows=await prisma.auditLog.findMany({where:{OR:[{entityId:item.id,entity:'TSHIRT_INVENTORY'},{entityId:req.eventId!,entity:'EVENT',action:{in:['TSHIRT_INVENTORY_INIT','UPDATE']}}]},select:{id:true,entityId:true,action:true,changes:true,createdAt:true},orderBy:{createdAt:'desc'},take:500});
+ res.json({data:inventoryHistory(rows,item)});
+}catch(error){next(error);}});
 
 // 3. Inicialización del inventario de 282 unidades (Solo Admin)
 router.post('/init', requireAdmin, InventoryController.initInventory);

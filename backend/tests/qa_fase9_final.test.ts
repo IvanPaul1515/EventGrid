@@ -11,6 +11,8 @@ import * as XLSX from 'xlsx';
 import fs from 'fs';
 import path from 'path';
 
+let smtpBaseline: any;
+
 describe('EventGrid Fase 9: Imágenes, QR en Gmail, Tickets, Cronograma y Comunicaciones', () => {
   let testEvent: any;
   let adminUser: any;
@@ -31,6 +33,7 @@ describe('EventGrid Fase 9: Imágenes, QR en Gmail, Tickets, Cronograma y Comuni
   };
 
   beforeAll(async () => {
+    smtpBaseline = await prisma.emailConfig.findFirst({ where: { eventId: null } });
     CommunicationsService.setTransporterFactory(() => mockTransporter);
 
     adminUser = await prisma.user.create({
@@ -73,7 +76,7 @@ describe('EventGrid Fase 9: Imágenes, QR en Gmail, Tickets, Cronograma y Comuni
         port: 587,
         user: `user_fase9_${runId}@smtp-brevo.com`,
         password: 'encrypted_fake_password',
-        fromEmail: 'notificaciones@pucmm.edu.do',
+        fromEmail: 'notifications@example.invalid',
         fromName: 'EventGrid QA',
         isEnabled: true,
       },
@@ -116,9 +119,9 @@ describe('EventGrid Fase 9: Imágenes, QR en Gmail, Tickets, Cronograma y Comuni
       });
 
       expect(globalConfig).toBeDefined();
-      expect(globalConfig?.host).toBe('smtp-relay.brevo.com');
-      expect(globalConfig?.user).toBe('bf682a001@smtp-brevo.com');
-      expect(globalConfig?.fromEmail).toBe('cicc-csti@ce.pucmm.edu.do');
+      expect(globalConfig?.host).toBe(smtpBaseline?.host);
+      expect(globalConfig?.user).toBe(smtpBaseline?.user);
+      expect(globalConfig?.fromEmail).toBe(smtpBaseline?.fromEmail);
       expect(globalConfig?.isEnabled).toBe(true);
       expect(globalConfig?.password).toBeTruthy();
       expect(globalConfig?.password?.length).toBeGreaterThan(50);

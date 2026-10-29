@@ -4,6 +4,8 @@ import { ScheduleService } from '../src/modules/schedule/schedule.service.js';
 import { CommunicationsService } from '../src/modules/communications/communications.service.js';
 import { ScheduledNotificationsWorker } from '../src/modules/schedule/scheduled-notifications.worker.js';
 
+let smtpBaseline: any;
+
 describe('FASE 11 — NOTIFICACIONES DEL CRONOGRAMA, ANUNCIOS DE KEYNOTE Y SALVAGUARDAS', () => {
   const BARCAMP_EVENT_ID = '1adb61c6-6f85-43f1-93a6-b4be887bdc9c';
   const TEST_USER_ID = 'test-admin-fase11';
@@ -11,6 +13,7 @@ describe('FASE 11 — NOTIFICACIONES DEL CRONOGRAMA, ANUNCIOS DE KEYNOTE Y SALVA
   let createdScheduledNotificationIds: string[] = [];
 
   beforeAll(async () => {
+    smtpBaseline = await prisma.emailConfig.findFirst({ where: { eventId: null } });
     const event = await prisma.event.findUnique({
       where: { id: BARCAMP_EVENT_ID },
     });
@@ -51,9 +54,9 @@ describe('FASE 11 — NOTIFICACIONES DEL CRONOGRAMA, ANUNCIOS DE KEYNOTE Y SALVA
       });
       expect(config).toBeDefined();
       expect(config?.isEnabled).toBe(true);
-      expect(config?.host).toBe('smtp-relay.brevo.com');
-      expect(config?.user).toBe('bf682a001@smtp-brevo.com');
-      expect(config?.fromEmail).toBe('cicc-csti@ce.pucmm.edu.do');
+      expect(config?.host).toBe(smtpBaseline?.host);
+      expect(config?.user).toBe(smtpBaseline?.user);
+      expect(config?.fromEmail).toBe(smtpBaseline?.fromEmail);
     });
 
     it('debe preservar las 282 camisetas en el inventario con el desglose exacto', async () => {

@@ -1,0 +1,3 @@
+export function StockDistribution({total,segments,label}:{total:number;segments:{label:string;value:number;color:string}[];label:string}){
+ return <div className="space-y-1 min-w-0"><div role="img" aria-label={label} className="h-3 rounded-full bg-muted overflow-hidden flex">{segments.filter(s=>s.value>0).map(s=><span key={s.label} title={`${s.label}: ${s.value}`} className={s.color} style={{width:`${total>0?Math.min(100,Math.max(0,s.value/total*100)):0}%`}}/>)}</div><ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">{segments.filter(s=>s.value!==0).map(s=><li key={s.label}><span aria-hidden="true" className={`inline-block w-2 h-2 rounded-full mr-1 ${s.color}`}/>{s.label}: {s.value}</li>)}</ul></div>;
+}
