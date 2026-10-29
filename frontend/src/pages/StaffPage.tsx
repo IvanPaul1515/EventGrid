@@ -27,6 +27,7 @@ export function StaffPage() {
   useRealtimeRefresh('staff', load);
   return <div className="space-y-5">
     <PersonnelNavigation />
+    {hasRole(['ADMIN'])&&<Link className="btn-secondary inline-flex" to="/users?create=1">Agregar usuario</Link>}
     <div className="flex items-center justify-between gap-3"><h1 className="text-2xl font-display font-bold">Staff / Colaboradores</h1>
       {hasRole(['ADMIN']) && <button className="px-4 py-2 rounded-full bg-primary text-white text-xs font-bold" onClick={() => edit({ ...empty })}>Agregar colaborador</button>}</div>
     <p className="text-xs text-muted-foreground">Personal de {currentEvent?.name}. Registrar una persona no crea una cuenta ni envía correos. Los aportes institucionales históricos permanecen en Patrocinadores.</p>

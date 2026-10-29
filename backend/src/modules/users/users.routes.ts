@@ -1,4 +1,5 @@
 import { actionRateLimiter } from '../../middleware/rateLimiter.js';
+import {OPERATOR_CAPABILITIES,OPERATOR_PROFILES} from './operator-policy.js';
 import { editionContext } from '../../middleware/editionContext.js';
 import { ForbiddenError } from '../../utils/errors.js';
 import { z } from 'zod';
@@ -14,6 +15,7 @@ const explicitActionLimit = actionRateLimiter();
 
 // Todas las rutas de administración de usuarios requieren autenticación y rol ADMIN
 router.use(authenticateToken, requireAdmin);
+router.get('/capability-profiles',(_req,res)=>res.json({data:{capabilities:OPERATOR_CAPABILITIES,profiles:OPERATOR_PROFILES}}));
 
 async function ensureScope(ids: string[], scope?: string | null) {
   if (!scope) return;

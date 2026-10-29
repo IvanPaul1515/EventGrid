@@ -8,6 +8,7 @@ generator client {
 }
 
 model User {
+  operationalPermissions String?
   scannerOnly Boolean @default(false)
 
   recordedExternalPayments Payment[] @relation("PaymentRecorder")

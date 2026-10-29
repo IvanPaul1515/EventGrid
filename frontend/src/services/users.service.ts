@@ -1,6 +1,7 @@
 import { api } from './api';
 
 export interface UserItem {
+  operationalPermissions?:string|null;
   scannerOnly?: boolean;
   staffMembers?: { id: string; eventId: string; firstName: string; lastName: string }[];
   id: string;
@@ -29,6 +30,7 @@ export interface ListUsersResponse {
 }
 
 export interface CreateUserData {
+  operatorProfile?:string; operationalPermissions?:string[];
   scannerOnly?: boolean;
   email: string;
   staffArea?: string | null;
@@ -40,6 +42,7 @@ export interface CreateUserData {
 }
 
 export interface UpdateUserData {
+  operatorProfile?:string; operationalPermissions?:string[];
   scannerOnly?: boolean;
   staffArea?: string | null;
   accountStatus?: string;

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useEdition } from '../../context/EditionContext';
 import { useAuth } from '../../context/AuthContext';
+import {canOpenSection} from '../../utils/capabilities';
 import {
   BarChart3,
   LayoutDashboard,
@@ -221,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
           {/* Lista de Navegación con scroll independiente para pantallas pequeñas */}
           <nav className="p-3 space-y-1 overflow-y-auto flex-1">
             {navItems
-              .filter((item) => hasRole(item.roles as any))
+              .filter((item) => hasRole(item.roles as any) && canOpenSection(user,item.to))
               .map((item) => {
                 const Icon = item.icon;
                 return (

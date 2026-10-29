@@ -1,5 +1,6 @@
+import {OperatorPermissions} from '../components/common/OperatorPermissions';
 import { PersonnelNavigation } from '../components/common/PersonnelNavigation';
-import { Link } from 'react-router-dom';
+import { Link,useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useRealtimeRefresh } from '../context/RealtimeContext';
 import { UserInvitationModal, InvitationHistory } from '../components/common/UserInvitationModal';
@@ -75,6 +76,9 @@ export const UsersPage: React.FC = () => {
   });
 
   const [submitting, setSubmitting] = useState(false);
+  const [createSurname,setCreateSurname]=useState('');
+  const [createPermissions,setCreatePermissions]=useState<string[]|undefined>(),[editPermissions,setEditPermissions]=useState<string[]|undefined>();
+  const [query,setQuery]=useSearchParams();
 
   const fetchUsers = useCallback(async (silent = false) => {
     const version = ++fetchVersion.current;
@@ -109,6 +113,7 @@ export const UsersPage: React.FC = () => {
   const allVisibleSelected = users.length > 0 && users.every(user => selectedIds.includes(user.id));
 
   useRealtimeRefresh('users', () => fetchUsers(true));
+  useEffect(()=>{if(query.get('create')==='1'){setIsCreateModalOpen(true);const next=new URLSearchParams(query);next.delete('create');setQuery(next,{replace:true});}},[query]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,14 +124,15 @@ export const UsersPage: React.FC = () => {
 
       const res = await usersService.createUser({
         email: createForm.email.trim(),
-        fullName: createForm.fullName.trim(),
+        fullName: [createForm.fullName.trim(),createSurname.trim()].filter(Boolean).join(' '),
+        operationalPermissions:createPermissions,
         role: createForm.role,
         scannerOnly: createForm.scannerOnly,
         ...(createForm.scannerOnly ? {assignedEventId: currentEvent?.id} : {}),
       });
 
       setIsCreateModalOpen(false);
-      setCreateForm({ email: '', fullName: '', role: 'OPERATOR', scannerOnly: false });
+      setCreateForm({ email: '', fullName: '', role: 'OPERATOR', scannerOnly: false });setCreateSurname('');setCreatePermissions(undefined);
 
       setSuccessMsg(`Cuenta de ${res.user.fullName} creada, pendiente de activación. Selecciónela en la lista para autorizar su invitación.`);
       setTimeout(() => setSuccessMsg(null), 5000);
@@ -142,6 +148,7 @@ export const UsersPage: React.FC = () => {
 
   const handleOpenEdit = (u: UserItem) => {
     setSelectedUser(u);
+    try{setEditPermissions(u.operationalPermissions==null?undefined:JSON.parse(u.operationalPermissions));}catch{setEditPermissions([]);}
     setEditForm({
       fullName: u.fullName,
       scannerOnly: Boolean(u.scannerOnly),
@@ -161,7 +168,7 @@ export const UsersPage: React.FC = () => {
       setSubmitting(true);
       setError(null);
 
-      const updated = await usersService.updateUser(selectedUser.id, { ...editForm, assignedEventId: editForm.assignedEventId || null });
+      const updated = await usersService.updateUser(selectedUser.id, { ...editForm, operationalPermissions:editPermissions, assignedEventId: editForm.assignedEventId || null });
       setIsEditModalOpen(false);
       setSelectedUser(null);
       setSuccessMsg(`Usuario ${updated.fullName} actualizado correctamente.`);
@@ -585,7 +592,7 @@ export const UsersPage: React.FC = () => {
       {/* Modal: Crear Usuario */}
       {isCreateModalOpen && createPortal((
         <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div role="dialog" aria-modal="true" aria-label={isCreateModalOpen ? 'Crear usuario' : 'Editar usuario'} className="mobile-form-dialog w-full max-w-md max-h-[90dvh] overflow-y-auto bg-card border border-border rounded-2xl shadow-xl">
+          <div role="dialog" aria-modal="true" aria-label={isCreateModalOpen ? 'Crear usuario' : 'Editar usuario'} className="mobile-form-dialog w-full max-w-2xl max-h-[90dvh] overflow-y-auto bg-card border border-border rounded-2xl shadow-xl">
             <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
               <div className="flex items-center gap-2">
                 <UserCheck className="w-5 h-5 text-primary" />
@@ -602,9 +609,9 @@ export const UsersPage: React.FC = () => {
             <form onSubmit={handleCreateUser} className="mobile-form-body p-5 space-y-4">
               {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
               <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">Nombre Completo *</label>
+                <label className="block text-xs font-semibold text-foreground mb-1">Nombre *</label>
                 <input
-                  aria-label="Nombre completo" type="text"
+                  aria-label="Nombre" type="text"
                   required minLength={2}
                   placeholder="Ej. Laura Gómez"
                   value={createForm.fullName}
@@ -613,6 +620,7 @@ export const UsersPage: React.FC = () => {
                 />
               </div>
 
+              <label className="block text-sm">Apellido *<input required minLength={2} className="input-field w-full mt-1" value={createSurname} onChange={e=>setCreateSurname(e.target.value)}/></label>
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">Correo Electrónico *</label>
                 <input
@@ -628,16 +636,17 @@ export const UsersPage: React.FC = () => {
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">Rol en la Plataforma *</label>
                 <select aria-label="Rol"
-                  value={createForm.role}
-                  onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as any, scannerOnly: false })}
+                  value={createForm.scannerOnly?'SCANNER':createForm.role}
+                  onChange={(e) => setCreateForm({ ...createForm, role: e.target.value==='SCANNER'?'OPERATOR':e.target.value as any, scannerOnly:e.target.value==='SCANNER' })}
                   className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary cursor-pointer font-medium"
                 >
-                  <option value="OPERATOR">Operador (Check-in, Entregas y Registro)</option>
+                  <option value="OPERATOR">Operador</option><option value="SCANNER">Escáner QR</option>
                   <option value="ADMIN">Administrador</option>
                   <option value="VIEWER">Consulta</option>
                 </select>
               </div>
-<label className="flex items-center gap-3 rounded-xl border border-border p-3 text-sm"><input type="checkbox" disabled={createForm.role!=='OPERATOR'} checked={createForm.scannerOnly} onChange={e=>setCreateForm({...createForm,scannerOnly:e.target.checked})}/>Perfil restringido Escáner QR · edición actual</label>
+{createForm.role==='OPERATOR'&&!createForm.scannerOnly&&<OperatorPermissions value={createPermissions} onChange={setCreatePermissions} disabled={submitting}/>}
+              <section className="border border-border rounded-xl p-3 text-sm space-y-1"><h3 className="font-semibold">Edición y acceso</h3><p>Edición: {currentEvent?.name||'Selecciona una edición'}</p><p className="text-xs text-muted-foreground">La cuenta se crea pendiente de activación. La persona establecerá su contraseña mediante el flujo seguro existente. Crear la cuenta no envía correos.</p></section>
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-border">
                 <button
                   type="button"
@@ -662,7 +671,7 @@ export const UsersPage: React.FC = () => {
       {/* Modal: Editar Usuario */}
       {isEditModalOpen && selectedUser && createPortal((
         <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div role="dialog" aria-modal="true" aria-label={isCreateModalOpen ? 'Crear usuario' : 'Editar usuario'} className="mobile-form-dialog w-full max-w-md max-h-[90dvh] overflow-y-auto bg-card border border-border rounded-2xl shadow-xl">
+          <div role="dialog" aria-modal="true" aria-label={isCreateModalOpen ? 'Crear usuario' : 'Editar usuario'} className="mobile-form-dialog w-full max-w-2xl max-h-[90dvh] overflow-y-auto bg-card border border-border rounded-2xl shadow-xl">
             <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
               <div className="flex items-center gap-2">
                 <Edit2 className="w-5 h-5 text-primary" />
@@ -677,6 +686,8 @@ export const UsersPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleUpdateUser} className="mobile-form-body p-5 space-y-4">
+              {editForm.role==='OPERATOR'&&!editForm.scannerOnly&&<OperatorPermissions value={editPermissions} onChange={setEditPermissions} legacy={selectedUser?.operationalPermissions==null} disabled={submitting}/>}
+
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">Nombre Completo *</label>
                 <input

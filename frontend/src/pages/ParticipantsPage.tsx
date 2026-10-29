@@ -1,3 +1,4 @@
+import {userCapability} from '../utils/capabilities';
 import {lazy,Suspense} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {PaymentStatusBadge} from '../components/participants/PaymentStatusBadge';
@@ -69,7 +70,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
   const [communicationId,setCommunicationId]=useState<string|null>(null);
   const communicationBadges=useCommunicationBadges(registrations.map(reg=>reg.id));
   const mailAction=(reg:Registration)=>{
-    if(!hasRole(['ADMIN','OPERATOR']))return null;
+    if(!userCapability(user,'REGISTRATION_CREATE'))return null;
     const badge=communicationBadges[reg.id],status=badge?.lastStatus;
     const label=badge?(status?formatEmailStatus(status).label:'Sin comunicaciones'):'Consultar historial';
     const color=status&&['FAILED','REJECTED','BLOCKED'].includes(status)?'text-rose-500':status==='UNKNOWN_DELIVERY_STATUS'?'text-amber-500':status&&['SENT','DELIVERED','ACCEPTED_BY_SMTP','ACCEPTED_BY_PROVIDER'].includes(status)?'text-emerald-500':status&&['PENDING','PROCESSING','PREPARED'].includes(status)?'text-blue-500':'text-muted-foreground';
@@ -128,7 +129,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
   const [isHandwrittenOpen,setIsHandwrittenOpen]=useState(false);
   const [isBulkOpen,setIsBulkOpen]=useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  useEffect(()=>{if(receiptEntry&&hasRole(['ADMIN','OPERATOR']))setIsFormOpen(true);},[receiptEntry,hasRole]);
+  useEffect(()=>{if(receiptEntry&&userCapability(user,'REGISTRATION_CREATE'))setIsFormOpen(true);},[receiptEntry,hasRole]);
   const [selectedForDelete, setSelectedForDelete] = useState<Registration | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -350,7 +351,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Menú de Exportación */}
           <button
-            onClick={() => handleExport('xlsx')}
+            disabled={!userCapability(user,'EXPORT')} onClick={() => handleExport('xlsx')}
             className="px-3 py-2 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
             title="Exportar registros filtrados a Excel"
           >
@@ -358,7 +359,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
             <span>Excel (.xlsx)</span>
           </button>
           <button
-            onClick={() => handleExport('csv')}
+            disabled={!userCapability(user,'EXPORT')} onClick={() => handleExport('csv')}
             className="px-3 py-2 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
             title="Exportar registros filtrados a CSV"
           >
@@ -379,13 +380,13 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
             </button>
           )}
 
-          {hasRole(['ADMIN','OPERATOR']) && !user?.scannerOnly && <button type="button" className="btn-secondary" onClick={()=>setIsBulkOpen(true)}>Agregar varios participantes</button>}
+          {userCapability(user,'IMPORT_MANAGE') && <button type="button" className="btn-secondary" onClick={()=>setIsBulkOpen(true)}>Agregar varios participantes</button>}
           {/* Nueva Venta y Nuevo Registro (ADMIN y OPERATOR) */}
           {hasRole(['ADMIN', 'OPERATOR']) && (
             <>
               <button
                 type="button"
-                onClick={() => setIsOnsiteSaleOpen(true)}
+                disabled={!userCapability(user,'SALE_REGISTER')} onClick={() => setIsOnsiteSaleOpen(true)}
                 className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-primary/20 transition-all cursor-pointer"
               >
                 <ShoppingBag className="w-4 h-4" />
@@ -394,7 +395,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
 
               <button
                 type="button"
-                onClick={() => {
+                disabled={!userCapability(user,'REGISTRATION_CREATE')} onClick={() => {
                   setSelectedForEdit(null);
                   setIsFormOpen(true);
                 }}
@@ -1263,8 +1264,8 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
       />
 
       {/* Modal de Creación / Edición */}
-      {isBulkOpen&&hasRole(['ADMIN','OPERATOR'])&&!user?.scannerOnly&&<Suspense fallback={<p role="status">Cargando registro masivo…</p>}><BulkRegistration key={`${currentEvent?.id}:${user?.id}`} onClose={()=>setIsBulkOpen(false)} onSuccess={()=>{void fetchParticipants();window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));}}/></Suspense>}
-      {isHandwrittenOpen&&hasRole(['ADMIN','OPERATOR'])&&<Suspense fallback={<p role="status">Cargando escáner de listas…</p>}><HandwrittenImport key={`${currentEvent?.id}:${user?.id}`} onClose={()=>setIsHandwrittenOpen(false)} onSuccess={()=>{void fetchParticipants();window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));}}/></Suspense>}
+      {isBulkOpen&&userCapability(user,'IMPORT_MANAGE')&&<Suspense fallback={<p role="status">Cargando registro masivo…</p>}><BulkRegistration key={`${currentEvent?.id}:${user?.id}`} onClose={()=>setIsBulkOpen(false)} onSuccess={()=>{void fetchParticipants();window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));}}/></Suspense>}
+      {isHandwrittenOpen&&userCapability(user,'IMPORT_MANAGE')&&<Suspense fallback={<p role="status">Cargando escáner de listas…</p>}><HandwrittenImport key={`${currentEvent?.id}:${user?.id}`} onClose={()=>setIsHandwrittenOpen(false)} onSuccess={()=>{void fetchParticipants();window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));}}/></Suspense>}
       <ParticipantFormModal
         onScanList={()=>{setIsFormOpen(false);if(receiptEntry)setSearchParams({}, {replace:true});setIsHandwrittenOpen(true);}}
         initialReceipt={receiptEntry}

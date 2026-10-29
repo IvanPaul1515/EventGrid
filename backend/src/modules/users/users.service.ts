@@ -1,4 +1,6 @@
+import {writeTransaction} from '../../utils/writeTransaction.js';
 import { updateUserSafely } from './userSafety.js';
+import {serializeCapabilities} from './operator-policy.js';
 import { InvitationsService } from './invitations.service.js';
 import crypto from 'crypto';
 import { prisma } from '../../config/db.js';
@@ -45,7 +47,7 @@ export class UsersService {
           id: true,
           email: true,
           fullName: true,
-          role: true, scannerOnly: true,
+          role: true, scannerOnly: true, operationalPermissions:true,
           assignedEventId: true,
         accountStatus: true,
         staffArea: true,
@@ -82,7 +84,7 @@ export class UsersService {
         id: true,
         email: true,
         fullName: true,
-        role: true, scannerOnly: true,
+        role: true, scannerOnly: true, operationalPermissions:true,
         assignedEventId: true,
         accountStatus: true,
         staffArea: true,
@@ -115,12 +117,16 @@ export class UsersService {
     // An unusable marker is not a password or credential. Only token activation sets a bcrypt hash.
     const passwordHash = 'pending-activation:' + crypto.randomUUID();
 
-    const user = await prisma.user.create({
+    const user = await writeTransaction(async tx=>{
+      const actor=actorUserId?await tx.user.findUnique({where:{id:actorUserId}}):null;
+      if(!actor?.isActive||actor.scannerOnly||actor.role!=='ADMIN'||actor.accountStatus==='PENDING'||actor.assignedEventId&&actor.assignedEventId!==input.assignedEventId)throw new ForbiddenError('Se requiere un administrador vigente de la edición.');
+      const user = await tx.user.create({
       data: {
         email: input.email,
         fullName: input.fullName,
         role: input.role,
         scannerOnly: input.scannerOnly,
+        operationalPermissions:serializeCapabilities(input.role,input.scannerOnly,input.operatorProfile,input.operationalPermissions),
         assignedEventId: input.assignedEventId,
         isActive: false,
         accountStatus: 'PENDING',
@@ -131,7 +137,7 @@ export class UsersService {
         id: true,
         email: true,
         fullName: true,
-        role: true, scannerOnly: true,
+        role: true, scannerOnly: true, operationalPermissions:true,
         assignedEventId: true,
         accountStatus: true,
         staffArea: true,
@@ -143,7 +149,7 @@ export class UsersService {
     });
 
     // Auditoría
-    await prisma.auditLog.create({
+    await tx.auditLog.create({
       data: {
         userId: actorUserId || null,
         action: 'USER_CREATE',
@@ -153,11 +159,15 @@ export class UsersService {
           email: user.email,
           fullName: user.fullName,
           role: user.role,
+          operationalPermissions:user.operationalPermissions,
           isActive: user.isActive,
           accountStatus: 'PENDING',
         }),
       },
-    }).catch(() => {});
+    });
+
+      return user;
+    });
 
     await InvitationsService.prepare(user.id);
     return { user };
@@ -167,7 +177,11 @@ export class UsersService {
    * Actualizar datos básicos o rol de un usuario
    */
   static async updateUser(id: string, input: UpdateUserInput, actorUserId?: string) {
-    return updateUserSafely(id, input, actorUserId, 'UPDATE');
+    const {operatorProfile,operationalPermissions,...patch}=input;
+    const existing=await prisma.user.findUnique({where:{id}});
+    if(!existing)throw new NotFoundError('Usuario no encontrado');
+    const permissions=operatorProfile!==undefined||operationalPermissions!==undefined?{operationalPermissions:serializeCapabilities(input.role||existing.role,input.scannerOnly??existing.scannerOnly,operatorProfile,operationalPermissions)}:{};
+    return updateUserSafely(id, {...patch,...permissions}, actorUserId, 'UPDATE');
   }
 
   /**

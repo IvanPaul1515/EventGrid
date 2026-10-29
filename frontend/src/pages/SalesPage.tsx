@@ -1,3 +1,4 @@
+import {userCapability} from '../utils/capabilities';
 import {PurchaseChronology} from '../components/sales/PurchaseChronology';
 import {Link} from 'react-router-dom';
 import { FinancialOperationsPanel } from '../components/sales/FinancialOperationsPanel';
@@ -33,7 +34,7 @@ import {
 
 export const SalesPage: React.FC = () => {
   const { currentEvent } = useEdition();
-  const { hasRole } = useAuth();
+  const { hasRole,user } = useAuth();
 
   const [summary, setSummary] = useState<FinancialSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -134,7 +135,7 @@ export const SalesPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-start gap-2 min-w-0 sm:max-w-md">
-          {hasRole(['ADMIN', 'OPERATOR']) && (
+          {userCapability(user,'SALE_REGISTER') && (
             <button
               type="button"
               onClick={() => setIsOnsiteSaleOpen(true)}
@@ -144,9 +145,9 @@ export const SalesPage: React.FC = () => {
               <span>Nueva venta presencial</span>
             </button>
           )}<details className="min-w-0 w-full sm:w-auto"><summary className="btn-secondary cursor-pointer min-h-11">Herramientas financieras</summary><div className="grid sm:grid-cols-2 gap-2 py-3 min-w-0">
-          {hasRole(['ADMIN','OPERATOR'])&&<Link className="btn-secondary" to="/participants?create=receipt">Registrar desde comprobante</Link>}
-          {hasRole(['ADMIN','OPERATOR'])&&<Link className="btn-secondary" to="/import?destination=PURCHASES">Importar Excel de compras</Link>}
-          {hasRole(['ADMIN','OPERATOR'])&&<Link className="btn-secondary" to="/import?destination=ONSITE">Importar ventas presenciales</Link>}
+          {userCapability(user,'REGISTRATION_CREATE')&&<Link className="btn-secondary" to="/participants?create=receipt">Registrar desde comprobante</Link>}
+          {userCapability(user,'IMPORT_MANAGE')&&<Link className="btn-secondary" to="/import?destination=PURCHASES">Importar Excel de compras</Link>}
+          {userCapability(user,'IMPORT_MANAGE')&&<Link className="btn-secondary" to="/import?destination=ONSITE">Importar ventas presenciales</Link>}
           <button
             type="button"
             onClick={() => { void loadFinancialData(); }}
@@ -160,7 +161,7 @@ export const SalesPage: React.FC = () => {
           <button
             type="button"
             onClick={() => handleExport('xlsx')}
-            disabled={exportLoading}
+            disabled={exportLoading||!userCapability(user,'EXPORT')}
             className="px-3.5 py-2.5 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
             title="Exportar conciliación a Excel"
           >
