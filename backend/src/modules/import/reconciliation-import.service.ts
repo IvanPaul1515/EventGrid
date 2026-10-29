@@ -19,6 +19,7 @@ export async function executeReconciledImport(input: { eventId: string; userId: 
   for (const row of validation.rowsSummary) if (row.status === 'VALID' && !row.normalized.identityConflict && !row.normalized.existingRegistrationId) reserved.set(row.rowNumber, await ParticipantsService.getNextRegistrationNumber(eventId));
   const result=await writeTransaction(async tx => {
     const actor=await tx.user.findUnique({where:{id:userId}});
+    if(batchDefaults.captureKind==='BULK_REVIEWED'&&actor?.role!=='ADMIN')throw new ForbiddenError('La revisión oficial del historial requiere administrador.');
     if(actor?.scannerOnly||!actor?.isActive||actor.accountStatus!=='ACTIVE'||!['ADMIN','OPERATOR'].includes(actor.role)||(actor.assignedEventId&&actor.assignedEventId!==eventId))throw new ForbiddenError('Importador fuera de la edición autorizada.');
     const event=await tx.event.findUnique({where:{id:eventId},include:{ticketTypes:true,paymentMethods:true}});if(!event)throw new NotFoundError('Edición no encontrada.');
     const previous=await tx.importBatch.findUnique({where:{eventId_contentHash:{eventId,contentHash}}});
@@ -90,6 +91,6 @@ export async function executeReconciledImport(input: { eventId: string; userId: 
     await tx.importBatch.update({where:{id:batch.id},data:{importedRows:importedCount,updatedRows:updatedCount,skippedRows:skippedCount,errorRows:errorCount}});
     return {batchId:batch.id,fileName:input.fileName,totalRows:input.rows.length,importedCount,updatedCount,skippedCount,errorCount,reviewCount,errors};
   },{timeout:60000});
-  let merch;try{merch=await MerchService.reconcileOfficialCaps(eventId,userId);}catch(error){console.warn('Conciliación de gorras pendiente tras importación conservada');merch={eligible:[],issues:[{reason:'Importación conservada; conciliación de gorras pendiente. Revisa Inventario de merch.'}]};}
+  let merch;if(batchDefaults.deferMerchReconciliation==='true')merch={eligible:[],issues:[{reason:'Importación conservada; revisa el ranking conjunto y confirma la conciliación administrativa de gorras.'}]};else try{merch=await MerchService.reconcileOfficialCaps(eventId,userId);}catch(error){console.warn('Conciliación de gorras pendiente tras importación conservada');merch={eligible:[],issues:[{reason:'Importación conservada; conciliación de gorras pendiente. Revisa Inventario de merch.'}]};}
   return {...result,merchReconciliation:merch};
 }

@@ -35,6 +35,7 @@ const AuditPage = React.lazy(() => import('./pages/AuditPage').then((m) => ({ de
 
 const NotFound = () => { const { isAuthenticated } = useAuth(); return <ErrorPanel kind="404" fullScreen home={isAuthenticated ? '/' : '/login'} />; };
 
+const StatisticsPage=React.lazy(()=>import('./pages/StatisticsPage'));
 const NotificationDetailPage=React.lazy(()=>import('./pages/NotificationDetailPage'));
 
 export const App: React.FC = () => {
@@ -72,6 +73,7 @@ export const App: React.FC = () => {
                       <Route path="/inventory" element={<TshirtInventoryPage />} />
                       <Route path="/schedule" element={<SchedulePage />} />
                       <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
+                        <Route path="/statistics" element={<StatisticsPage />} />
                         <Route path="/editions" element={<EditionsPage />} />
                         <Route path="/settings" element={<SettingsPage />} />
                         <Route path="/users" element={<UsersPage />} />

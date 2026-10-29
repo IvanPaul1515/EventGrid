@@ -53,6 +53,7 @@ export const ParticipantsPage: React.FC = () => {
   const scope=useListNavigationScope('participants');
   return <ParticipantsContent key={scope||'pending'} navigationKey={scope}/>;
 };
+const BulkRegistration=lazy(()=>import('../components/participants/BulkRegistration'));
 const HandwrittenImport=lazy(()=>import('../components/participants/HandwrittenImport'));
 
 const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationKey}) => {
@@ -125,6 +126,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
   const [isOnsiteSaleOpen, setIsOnsiteSaleOpen] = useState(false);
   const [selectedForEdit, setSelectedForEdit] = useState<Registration | null>(null);
   const [isHandwrittenOpen,setIsHandwrittenOpen]=useState(false);
+  const [isBulkOpen,setIsBulkOpen]=useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   useEffect(()=>{if(receiptEntry&&hasRole(['ADMIN','OPERATOR']))setIsFormOpen(true);},[receiptEntry,hasRole]);
   const [selectedForDelete, setSelectedForDelete] = useState<Registration | null>(null);
@@ -377,6 +379,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
             </button>
           )}
 
+          {hasRole(['ADMIN','OPERATOR']) && !user?.scannerOnly && <button type="button" className="btn-secondary" onClick={()=>setIsBulkOpen(true)}>Agregar varios participantes</button>}
           {/* Nueva Venta y Nuevo Registro (ADMIN y OPERATOR) */}
           {hasRole(['ADMIN', 'OPERATOR']) && (
             <>
@@ -398,7 +401,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
                 className="px-3.5 py-2 rounded-xl bg-card hover:bg-muted border border-border text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Plus className="w-4 h-4 text-primary" />
-                <span>Agregar participantes</span>
+                <span>Agregar participante</span>
               </button>
             </>
           )}
@@ -1260,6 +1263,7 @@ const ParticipantsContent: React.FC<{navigationKey:string|null}> = ({navigationK
       />
 
       {/* Modal de Creación / Edición */}
+      {isBulkOpen&&hasRole(['ADMIN','OPERATOR'])&&!user?.scannerOnly&&<Suspense fallback={<p role="status">Cargando registro masivo…</p>}><BulkRegistration key={`${currentEvent?.id}:${user?.id}`} onClose={()=>setIsBulkOpen(false)} onSuccess={()=>{void fetchParticipants();window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));}}/></Suspense>}
       {isHandwrittenOpen&&hasRole(['ADMIN','OPERATOR'])&&<Suspense fallback={<p role="status">Cargando escáner de listas…</p>}><HandwrittenImport key={`${currentEvent?.id}:${user?.id}`} onClose={()=>setIsHandwrittenOpen(false)} onSuccess={()=>{void fetchParticipants();window.dispatchEvent(new CustomEvent('eventgrid:data-refresh'));}}/></Suspense>}
       <ParticipantFormModal
         onScanList={()=>{setIsFormOpen(false);if(receiptEntry)setSearchParams({}, {replace:true});setIsHandwrittenOpen(true);}}

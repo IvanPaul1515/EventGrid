@@ -4,6 +4,7 @@ import { NavLink } from 'react-router-dom';
 import { useEdition } from '../../context/EditionContext';
 import { useAuth } from '../../context/AuthContext';
 import {
+  BarChart3,
   LayoutDashboard,
   Users,
   UserCheck,
@@ -55,6 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
   }, [mobileOpen, setMobileOpen]);
 
   const navItems = [
+    {to:'/statistics',label:'Estadísticas',icon:BarChart3,roles:['ADMIN']},
     {
       to: '/',
       label: 'Dashboard',

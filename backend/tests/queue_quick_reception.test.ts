@@ -172,10 +172,11 @@ describe('one atomic queue confirmation for attendance and merch',()=>{
   mocks.db.queueDevice.findFirst.mockResolvedValue(null);
   moves=[{kind:'RESERVE',quantity:1}];audits=[];
   cap={id:'cap-right',itemId:'cap-stock',eventId:'event',kind:'PARTICIPANT',recipientId:reg.id,status:'RESERVED',item:{participantQuota:100,isActive:true}};
-  capStock={id:'cap-stock',eventId:'event',systemCode:'OFFICIAL_CAP',isActive:true,initialQuantity:150,participantQuota:100,staffQuota:50,version:0,movements:moves,allocations:[cap]};
+  capStock={id:'cap-stock',eventId:'event',systemCode:'OFFICIAL_CAP',historyComplete:true,isActive:true,initialQuantity:150,participantQuota:100,staffQuota:50,version:0,movements:moves,allocations:[cap]};
   mocks.db.merchAllocation.findFirst.mockImplementation(async({where}:any)=>where.id&&where.id!==cap.id||where.recipientId&&where.recipientId!==cap.recipientId?null:cap);
   mocks.db.merchAllocation.updateMany.mockImplementation(async({where,data}:any)=>{if(cap.status!==where.status)return {count:0};Object.assign(cap,data);return {count:1};});
   mocks.db.merchItem.findFirst.mockImplementation(async()=>capStock);
+  mocks.db.merchItem.findUnique.mockImplementation(async()=>capStock);
   mocks.db.merchItem.updateMany.mockImplementation(async({where}:any)=>{if(capStock.version!==where.version)return {count:0};capStock.version++;return {count:1};});
   mocks.db.merchMovement.create.mockImplementation(async({data}:any)=>{moves.push(data);return data;});
   mocks.db.tshirtInventory.updateMany.mockImplementation(async({data}:any)=>{Object.assign(stock,data);return {count:1};});
@@ -196,6 +197,11 @@ describe('one atomic queue confirmation for attendance and merch',()=>{
  it('rejects cap delivery without verified eligibility and restores all writes',async()=>{
   reg.officialRegistrationOrder=150;await expect(Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'},'DELIVER',requestKey)).rejects.toThrow('gorra asignada');
   expect(reg.attended).toBe(false);expect(stock.deliveredQuantity).toBe(2);expect(moves).toHaveLength(1);
+ });
+ it('requires complete official history before delivering a previously reserved cap',async()=>{
+  capStock.historyComplete=false;
+  await expect(Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'},'DELIVER',requestKey)).rejects.toThrow('gorra asignada');
+  expect(reg.attended).toBe(false);expect(stock.deliveredQuantity).toBe(2);expect(cap.status).toBe('RESERVED');expect(moves.filter(m=>m.kind==='DELIVER')).toHaveLength(0);
  });
  it('replays the committed result after a lost response without duplicate check-in or stock deductions',async()=>{
   const first=await Q.complete(operator,'event','entry','M',true,{decision:'DELIVER'},'DELIVER',requestKey);

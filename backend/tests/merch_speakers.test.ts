@@ -16,7 +16,7 @@ import {SpeakerSchema} from '../src/modules/speakers/speakers.dto.js';
 let item:any,allocations:any[],movements:any[],speaker:any;
 beforeEach(()=>{
  vi.clearAllMocks();allocations=[];movements=[];speaker={id:'speaker',eventId:'event',fullName:'Charlista QA',email:'speaker@example.invalid',status:'CONFIRMED',version:0,registrationId:null};
- item={id:'cap',eventId:'event',initialQuantity:150,participantQuota:100,staffQuota:50,criterion:'REGISTRATION',version:0,allocations,movements};
+ item={historyComplete:true,id:'cap',eventId:'event',initialQuantity:150,participantQuota:100,staffQuota:50,criterion:'REGISTRATION',version:0,allocations,movements};
  m.db.merchItem={findUnique:vi.fn(async()=>item.systemCode==='OFFICIAL_CAP'?item:null),findFirst:vi.fn(async({where}:any)=>where.eventId===item.eventId&&where.id===item.id?item:null),create:vi.fn(async({data}:any)=>Object.assign(item,data,{id:'cap'})),updateMany:vi.fn(async()=>({count:1})),update:vi.fn(async({data}:any)=>Object.assign(item,data))};
  m.db.merchMovement={findMany:vi.fn(async()=>movements),findUnique:vi.fn(async({where}:any)=>movements.find(m=>m.requestKey===where.requestKey)),create:vi.fn(async({data}:any)=>{const row={id:'m'+movements.length,...data};movements.push(row);return row;})};
  m.db.merchAllocation={findUnique:vi.fn(async({where}:any)=>allocations.find(a=>a.itemId===where.itemId_kind_recipientId.itemId&&a.kind===where.itemId_kind_recipientId.kind&&a.recipientId===where.itemId_kind_recipientId.recipientId)),findFirst:vi.fn(async({where}:any)=>allocations.find(a=>a.id===where.id&&a.eventId===where.eventId)),count:vi.fn(async({where}:any)=>allocations.filter(a=>a.kind===where.kind&&a.status!=='RELEASED').length),create:vi.fn(async({data}:any)=>{const row={id:'a'+allocations.length,status:'RESERVED',...data};allocations.push(row);return row;}),update:vi.fn(async({where,data}:any)=>Object.assign(allocations.find(a=>a.id===where.id),data)),updateMany:vi.fn(async({where,data}:any)=>{const row=allocations.find(a=>a.id===where.id&&a.status===where.status);if(!row)return {count:0};Object.assign(row,data);return {count:1};})};
@@ -92,6 +92,7 @@ describe('official caps, repeat imports and role boundaries',()=>{
 
 describe('official cap boundaries and current source verification',()=>{
  it.each([[48,true],[100,true],[101,false],[150,false]])('checks official rank %s independently of arrival',async(position,eligible)=>{
+  await M.ensureOfficialCaps('event','admin');
   const row={id:'recipient',officialRegistrationOrder:position,officialOrderSource:'No. Registro',importOriginalData:{'No. Registro':position}};
   m.db.registration.findMany.mockResolvedValue([row]);expect(await verifiedCapOrder(m.db,'event',row.id)).toMatchObject({order:position,eligible,pending:false});
  });

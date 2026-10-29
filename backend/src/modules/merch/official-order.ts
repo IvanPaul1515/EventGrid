@@ -20,12 +20,19 @@ export function officialEligibility(rows:{id:string;officialRegistrationOrder?:n
  return {eligible,issues};
 }
 
-export function capEligibility(rows:any[],policy='OFFICIAL_REGISTRATION',cutoff=100){
+export function capEligibility(rows:any[],policy='OFFICIAL_REGISTRATION',cutoff=100,historyComplete=true){
+ if(!historyComplete)return {policy,eligible:[] as string[],issues:rows.map(r=>({registrationId:r.id,reason:'Historial de la edición pendiente de revisión administrativa; no se conceden derechos por un ranking parcial.'})),orders:{} as Record<string,number>};
  if(policy==='OFFICIAL_PURCHASE'){
   const buyers=rows.filter(r=>!r.isCourtesy&&Number(r.amountPaid)>0),chronology=purchaseChronology(buyers);
   return {policy,eligible:chronology.filter(r=>r.position!==null&&r.position<=Math.min(100,cutoff)).map(r=>r.id),issues:chronology.filter(r=>r.position===null).map(r=>({registrationId:r.id,reason:'Compra sin prioridad verificable; faltan fechas, zona o desempate oficial.'})),orders:Object.fromEntries(chronology.filter(r=>r.position!==null).map(r=>[r.id,r.position!])) as Record<string,number>};
  }
+ const hasAbsolute=rows.some(r=>r.officialRegistrationOrder||officialOrder(r.importOriginalData,r.importBatch?.mappingConfig));
+ if(!hasAbsolute){
+  const chronology=purchaseChronology(rows.map(r=>{let dates:any={};try{dates=JSON.parse(r.historicalDates||'{}');}catch{}return {...r,historicalDates:JSON.stringify({purchasedAt:dates.registeredAt,purchaseSequence:dates.registrationSequence})};}));
+  return {policy:'OFFICIAL_REGISTRATION',eligible:chronology.filter(r=>r.position!==null&&r.position<=Math.min(100,cutoff)).map(r=>r.id),issues:chronology.filter(r=>r.position===null).map(r=>({registrationId:r.id,reason:'Inscripción sin fecha y hora oficial verificable o con empate sin resolver.'})),orders:Object.fromEntries(chronology.filter(r=>r.position!==null).map(r=>[r.id,r.position!])) as Record<string,number>};
+ }
  const result=officialEligibility(rows,cutoff),invalid=new Set(result.issues.map(i=>i.registrationId));
+ if(result.issues.length)return {policy:'OFFICIAL_REGISTRATION',eligible:[] as string[],orders:{} as Record<string,number>,issues:rows.map(r=>({registrationId:r.id,reason:'La secuencia conjunta contiene registros o empates pendientes; requiere conciliación antes de conceder nuevos derechos.'}))};
  return {...result,policy:'OFFICIAL_REGISTRATION',orders:Object.fromEntries(rows.filter(r=>!invalid.has(r.id)&&r.officialOrderSource&&r.officialRegistrationOrder).map(r=>[r.id,r.officialRegistrationOrder])) as Record<string,number>};
 }
 export const capRegistrationSelect={id:true,officialRegistrationOrder:true,officialOrderSource:true,importOriginalData:true,importBatch:{select:{mappingConfig:true}},historicalDates:true,source:true,externalReference:true,amountPaid:true,isCourtesy:true} as const;
@@ -33,7 +40,7 @@ export const capRegistrationSelect={id:true,officialRegistrationOrder:true,offic
 export async function verifiedCapOrder(db:any,eventId:string,registrationId:string,cutoff=100){
  const cap=await db.merchItem.findUnique({where:{eventId_systemCode:{eventId,systemCode:'OFFICIAL_CAP'}}});
  const rows=await db.registration.findMany({where:{eventId,isDemo:false,status:{not:'CANCELLED'}},select:capRegistrationSelect});
- const result=capEligibility(rows,cap?.criterion,cutoff),order=result.orders[registrationId]??null;
+ const result=capEligibility(rows,cap?.criterion,cutoff,cap?.historyComplete===true),order=result.orders[registrationId]??null;
  const issue=result.issues.some(i=>i.registrationId===registrationId);
  return {order,policy:result.policy,eligible:!!order&&!issue&&result.eligible.includes(registrationId),pending:issue||!order};
 }

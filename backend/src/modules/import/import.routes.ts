@@ -1,3 +1,4 @@
+import {BulkInputSchema,validateBulk,executeBulk} from './bulk.service.js';
 import {HandwrittenInputSchema,assertHandwrittenRole,validateHandwritten,executeHandwritten} from './handwritten.service.js';
 import {ModuleImportService} from './module-import.service.js';
 import {MODULE_KINDS,MODULE_FIELDS,moduleMapping,importAccess} from './module-rules.js';
@@ -18,6 +19,8 @@ const router = Router({ mergeParams: true });
 router.use(authenticateToken);
 router.use(editionContext);
 router.use((req,_res,next)=>req.user?.scannerOnly?next(new ForbiddenError('El perfil Escáner QR no puede importar información.')):next());
+router.post('/bulk/validate',requireOperatorOrAdmin,async(req,res,next)=>{try{res.json({data:await validateBulk(req.eventId!,req.user!,BulkInputSchema.parse(req.body))});}catch(error){next(error);}});
+router.post('/bulk/execute',requireOperatorOrAdmin,async(req,res,next)=>{try{const result=await executeBulk(req.eventId!,req.user!,BulkInputSchema.parse(req.body));RealtimeService.changed(req.eventId!,['participants','sales','inventory']);res.json({data:result});}catch(error){next(error);}});
 
 router.post('/handwritten/validate',requireOperatorOrAdmin,async(req,res,next)=>{try{assertHandwrittenRole(req.user);res.json({data:await validateHandwritten(req.eventId!,HandwrittenInputSchema.parse(req.body))});}catch(e){next(e);}});
 router.post('/handwritten/execute',requireOperatorOrAdmin,async(req,res,next)=>{try{assertHandwrittenRole(req.user);const result=await executeHandwritten(req.eventId!,req.user!.id,HandwrittenInputSchema.parse(req.body));RealtimeService.changed(req.eventId!,['participants','sales','inventory']);res.json({data:result});}catch(e){next(e);}});
