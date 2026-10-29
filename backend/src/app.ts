@@ -1,3 +1,4 @@
+import notificationsRoutes from './modules/notifications/notifications.routes.js';
 import merchRoutes from './modules/merch/merch.routes.js';
 import speakersRoutes from './modules/speakers/speakers.routes.js';
 import queueRoutes from './modules/scanner/queue.routes.js';
@@ -141,6 +142,7 @@ app.use(`${ENV.API_PREFIX}/events/:eventId/schedule`, scheduleRoutes);
 app.use(`${ENV.API_PREFIX}/events/:eventId/sponsors`, sponsorsRoutes);
 app.use(`${ENV.API_PREFIX}/events`, eventsRoutes);
 app.use(`${ENV.API_PREFIX}/participants`, participantsRoutes);
+app.use(`${ENV.API_PREFIX}/notifications`, notificationsRoutes);
 app.use(`${ENV.API_PREFIX}/import`, importRoutes);
 app.use(`${ENV.API_PREFIX}/attendance`, attendanceRoutes);
 app.use(`${ENV.API_PREFIX}/activity`, activityRoutes);

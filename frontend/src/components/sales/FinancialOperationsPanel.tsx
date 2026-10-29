@@ -1,15 +1,17 @@
+import {useNotificationFocus} from '../../hooks/useNotificationFocus';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../services/api';
 import { useRealtimeRefresh } from '../../context/RealtimeContext';
 import { TicketType } from '../../types';
 type Pending = { id: string; registrationNumber: string; externalReference?: string; balanceDue: number; requiresReview: boolean; participant: { fullName: string } };
-type Review = { id: string; code: string; reason: string; registrationId?: string; registration?: { registrationNumber: string; externalReference?: string; participant: { fullName: string } } };
+type Review = { status:string; id: string; code: string; reason: string; registrationId?: string; registration?: { registrationNumber: string; externalReference?: string; participant: { fullName: string } } };
 type Refund = { id: string; status: string; version: number; amount: number; channel: string; registration: { registrationNumber: string; participant: { fullName: string } } };
 type Preview = { token: string; rows: { id: string; eligible: boolean; reason: string }[] };
 const nextStatuses: Record<string, string[]> = { REQUESTED: ['REVIEW', 'APPROVED', 'REJECTED'], REVIEW: ['APPROVED', 'REJECTED'], APPROVED: ['PENDING_RETURN'], PENDING_RETURN: ['REFUNDED'] };
 const statusLabels: Record<string, string> = { REQUESTED: 'Solicitado', REVIEW: 'En revisión', APPROVED: 'Aprobado', REJECTED: 'Rechazado', PENDING_RETURN: 'Pendiente de devolución', REFUNDED: 'Devuelto y confirmado' };
 export function FinancialOperationsPanel({ eventId, tickets, onChange }: { eventId: string; tickets: TicketType[]; onChange: () => void }) {
   const [pending, setPending] = useState<Pending[]>([]), [reviews, setReviews] = useState<Review[]>([]), [refunds, setRefunds] = useState<Refund[]>([]);
+  const notificationFocus=useNotificationFocus([...reviews,...refunds].map(r=>r.id));
   const [selected, setSelected] = useState<string[]>([]), [preview, setPreview] = useState<Preview | null>(null);
   const [reason, setReason] = useState(''), [deadline, setDeadline] = useState(''), [ticket, setTicket] = useState('');
   const [platform, setPlatform] = useState(''), [reference, setReference] = useState(''), [method, setMethod] = useState('');
@@ -21,10 +23,10 @@ export function FinancialOperationsPanel({ eventId, tickets, onChange }: { event
   const load = useCallback(async () => {
     const version = ++sequence.current;
     try {
-      const [p, r, f, settings] = await Promise.all([...['pending', 'reviews', 'refunds'].map(path => api.get(`/events/${eventId}/finance/${path}`)), api.get(`/events/${eventId}`)]);
+      const [p, r, f, settings] = await Promise.all([...['pending', 'reviews', 'refunds'].map(path => api.get(`/events/${eventId}/finance/${path}`,{params:notificationFocus&&path!=='pending'?{id:notificationFocus}:{}})), api.get(`/events/${eventId}`)]);
       if (version === sequence.current) { setPending(p.data.data); setReviews(r.data.data); setRefunds(f.data.data); const d = settings.data.data?.settings?.paymentDeadlineAt; setDeadline(d ? new Date(new Date(d).getTime() - 4 * 3600000).toISOString().slice(0, 16) : ''); }
     } catch { if (version === sequence.current) setMessage('No se pudo consultar el estado financiero. Reintente antes de operar.'); }
-  }, [eventId]);
+  }, [eventId,notificationFocus]);
   useEffect(() => { setPending([]); setReviews([]); setRefunds([]); setSelected([]); setPreview(null); setAction(null); setMessage(''); void load(); return () => { sequence.current++; }; }, [load]);
   useRealtimeRefresh('sales', load);
   const execute = async () => {
@@ -46,7 +48,7 @@ export function FinancialOperationsPanel({ eventId, tickets, onChange }: { event
     catch (error: any) { setMessage(error.response?.data?.message || 'No se pudo obtener la vista previa.'); }
     finally { setBusy(false); }
   };
-  return <details className="card p-4 space-y-3">
+  return <details open={notificationFocus?true:undefined} className="card p-4 space-y-3">
     <summary className="font-semibold cursor-pointer">Revisión administrativa de pagos y devoluciones</summary>
     <p className="text-sm text-muted-foreground">Los vencimientos no cancelan entradas automáticamente. Los reembolsos registran decisiones y devoluciones realizadas fuera de EventGrid.</p>
     <button type="button" onClick={() => void load()} disabled={busy} className="btn-secondary">Actualizar estado</button>
@@ -67,13 +69,13 @@ export function FinancialOperationsPanel({ eventId, tickets, onChange }: { event
       <label className="text-sm">Plataforma confirmada<input className="input-field text-base" value={platform} maxLength={100} onChange={e => { setPlatform(e.target.value); setAction(null); }} /></label>
       <label className="text-sm">Referencia confirmada<input className="input-field text-base" value={reference} maxLength={250} onChange={e => { setReference(e.target.value); setAction(null); }} /></label>
     </div>
-    {reviews.map(r => <div key={r.id} className="border-t border-border pt-2 text-sm"><p className="font-semibold">{r.registration ? `${r.registration.participant.fullName} · ${r.registration.registrationNumber} · ${r.registration.externalReference || 'Sin referencia externa'}` : 'Conflicto del lote sin inscripción vinculada'}</p><p>{r.code} · {r.reason}</p><button type="button" className="btn-secondary" disabled={busy} onClick={() => setAction({ path: `/reviews/${r.id}/resolve`, body: { ...(r.code === 'AMBIGUOUS_TARIFF' ? { ticketTypeId: ticket } : {}), ...(r.code === 'SOURCE_ASSOCIATION' ? { externalPlatform: platform, externalReference: reference } : {}) }, label: 'Resolver esta discrepancia con el motivo y datos indicados' })}>Revisar resolución</button></div>)}
+    {reviews.map(r => <div id={"notice-source-"+r.id} key={r.id} className="border-t border-border pt-2 text-sm"><p className="font-semibold">{r.registration ? `${r.registration.participant.fullName} · ${r.registration.registrationNumber} · ${r.registration.externalReference || 'Sin referencia externa'}` : 'Conflicto del lote sin inscripción vinculada'}</p><p>{r.code} · {r.reason}</p>{r.status!=='OPEN'?<p>Esta revisión ya está resuelta.</p>:<button type="button" className="btn-secondary" disabled={busy} onClick={() => setAction({ path: `/reviews/${r.id}/resolve`, body: { ...(r.code === 'AMBIGUOUS_TARIFF' ? { ticketTypeId: ticket } : {}), ...(r.code === 'SOURCE_ASSOCIATION' ? { externalPlatform: platform, externalReference: reference } : {}) }, label: 'Resolver esta discrepancia con el motivo y datos indicados' })}>Revisar resolución</button>}</div>)}
     <h3 className="font-semibold">Solicitar devolución</h3>
     <p className="text-xs text-muted-foreground">Use el identificador del pago que aparece en la ficha financiera. Nunca se ejecuta un movimiento bancario.</p>
     <div className="grid sm:grid-cols-2 gap-2"><label className="text-sm">Identificador del pago<input className="input-field text-base" value={paymentId} onChange={e => { setPaymentId(e.target.value); requestKey.current = crypto.randomUUID(); setAction(null); }} /></label><label className="text-sm">Importe RD$<input className="input-field text-base" type="number" min="0.01" step="0.01" value={amount} onChange={e => { setAmount(e.target.value); requestKey.current = crypto.randomUUID(); setAction(null); }} /></label></div>
     <button type="button" className="btn-secondary" disabled={busy || !paymentId || !(Number(amount) > 0)} onClick={() => setAction({ path: '/refunds', body: { paymentId, amount: Number(amount), requestKey: requestKey.current }, label: 'Registrar solicitud de devolución, sin devolver dinero' })}>Revisar solicitud</button>
     <div className="grid sm:grid-cols-2 gap-2"><label className="text-sm">Referencia de devolución realizada<input className="input-field text-base" value={reference} onChange={e => { setReference(e.target.value); setAction(null); }} /></label><label className="text-sm">Método de devolución<input className="input-field text-base" value={method} onChange={e => { setMethod(e.target.value); setAction(null); }} /></label></div>
-    {refunds.map(r => <div key={r.id} className="border-t border-border pt-2 text-sm space-y-2"><p>{r.registration.participant.fullName} · {r.registration.registrationNumber} · {r.channel} · RD$ {Number(r.amount).toFixed(2)} · {statusLabels[r.status] || r.status}</p><div className="flex flex-wrap gap-2">{(nextStatuses[r.status] || []).map(status => <button type="button" className="btn-secondary" disabled={busy} key={status} onClick={() => setAction({ path: `/refunds/${r.id}/transition`, body: { status, version: r.version, reference, method }, label: status === 'REFUNDED' ? 'Confirmar que la devolución ya fue realizada fuera de EventGrid; no basta con haberla aprobado' : `Cambiar a: ${statusLabels[status]}` })}>{statusLabels[status]}</button>)}</div></div>)}
+    {refunds.map(r => <div id={"notice-source-"+r.id} key={r.id} className="border-t border-border pt-2 text-sm space-y-2"><p>{r.registration.participant.fullName} · {r.registration.registrationNumber} · {r.channel} · RD$ {Number(r.amount).toFixed(2)} · {statusLabels[r.status] || r.status}</p><div className="flex flex-wrap gap-2">{(nextStatuses[r.status] || []).map(status => <button type="button" className="btn-secondary" disabled={busy} key={status} onClick={() => setAction({ path: `/refunds/${r.id}/transition`, body: { status, version: r.version, reference, method }, label: status === 'REFUNDED' ? 'Confirmar que la devolución ya fue realizada fuera de EventGrid; no basta con haberla aprobado' : `Cambiar a: ${statusLabels[status]}` })}>{statusLabels[status]}</button>)}</div></div>)}
     {action && <div className="border border-border rounded-lg p-4 space-y-3" role="alert"><p>{action.label}</p><p className="text-sm">Motivo: {reason || 'Obligatorio'}</p><div className="flex gap-2"><button type="button" className="btn-primary" disabled={busy || reason.trim().length < 3} onClick={() => void execute()}>Confirmar operación</button><button type="button" className="btn-secondary" disabled={busy} onClick={() => setAction(null)}>Volver</button></div></div>}
   </details>;
 }

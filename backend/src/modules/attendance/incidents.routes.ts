@@ -10,7 +10,7 @@ router.use(requireOperatorOrAdmin);
 const include = { createdBy: { select: { fullName: true } }, assignedTo: { select: { fullName: true } } };
 router.get('/', async (req, res, next) => { try {
     const search = typeof req.query.search === 'string' ? req.query.search.slice(0, 100) : '';
-    const rows = await prisma.receptionIncident.findMany({ where: { eventId: req.eventId!, ...(search ? { participantLabel: { contains: search } } : {}) }, include, orderBy: { createdAt: 'desc' }, take: 100 });
+    const rows = await prisma.receptionIncident.findMany({ where: { eventId: req.eventId!, ...(typeof req.query.id==='string'?{id:z.string().uuid().parse(req.query.id)}:{}), ...(search ? { participantLabel: { contains: search } } : {}) }, include, orderBy: { createdAt: 'desc' }, take: 100 });
     res.json({ data: rows });
 }
 catch (e) {

@@ -1,0 +1,17 @@
+import {flushNotificationDeliveries} from './notifications.schedule.js';
+import {Router} from 'express';
+import {z} from 'zod';
+import {prisma} from '../../config/db.js';
+import {authenticateToken} from '../../middleware/auth.js';
+import {editionContext} from '../../middleware/editionContext.js';
+import {requireAdmin,requirePermission} from '../../middleware/rbac.js';
+import {RealtimeService} from '../realtime/realtime.service.js';
+import {NotificationsService} from './notifications.service.js';
+const router=Router();router.use(authenticateToken,editionContext);
+router.get('/',async(req,res,next)=>{try{const query=z.object({history:z.enum(['true','false']).default('false'),page:z.coerce.number().int().min(1).max(100000).default(1)}).parse(req.query);res.json({data:await NotificationsService.list(req.eventId!,req.user!,query.history==='true',query.page)});flushNotificationDeliveries(req.eventId!);}catch(e){next(e);}});
+router.put('/preferences',async(req,res,next)=>{try{const input=z.object({sound:z.boolean().optional(),desktop:z.boolean().optional()}).strict().parse(req.body);const data=await prisma.notificationPreference.upsert({where:{userId:req.user!.id},create:{userId:req.user!.id,...input},update:input});RealtimeService.notificationsChanged(req.eventId!,req.user!.id,'SETTINGS');res.json({data});}catch(e){next(e);}});
+router.put('/inventory-threshold',requireAdmin,requirePermission('SETTINGS_MANAGE'),async(req,res,next)=>{try{const {threshold}=z.object({threshold:z.number().int().min(0).max(100000).nullable()}).parse(req.body);await prisma.eventSettings.update({where:{eventId:req.eventId!},data:{notificationStockThreshold:threshold}});await NotificationsService.sync(req.eventId!);flushNotificationDeliveries(req.eventId!);RealtimeService.notificationsChanged(req.eventId!,undefined,'REFRESH');res.json({data:{threshold}});}catch(e){next(e);}});
+router.post('/read-all',async(req,res,next)=>{try{res.json({data:await NotificationsService.read(req.eventId!,req.user!)});RealtimeService.notificationsChanged(req.eventId!,req.user!.id,'READ');}catch(e){next(e);}});
+router.post('/:id/read',async(req,res,next)=>{try{res.json({data:await NotificationsService.read(req.eventId!,req.user!,z.string().uuid().parse(req.params.id))});RealtimeService.notificationsChanged(req.eventId!,req.user!.id,'READ');}catch(e){next(e);}});
+router.get('/:id',async(req,res,next)=>{try{res.json({data:await NotificationsService.detail(req.eventId!,req.user!,z.string().uuid().parse(req.params.id))});}catch(e){next(e);}});
+export default router;

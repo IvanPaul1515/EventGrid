@@ -88,7 +88,7 @@ export class ImportController {
   static async getBatches(req: Request, res: Response, next: NextFunction) {
     try {
       const eventId = req.params.eventId || req.eventId!;
-      const batches = await ImportService.getBatches(eventId);
+      const batches = await ImportService.getBatches(eventId,typeof req.query.id==='string'?req.query.id:undefined);
 
       return res.status(200).json({
         status: 'success',

@@ -20,6 +20,7 @@ export class RealtimeService {
       try { response.write(`event: message\ndata: ${JSON.stringify({type:'RECEPTION_QUEUE_CHANGED',eventId,data:{}})}\n\n`); } catch { this.removeClient(eventId,response); }
     }
   }
+  static notificationsChanged(eventId:string,userId:string|undefined,reason:'NEW'|'READ'|'SETTINGS'|'REFRESH',ids:string[]=[]){for(const response of this.clients.get(eventId)||[]){const identity=this.identities.get(response);if(!identity||userId&&identity.userId!==userId)continue;try{response.write(`event: message\ndata: ${JSON.stringify({type:'NOTIFICATIONS_CHANGED',eventId,timestamp:new Date().toISOString(),data:{reason,ids:userId?ids:[]}})}\n\n`);}catch{this.removeClient(eventId,response);}}}
   static changed(eventId: string, domains: string[]) { this.emit(eventId, { type: 'DATA_CHANGED', data: { domains } }); }
   static notifyAccess(userId: string) {
     for (const [response, identity] of this.identities) if (identity.userId === userId) {

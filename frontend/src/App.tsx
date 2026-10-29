@@ -35,6 +35,8 @@ const AuditPage = React.lazy(() => import('./pages/AuditPage').then((m) => ({ de
 
 const NotFound = () => { const { isAuthenticated } = useAuth(); return <ErrorPanel kind="404" fullScreen home={isAuthenticated ? '/' : '/login'} />; };
 
+const NotificationDetailPage=React.lazy(()=>import('./pages/NotificationDetailPage'));
+
 export const App: React.FC = () => {
   useMobileViewport();
   return (
@@ -57,6 +59,7 @@ export const App: React.FC = () => {
                       <Route path="/" element={<DashboardPage />} />
                       <Route path="/attendance" element={<AttendancePage />} />
                       <Route element={<ProtectedRoute allowedRoles={['ADMIN','OPERATOR']} />}><Route path="/reception" element={<AttendancePage quick />} /></Route>
+                      <Route path="/notifications/:id" element={<NotificationDetailPage />} />
                       <Route path="/participants" element={<ParticipantsPage />} />
                       <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'OPERATOR']} />}>
                         <Route path="/import" element={<ImportPage />} />

@@ -114,8 +114,8 @@ export const importService = {
     return res.data.data;
   },
 
-  async getBatches(): Promise<ImportBatchItem[]> {
-    const res = await api.get('/import/batches');
+  async getBatches(id?:string): Promise<ImportBatchItem[]> {
+    const res = await api.get('/import/batches',{params:id?{id}:{}});
     return res.data.data;
   },
 

@@ -1,3 +1,4 @@
+import {useNotificationFocus} from '../hooks/useNotificationFocus';
 import {ModuleImportFlow,moduleDestination,IMPORT_DESTINATIONS} from '../components/ModuleImportFlow';
 import { api } from '../services/api';
 import { TicketType } from '../types';
@@ -120,6 +121,7 @@ export const ImportPage: React.FC = () => {
 
   // Historial de lotes
   const [batches, setBatches] = useState<ImportBatchItem[]>([]);
+  const notificationFocus=useNotificationFocus(batches.map(b=>b.id));
   const [loadingBatches, setLoadingBatches] = useState(false);
 
   // Alerta de error
@@ -144,13 +146,13 @@ export const ImportPage: React.FC = () => {
   // Cargar historial de lotes al montar
   useEffect(() => {
     fetchBatches();
-  }, [currentEvent?.id]);
+  }, [currentEvent?.id,notificationFocus]);
 
   const fetchBatches = async () => {
     if (!currentEvent) return;
     try {
       setLoadingBatches(true);
-      const data = await importService.getBatches();
+      const data = await importService.getBatches(notificationFocus||undefined);
       setBatches(data);
     } catch (err) {
       console.error('Error al cargar historial de lotes:', err);
@@ -1295,7 +1297,7 @@ export const ImportPage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-border">
                 {batches.map((b) => (
-                  <tr key={b.id} className="hover:bg-muted/20">
+                  <tr id={"notice-source-"+b.id} key={b.id} className="hover:bg-muted/20">
                     <td className="p-3 font-bold text-foreground font-mono">
                       {b.fileName}
                     </td>

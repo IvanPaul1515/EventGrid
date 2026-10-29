@@ -543,9 +543,10 @@ export class ImportService {
   /**
    * Obtener historial de lotes de importación de una edición
    */
-  static async getBatches(eventId: string) {
+  static async getBatches(eventId: string,id?:string) {
+    if(id&&!/^[a-f0-9-]{36}$/i.test(id))throw new BadRequestError('Referencia de lote no válida.');
     const batches = await prisma.importBatch.findMany({
-      where: { eventId },
+      where: { eventId,...(id?{id}:{}) },
       include: {
         importedByUser: {
           select: { id: true, fullName: true, email: true },

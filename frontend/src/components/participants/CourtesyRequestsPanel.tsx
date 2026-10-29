@@ -30,7 +30,7 @@ type Courtesy = {
     };
 };
 const labels: Record<string, string> = { PENDING: 'Pendiente de autorización', APPROVED: 'Cortesía aprobada', REJECTED: 'Cortesía rechazada' };
-export const CourtesyRequestsPanel: React.FC = () => {
+export const CourtesyRequestsPanel: React.FC<{focusId?:string}> = ({focusId}) => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { currentEvent } = useEdition();
@@ -43,7 +43,7 @@ export const CourtesyRequestsPanel: React.FC = () => {
             return;
         const sequence = ++latest.current;
         try {
-            const res = await api.get('/participants/courtesy-requests', { params: user?.role === 'ADMIN' && !history ? { status: 'PENDING' } : {} });
+            const res = await api.get('/participants/courtesy-requests', { params: focusId?{id:focusId}:user?.role === 'ADMIN' && !history ? { status: 'PENDING' } : {} });
             if (sequence === latest.current) {
                 setRows(res.data.data);
                 setError('');
@@ -53,7 +53,7 @@ export const CourtesyRequestsPanel: React.FC = () => {
             if (sequence === latest.current)
                 setError('No se pudieron consultar las cortesías. Reintente para conocer el resultado real.');
         }
-    }, [currentEvent?.id, user?.role, history]);
+    }, [currentEvent?.id, user?.role, history, focusId]);
     useEffect(() => { setRows([]); setMessage(''); void load(); return () => { latest.current++; }; }, [load]);
     useRealtimeRefresh('courtesies', load);
     useEffect(() => { const listener = () => { void load(); }; window.addEventListener('eventgrid:data-refresh', listener); return () => window.removeEventListener('eventgrid:data-refresh', listener); }, [load]);
@@ -76,13 +76,14 @@ export const CourtesyRequestsPanel: React.FC = () => {
     };
     if (!user || user.role === 'VIEWER')
         return null;
-    return <details className="border border-border rounded-xl bg-card p-4">
-    <summary className="font-semibold cursor-pointer">{user.role === 'ADMIN' ? 'Cortesías pendientes' : 'Mis solicitudes de cortesía'} ({rows.filter(r => r.status === 'PENDING').length})</summary>
+    if(!focusId&&!rows.length&&!error&&!message&&!history)return user.role==='ADMIN'?<button type="button" className="text-sm text-primary" onClick={()=>setHistory(true)}>Historial y gestión de cortesías</button>:null;
+    return <details open={focusId||history?true:undefined} className="border border-border rounded-xl bg-card p-4">
+    <summary className="font-semibold cursor-pointer">{user.role === 'ADMIN' ? history?'Historial de cortesías':'Cortesías pendientes' : 'Mis solicitudes de cortesía'} ({rows.filter(r => r.status === 'PENDING').length})</summary>
     <div className="mt-3 space-y-3">
       <button type="button" onClick={() => void load()} className="text-sm text-primary">Consultar resultado / Actualizar</button>
       {user.role === 'ADMIN' && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={history} onChange={e => setHistory(e.target.checked)}/>Mostrar historial</label>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}{message && <p role="status" className="text-sm">{message}</p>}
-      {!error && !rows.length && <p className="text-sm text-muted-foreground">No hay solicitudes.</p>}
+      {!error && !rows.length && <p className="text-sm text-muted-foreground">No hay solicitudes disponibles para esta cuenta y edición.</p>}
       <p className="text-xs text-muted-foreground">Historial reciente: hasta 100 solicitudes. Las pendientes no equivalen a entradas liquidadas.</p>
       {rows.map(r => <div key={r.id} className="border-t border-border pt-3 space-y-2 text-sm">
         <p className="font-semibold">{r.registration.participant.fullName} · {r.registration.registrationNumber}</p>
