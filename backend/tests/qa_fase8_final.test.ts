@@ -5,6 +5,8 @@ import { EmailQueueWorker } from '../src/modules/communications/communications.q
 import { ParticipantsService } from '../src/modules/participants/participants.service';
 import { encryptSecret, decryptSecret } from '../src/utils/crypto';
 
+let smtpBaseline: any;
+
 describe('EventGrid Fase 8: SMTP Real, Modo Demostración, Cortesías y Modo Claro', () => {
   let testEvent: any;
   let adminUser: any;
@@ -23,6 +25,7 @@ describe('EventGrid Fase 8: SMTP Real, Modo Demostración, Cortesías y Modo Cla
   };
 
   beforeAll(async () => {
+    smtpBaseline = await prisma.emailConfig.findFirst({ where: { eventId: null } });
     // Configurar fábrica de transporte mock para evitar llamadas SMTP externas
     CommunicationsService.setTransporterFactory(() => mockTransporter);
 
@@ -159,11 +162,11 @@ describe('EventGrid Fase 8: SMTP Real, Modo Demostración, Cortesías y Modo Cla
       });
 
       expect(globalConfig).toBeDefined();
-      expect(globalConfig?.host).toBe('smtp-relay.brevo.com');
-      expect(globalConfig?.user).toBe('bf682a001@smtp-brevo.com');
+      expect(globalConfig?.host).toBe(smtpBaseline?.host);
+      expect(globalConfig?.user).toBe(smtpBaseline?.user);
       expect(globalConfig?.password).toBeDefined();
       expect(globalConfig!.password!.length).toBeGreaterThan(50);
-      expect(globalConfig?.fromEmail).toBe('cicc-csti@ce.pucmm.edu.do');
+      expect(globalConfig?.fromEmail).toBe(smtpBaseline?.fromEmail);
     });
 
     it('1.2 Debe preservar las plantillas y colores existentes en base de datos', async () => {

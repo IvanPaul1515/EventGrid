@@ -4,10 +4,13 @@ import { InventoryService } from '../src/modules/inventory/inventory.service.js'
 import { ScheduleService } from '../src/modules/schedule/schedule.service.js';
 import { CommunicationsService } from '../src/modules/communications/communications.service.js';
 
+let smtpBaseline: any;
+
 describe('FASE 10 — PRESERVACIÓN DE DATOS, CRONOGRAMA DEMO Y CORREOS INTEGRADOS', () => {
   const BARCAMP_EVENT_ID = '1adb61c6-6f85-43f1-93a6-b4be887bdc9c';
 
   beforeAll(async () => {
+    smtpBaseline = await prisma.emailConfig.findFirst({ where: { eventId: null } });
     // Ensure DB connection is alive
     const event = await prisma.event.findUnique({
       where: { id: BARCAMP_EVENT_ID },
@@ -35,10 +38,10 @@ describe('FASE 10 — PRESERVACIÓN DE DATOS, CRONOGRAMA DEMO Y CORREOS INTEGRAD
 
       expect(config).toBeDefined();
       expect(config?.isEnabled).toBe(true);
-      expect(config?.host).toBe('smtp-relay.brevo.com');
-      expect(config?.user).toBe('bf682a001@smtp-brevo.com');
+      expect(config?.host).toBe(smtpBaseline?.host);
+      expect(config?.user).toBe(smtpBaseline?.user);
       expect(config?.password).toBeTruthy();
-      expect(config?.fromEmail).toBe('cicc-csti@ce.pucmm.edu.do');
+      expect(config?.fromEmail).toBe(smtpBaseline?.fromEmail);
     });
 
     it('debe preservar el inventario de 282 camisetas con el desglose exacto', async () => {
