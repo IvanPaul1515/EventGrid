@@ -20,6 +20,7 @@ import {
 import { encryptSecret, decryptSecret } from '../../utils/crypto.js';
 import { QrService } from '../qr/qr.service.js';
 import nodemailer from 'nodemailer';
+import {smtpSecurity} from './private-smtp.js';
 import QRCode from 'qrcode';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -75,6 +76,7 @@ export class CommunicationsService {
       host: config.host,
       port: config.port,
       secure: Boolean(config.secure),
+      ...smtpSecurity(Boolean(config.secure)),
       auth: config.user ? { user: config.user, pass: rawPassword } : undefined,
       pool: isExternalSmtp,
       maxConnections: 3,
