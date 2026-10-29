@@ -60,6 +60,10 @@ export function purchaseDate(row: StatisticsRegistration, timezone?:string): str
     return date.zone && Number.isFinite(Date.parse(date.value)) ? day(date.value,timezone) : null;
   } catch { return null; }
 }
+export function purchaseHour(row:StatisticsRegistration,timezone?:string):string|null {
+ if(!purchaseDate(row,timezone))return null;
+ try{const date=JSON.parse(row.historicalDates||'{}').purchasedAt;if(date.precision!=='SECOND'||!date.zone||!/(?:Z|[+-]\d{2}:\d{2})$/i.test(date.value))return null;return day(date.value,timezone)+' '+new Intl.DateTimeFormat('es-DO',{timeZone:timezone||'America/Santo_Domingo',hour:'2-digit',hourCycle:'h23'}).format(new Date(date.value))+':00';}catch{return null;}
+}
 export function relevantRows(rows: StatisticsRegistration[], eventId: string, filters: StatisticsFilters) {
   return rows.filter(row => row.eventId === eventId && (!filters.ticketTypeId || row.ticketTypeId === filters.ticketTypeId));
 }
@@ -118,6 +122,7 @@ export function aggregateStatistics(eventId: string, registrations: StatisticsRe
         const pending = item.allocations.filter(row => row.kind === kind && row.status === 'RESERVED').length;
         return {name:kind === 'PARTICIPANT' ? 'Participantes' : 'Staff',quota,assigned:delivered+pending,delivered,pending,available:quota-delivered-pending};
       })})),
+    attendanceByTicket:groups(attendance.map(row=>({name:row.ticketType?.name||'Sin tipo registrado',value:1}))),
     attendanceHours:groups(attendance.filter(row => row.attendedAt).map(row => ({name: `${day(row.attendedAt!,filters.timezone)} ${new Intl.DateTimeFormat('es-DO',{timeZone:filters.timezone||'America/Santo_Domingo',hour:'2-digit',hourCycle:'h23'}).format(row.attendedAt!)}:00`,value:1}))),
     unknownAttendanceTime:attendance.filter(row => !row.attendedAt).length,
     registrationsByDay:groups(cohort.map(row => ({name:day(row.createdAt,filters.timezone),value:1}))),
@@ -127,6 +132,7 @@ export function aggregateStatistics(eventId: string, registrations: StatisticsRe
       tickets:groups(purchases.filter(p => inDates(p.date,filters)).map(({row}) => ({name:row.ticketType?.name || 'Sin tipo registrado',value:1}))),
       statuses:groups(valid.map(row => ({name:row.paymentStatus,value:1}))),
       purchasesByDay:groups(purchases.filter(p => p.date && inDates(p.date,filters)).map(p => ({name:p.date!,value:1}))),
+      purchasesByHour:groups(purchases.filter(p=>p.date&&inDates(p.date,filters)).map(p=>purchaseHour(p.row,filters.timezone)).filter((name):name is string=>!!name).map(name=>({name,value:1}))),
       unverifiedPurchases:purchases.filter(p => !p.date).length},
   };
 }
