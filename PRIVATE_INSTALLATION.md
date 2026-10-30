@@ -50,6 +50,29 @@ existan sus parámetros; no se acredita conectividad solo por disponer de variab
 
 ## Arranque y actualización
 
+### Identificar la versión ejecutada
+
+Antes de construir, guardar el código en un commit y comprobar el árbol de trabajo.
+Pasar metadatos públicos del build explícitamente, sin modificar `.env.private`:
+
+```powershell
+$env:VCS_REF = git rev-parse HEAD
+$env:BUILD_DATE = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+$env:BUILD_ENV = 'docker-private'
+docker compose -f compose.yaml --project-name eventgrid-private --env-file .env.private build frontend
+docker compose -f compose.yaml --project-name eventgrid-private --env-file .env.private up -d --no-deps --wait --no-build frontend
+```
+
+Una corrección solo de frontend no requiere reiniciar backend ni PostgreSQL.
+Si cambia backend, revisar migraciones y respaldo antes de reconstruir/actualizar ese
+servicio. No reiniciar PostgreSQL para actualizar código. No reutilizar etiquetas como
+prueba de versión: comparar el ID de imagen realmente usado por el contenedor.
+Administración muestra commit, versión, fecha UTC y entorno de ambos componentes.
+Contrastar con `/build-info.json`, `/api/v1/health` y las etiquetas OCI de la imagen.
+Un build sin metadatos se identifica como `unknown`; no asumir que corresponde a HEAD.
+La salud y los archivos servidos deben verificarse después de actualizar contenedores.
+Una conexión SMTP verificada no acredita autorización del remitente ni entrega al buzón.
+
 Conservar `DEMO_SEED=false` y `DEMO_QUICK_ACCESS=false`. Comprobar espacio suficiente
 antes de construir imágenes. Con el secreto administrativo configurado:
 

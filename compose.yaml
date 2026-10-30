@@ -5,6 +5,8 @@ x-backend: &backend
     dockerfile: backend/Dockerfile
     args:
       VCS_REF: ${VCS_REF:-unknown}
+      BUILD_DATE: ${BUILD_DATE:-unknown}
+      BUILD_ENV: ${BUILD_ENV:-docker}
   environment:
     NODE_ENV: production
     CONTAINER_MODE: 'true'
@@ -74,6 +76,8 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         VCS_REF: ${VCS_REF:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+        BUILD_ENV: ${BUILD_ENV:-docker}
     restart: unless-stopped
     ports:
       - '${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-3000}:80'

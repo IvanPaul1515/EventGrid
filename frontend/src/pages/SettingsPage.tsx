@@ -1,3 +1,4 @@
+import {SystemBuildInfo} from '../components/common/SystemBuildInfo';
 import {SmtpStatus} from '../components/common/SmtpStatus';
 import {scheduleService} from '../services/schedule.service';
 import { api } from '../services/api';
@@ -585,6 +586,7 @@ export const SettingsPage: React.FC = () => {
 
   return (
     <div onChangeCapture={() => { draftChanged.current = true; }} className="space-y-6 max-w-7xl mx-auto">
+      {user?.role==='ADMIN'&&<SystemBuildInfo/>}
       {/* Notificación flotante */}
       {feedback && (
         <div
