@@ -266,7 +266,7 @@ describe('manual provider acceptance and duplicate protection', () => {
       expect((await prisma.emailLog.findUniqueOrThrow({ where: { id: log.id } })).status).toBe('ACCEPTED_BY_SMTP');
       await request(app).post('/api/v1/communications/webhooks/brevo').set('x-brevo-webhook-secret', 'mock-webhook-secret').send({ event: 'delivered', messageId: log.messageId, email: 'test@example.invalid' });
       expect((await prisma.emailLog.findUniqueOrThrow({ where: { id: log.id } })).status).toBe('DELIVERED');
-    } finally { raw.mockRestore(); factory.mockRestore(); policy.mockRestore(); vi.unstubAllEnvs(); }
+    } finally { raw.mockRestore(); factory.mockRestore(); vi.unstubAllEnvs(); }
   });
 });
 
