@@ -166,7 +166,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
         <div className="flex flex-col flex-1 min-h-0">
           <div className={`relative h-16 flex items-center border-b border-border bg-card/60 shrink-0 ${collapsed&&!mobileOpen?'px-2 justify-center':'px-4 justify-between'}`}>
             <div className={`flex items-center min-w-0 ${collapsed&&!mobileOpen?'justify-center':'gap-3 overflow-hidden'}`}>
-              <EditionBrand name={currentEvent?.name} logoUrl={currentEvent?.settings?.logoUrl} compactLogoUrl={currentEvent?.settings?.faviconUrl} compact={collapsed&&!mobileOpen}/>
+              <EditionBrand name={currentEvent?.name} logoUrl={currentEvent?.settings?.logoUrl} compactLogoUrl={currentEvent?.settings?.faviconUrl} loginLogoUrl={currentEvent?.settings?.loginLogoUrl} compact={collapsed&&!mobileOpen}/>
               {(!collapsed || mobileOpen) && (
                 <div className="flex flex-col min-w-0">
                   <span className="font-display font-black text-sm tracking-tight text-foreground flex items-center gap-1">
