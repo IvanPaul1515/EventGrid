@@ -4,6 +4,7 @@ import {prisma} from '../../config/db.js';
 import {BadRequestError,ForbiddenError} from '../../utils/errors.js';
 import {publicOrigin,publicAddress,publicRoutePath,PublicRoute} from './public-origin.rules.js';
 export class PublicOriginService {
+ static async allowsOrigin(origin:string){try{const s=await prisma.applicationSettings.findUnique({where:{id:'global'},select:{publicOrigin:true,originStatus:true}});return Boolean(s?.originStatus==='VERIFIED'&&s.publicOrigin===origin);}catch{return false;}}
  static settings(client:any=prisma){return client.applicationSettings.upsert({where:{id:'global'},create:{id:'global'},update:{}});}
  static async requireGlobal(actorId:string){const a=await prisma.user.findUnique({where:{id:actorId}});if(!a?.isActive||a.role!=='ADMIN'||a.scannerOnly||a.assignedEventId||a.accountStatus==='PENDING')throw new ForbiddenError('Solo el administrador global puede configurar el dominio público.');return a;}
  static async save(actorId:string,value:string){await this.requireGlobal(actorId);const origin=publicOrigin(value),old=await this.settings();if(old.publicOrigin===origin)return old;

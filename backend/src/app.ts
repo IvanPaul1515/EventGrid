@@ -1,5 +1,7 @@
 import {getBuildInfo} from './utils/buildInfo.js';
 import {publicOriginRoutes,publicInstanceRoutes} from './modules/public-origin/public-origin.routes.js';
+import {PublicOriginService} from './modules/public-origin/public-origin.service.js';
+import {ForbiddenError} from './utils/errors.js';
 import {publicOpinionsRoutes,opinionsRoutes} from './modules/opinions/opinions.routes.js';
 import statisticsRoutes from './modules/statistics/statistics.routes.js';
 import notificationsRoutes from './modules/notifications/notifications.routes.js';
@@ -90,7 +92,8 @@ app.use(
       if (ENV.CORS_ORIGIN.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
         return callback(null, true);
       }
-      return callback(new Error('Bloqueado por política CORS de EventGrid'));
+      // A verified installation domain works without copying it into private environment files.
+      void PublicOriginService.allowsOrigin(origin).then(allowed=>callback(allowed?null:new ForbiddenError('Origen no permitido.'),allowed));
     },
     credentials: true,
   })
