@@ -85,7 +85,7 @@ export interface SmtpSummaryResult {
 
 export const communicationsService = {
   async reviewInterrupted(jobId: string) { return (await api.post('/communications/jobs/' + jobId + '/review-interrupted', { confirmed: true })).data.data; },
-  async getStatus(eventId: string): Promise<Partial<EmailConfig>> { return (await api.get('/communications/status', { params: { eventId } })).data.data; },
+  async getStatus(eventId: string): Promise<{isEnabled:boolean;isConfigured:boolean;realEmailBlocked?:boolean;realEmailAllowed?:boolean;connectionVerified?:boolean;passwordInherited?:boolean}> { return (await api.get('/communications/status', { params: { eventId } })).data.data; },
   async getConfig(eventId?: string | null): Promise<EmailConfig | null> {
     const res = await api.get<ApiResponse<EmailConfig | null>>('/communications/config', {
       params: { eventId },
