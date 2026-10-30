@@ -46,6 +46,7 @@ export class UsersService {
         select: {
           id: true,
           email: true,
+        username:true,
           fullName: true,
           role: true, scannerOnly: true, operationalPermissions:true,
           assignedEventId: true,
@@ -83,6 +84,7 @@ export class UsersService {
       select: {
         id: true,
         email: true,
+        username:true,
         fullName: true,
         role: true, scannerOnly: true, operationalPermissions:true,
         assignedEventId: true,
@@ -114,6 +116,7 @@ export class UsersService {
       throw new BadRequestError('Ya existe un usuario registrado con este correo electrónico.');
     }
 
+    if(input.username&&await prisma.user.findUnique({where:{username:input.username}}))throw new BadRequestError('Nombre de usuario no disponible.');
     // An unusable marker is not a password or credential. Only token activation sets a bcrypt hash.
     const passwordHash = 'pending-activation:' + crypto.randomUUID();
 
@@ -123,6 +126,7 @@ export class UsersService {
       const user = await tx.user.create({
       data: {
         email: input.email,
+        username:input.username,
         fullName: input.fullName,
         role: input.role,
         scannerOnly: input.scannerOnly,
@@ -136,6 +140,7 @@ export class UsersService {
       select: {
         id: true,
         email: true,
+        username:true,
         fullName: true,
         role: true, scannerOnly: true, operationalPermissions:true,
         assignedEventId: true,

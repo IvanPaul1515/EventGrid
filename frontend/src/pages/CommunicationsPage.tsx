@@ -1303,7 +1303,7 @@ export const CommunicationsPage: React.FC = () => {
                     </div>
                   </label>
 
-                  <label
+                  {serviceConfig?.simulationAllowed&&(                  <label
                     className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
                       bulkDeliveryMode === 'SIMULATION'
                         ? 'bg-amber-500/10 border-amber-500 text-foreground ring-1 ring-amber-500'
@@ -1327,7 +1327,7 @@ export const CommunicationsPage: React.FC = () => {
                         Registra el lote y las métricas como SIMULATED sin contactar al servidor SMTP externo.
                       </p>
                     </div>
-                  </label>
+                  </label>)}
                 </div>
 
                 {/* Advertencia y confirmación obligatoria si está en modo demo y se elige envío real */}

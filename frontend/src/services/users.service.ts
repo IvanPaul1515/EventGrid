@@ -1,6 +1,8 @@
 import { api } from './api';
 
 export interface UserItem {
+  username?:string|null;
+  creationInvitation?:{results:{status:string;reason?:string}[]};
   operationalPermissions?:string|null;
   scannerOnly?: boolean;
   staffMembers?: { id: string; eventId: string; firstName: string; lastName: string }[];
@@ -30,6 +32,7 @@ export interface ListUsersResponse {
 }
 
 export interface CreateUserData {
+  username?:string;inviteNow?:boolean;invitationRequestKey?:string;
   operatorProfile?:string; operationalPermissions?:string[];
   scannerOnly?: boolean;
   email: string;
@@ -42,6 +45,7 @@ export interface CreateUserData {
 }
 
 export interface UpdateUserData {
+  username?:string;
   operatorProfile?:string; operationalPermissions?:string[];
   scannerOnly?: boolean;
   staffArea?: string | null;

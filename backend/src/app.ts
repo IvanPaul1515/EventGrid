@@ -1,4 +1,5 @@
 import {getBuildInfo} from './utils/buildInfo.js';
+import {publicOriginRoutes,publicInstanceRoutes} from './modules/public-origin/public-origin.routes.js';
 import {publicOpinionsRoutes,opinionsRoutes} from './modules/opinions/opinions.routes.js';
 import statisticsRoutes from './modules/statistics/statistics.routes.js';
 import notificationsRoutes from './modules/notifications/notifications.routes.js';
@@ -126,6 +127,8 @@ app.get(`${ENV.API_PREFIX}/health`, async (req, res) => {
 });
 
 app.use(ENV.API_PREFIX, realtimeMutations);
+app.use(`${ENV.API_PREFIX}/public/instance`,publicInstanceRoutes);
+app.use(`${ENV.API_PREFIX}/settings/public-origin`,publicOriginRoutes);
 
 // Rutas de módulos
 app.use(`${ENV.API_PREFIX}/events/:eventId/finance`, financeRoutes);

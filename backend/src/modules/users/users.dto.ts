@@ -1,3 +1,4 @@
+import {usernameSchema} from './username.js';
 import { z } from 'zod';
 import {OPERATOR_CAPABILITIES} from './operator-policy.js';
 const capability=z.enum(Object.keys(OPERATOR_CAPABILITIES) as [keyof typeof OPERATOR_CAPABILITIES,...(keyof typeof OPERATOR_CAPABILITIES)[]]);
@@ -5,6 +6,9 @@ export const OperatorProfileSchema=z.enum(['FULL','RECEPTION','REGISTRATION','DE
 const permissions=z.array(capability).max(20).refine(values=>new Set(values).size===values.length,'Permisos repetidos');
 
 export const CreateUserSchema = z.object({
+  username:usernameSchema.optional(),
+  inviteNow:z.boolean().default(false),
+  invitationRequestKey:z.string().uuid().optional(),
   operatorProfile:OperatorProfileSchema.default('RECEPTION'),
   operationalPermissions:permissions.optional(),
   scannerOnly: z.boolean().default(false),
@@ -17,6 +21,7 @@ export const CreateUserSchema = z.object({
 });
 
 export const UpdateUserSchema = z.object({
+  username:usernameSchema.optional(),
   operatorProfile:OperatorProfileSchema.optional(),
   operationalPermissions:permissions.optional(),
   scannerOnly: z.boolean().optional(),

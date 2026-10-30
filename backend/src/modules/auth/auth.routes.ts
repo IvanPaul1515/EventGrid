@@ -1,3 +1,4 @@
+import {usernameSchema} from '../users/username.js';
 import { DeviceSessionService } from './device-session.service.js';
 import { DEMO_SCANNERS, isDemoScannerAccount } from './demo-scanners.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
@@ -36,10 +37,11 @@ router.post('/demo-login', loginRateLimiter, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.post('/invitation-info',loginRateLimiter,async(req,res,next)=>{try{const {token}=z.object({token:z.string().min(32).max(200)}).parse(req.body);res.json({data:await InvitationsService.describe(token)});}catch(e){next(e);}});
 router.post('/accept-invitation', loginRateLimiter, explicitActionLimit, async (req, res, next) => {
   try {
-    const input = z.object({ token: z.string().min(32).max(200), password: z.string().min(12).max(128) }).parse(req.body);
-    res.json({ data: await InvitationsService.accept(input.token, input.password) });
+    const input = z.object({ token: z.string().min(32).max(200), password: z.string().min(12).max(128),username:usernameSchema.optional() }).parse(req.body);
+    res.json({ data: await InvitationsService.accept(input.token, input.password,input.username) });
   } catch (error) { next(error); }
 });
 

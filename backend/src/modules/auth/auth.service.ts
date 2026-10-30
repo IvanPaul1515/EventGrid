@@ -1,3 +1,4 @@
+import {usernameSchema} from '../users/username.js';
 import { DeviceSessionService } from './device-session.service.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
@@ -6,9 +7,9 @@ import { prisma } from '../../config/db.js';
 import { UnauthorizedError, NotFoundError, BadRequestError } from '../../utils/errors.js';
 
 export class AuthService {
-  static async login(email: string, password: string) {
+  static async login(email: string, password: string,scannerMode=false) {
     const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
+      where: email.includes('@') ? {email:email.toLowerCase().trim()} : {username:usernameSchema.safeParse(email).success?usernameSchema.parse(email):'__invalid__'},
     });
 
     if (!user) {
@@ -16,7 +17,7 @@ export class AuthService {
     }
 
     if (!user.isActive || user.accountStatus === 'PENDING') {
-      throw new UnauthorizedError('La cuenta de usuario se encuentra desactivada');
+      throw new UnauthorizedError('Credenciales incorrectas');
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
@@ -24,6 +25,7 @@ export class AuthService {
       throw new UnauthorizedError('Credenciales incorrectas');
     }
 
+    if(scannerMode&&!user.scannerOnly)throw new UnauthorizedError('Credenciales incorrectas');
     const token = await DeviceSessionService.issue(user);
 
     return {
@@ -32,6 +34,7 @@ export class AuthService {
         operationalPermissions:user.operationalPermissions,
         id: user.id,
         email: user.email,
+        username:user.username,
         fullName: user.fullName,
         role: user.role,
         scannerOnly: user.scannerOnly,
@@ -48,6 +51,7 @@ export class AuthService {
         operationalPermissions:true,
         id: true,
         email: true,
+        username:true,
         fullName: true,
         role: true,
         scannerOnly: true,

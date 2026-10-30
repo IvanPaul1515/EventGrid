@@ -12,7 +12,7 @@ export class AuthController {
     try {
       const validated = LoginSchema.parse(req.body);
       attemptedEmail = validated.email;
-      const result = await AuthService.login(validated.email, validated.password);
+      const result = await AuthService.login(validated.email, validated.password,validated.scannerMode);
 
       // Limpiar intentos fallidos acumulados
       await clearFailedLogin(req, validated.email);
