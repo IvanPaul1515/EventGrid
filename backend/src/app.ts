@@ -1,3 +1,4 @@
+import {getBuildInfo} from './utils/buildInfo.js';
 import {publicOpinionsRoutes,opinionsRoutes} from './modules/opinions/opinions.routes.js';
 import statisticsRoutes from './modules/statistics/statistics.routes.js';
 import notificationsRoutes from './modules/notifications/notifications.routes.js';
@@ -118,6 +119,7 @@ app.get(`${ENV.API_PREFIX}/health`, async (req, res) => {
     status: isDbConnected ? 'healthy' : 'degraded',
     platform: 'EventGrid',
     service: 'eventgrid-backend-api',
+    build: getBuildInfo(),
     timestamp: new Date().toISOString(),
     database: isDbConnected ? 'connected' : 'disconnected',
   });
