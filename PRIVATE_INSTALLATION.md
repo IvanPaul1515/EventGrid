@@ -70,6 +70,33 @@ antes de retirar cuentas. El nombre o correo de una persona no demuestra su orig
 demo. Conservar cuentas ambiguas e historial; cualquier desactivación autorizada debe
 revocar sesiones y quedar auditada. No ejecutar eliminaciones masivas.
 
+## Recuperación de una edición
+
+Crear un proyecto Compose nuevo crea volúmenes nuevos: no traslada automáticamente
+ediciones desde SQLite, Render ni otros proyectos. Un administrador creado no implica
+que la configuración del evento esté recuperada. El bootstrap informa si no hay ediciones
+y nunca crea eventos ficticios ni repite inventarios.
+
+Antes de recuperar, inventariar los volúmenes y las fuentes sin modificarlos. Guardar
+un `pg_dump -Fc` del PostgreSQL destino fuera de Git, restaurarlo en una base aislada
+y comparar todas las tablas y relaciones. Conservar también el archivo SQLite íntegro
+mediante su API de backup y `PRAGMA integrity_check` cuando corresponda. Una extracción
+de configuración mediante API es parcial y no sustituye el respaldo completo del origen.
+
+El comando offline `node dist/scripts/recover-edition.js <sha256>` recibe por entrada
+estándar el snapshot verificado de configuración: `event`, `tickets`, `inventory.items`,
+`merch` y `participants.total`. Solo admite una edición sin participantes, entregas,
+reservas ni movimientos, y un destino sin ediciones o inventarios. Conserva IDs, tarifas,
+cupos y fechas, inserta en una transacción y registra el hash de origen en auditoría.
+No importa usuarios, SMTP, secretos ni trabajos pendientes. No existe una ruta HTTP
+ni ejecución automática de esta recuperación. Copiar los uploads verificados al volumen
+de uploads, sin incorporarlos a las imágenes ni al repositorio genérico.
+
+Si hay registros o movimientos, este procedimiento se detiene: hace falta una migración
+completa con sus relaciones y conciliación. No usarlo para sustituir un origen incompleto,
+reiniciar existencias o resolver diferencias entre respaldos históricos. Una segunda
+ejecución sobre el destino recuperado se rechaza para impedir duplicados.
+
 ## Separación de repositorios
 
 El producto completo permanece sincronizable entre repositorios mediante `development`
