@@ -1,3 +1,4 @@
+import {opinionPrintStyle} from '../../frontend/src/utils/opinionPrintStyle';
 import React from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -44,3 +45,5 @@ describe('names, username, inline logo and private mail UI policy',()=>{
 });
 
 it('allows CORS only for the exact verified installation domain, never wildcard suffixes or saved unverified values',async()=>{state.settings.publicOrigin='https://eventgrid.example.org';expect(await Service.allowsOrigin(state.settings.publicOrigin)).toBe(false);state.settings.originStatus='VERIFIED';expect(await Service.allowsOrigin(state.settings.publicOrigin)).toBe(true);expect(await Service.allowsOrigin('https://eventgrid.example.org.attacker.org')).toBe(false);expect(await Service.allowsOrigin('https://other.example.org')).toBe(false);});
+
+it('bounds the edition logo independently of Tailwind in both compact and A4 print windows',()=>{for(const size of ['compact','a4'] as const){const css=opinionPrintStyle(size);expect(css).toContain('max-height:1.8cm;max-width:5cm');expect(css).toContain('object-fit:contain');expect(css).toContain(size==='compact'?'size:A5':'size:A4');expect(css).toContain(size==='compact'?'width:8cm;height:8cm':'width:13cm;height:13cm');}});
