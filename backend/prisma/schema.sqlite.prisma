@@ -8,6 +8,7 @@ generator client {
 }
 
 model User {
+  username String? @unique
   operationalPermissions String?
   scannerOnly Boolean @default(false)
 
@@ -45,6 +46,17 @@ model User {
   emailBatchJobs        EmailBatchJob[]       @relation("EmailBatchCreator")
 
   @@map("users")
+}
+
+model ApplicationSettings {
+ id String @id @default("global")
+ installationId String @unique @default(uuid())
+ publicOrigin String?
+ originStatus String @default("UNCONFIGURED")
+ originVerifiedAt DateTime?
+ originCheckedAt DateTime?
+ updatedAt DateTime @updatedAt
+ @@map("application_settings")
 }
 
 model Event {
@@ -94,6 +106,7 @@ model Event {
 }
 
 model EventSettings {
+  horizontalLogoUrl String?
   notificationStockThreshold Int?
   importMappingTemplates String?
   timeZone String @default("America/Santo_Domingo")
@@ -1231,6 +1244,7 @@ model NotificationStockState {
 
 
 model OpinionSurvey {
+  buzonEnabled Boolean @default(false)
   eventId String @id
   publicKey String @unique @default(uuid())
   enabled Boolean @default(false)

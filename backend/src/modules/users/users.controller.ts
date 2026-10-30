@@ -1,3 +1,5 @@
+import {InvitationsService} from './invitations.service.js';
+import crypto from 'node:crypto';
 import { Request, Response, NextFunction } from 'express';
 import { UsersService } from './users.service.js';
 import { CreateUserSchema, UpdateUserSchema, QueryUsersSchema, ResetPasswordSchema } from './users.dto.js';
@@ -36,11 +38,12 @@ export class UsersController {
       const parsed = CreateUserSchema.parse({ ...req.body, assignedEventId: req.eventId });
       const actorUserId = req.user?.id;
       const result = await UsersService.createUser(parsed, actorUserId);
+      const invitation=parsed.inviteNow?await InvitationsService.send([result.user.id],parsed.invitationRequestKey||crypto.randomUUID(),actorUserId!):null;
 
       return res.status(201).json({
         status: 'success',
         message: 'Usuario creado exitosamente',
-        data: result.user,
+        data: {...result.user,creationInvitation:invitation},
       });
     } catch (error) {
       next(error);

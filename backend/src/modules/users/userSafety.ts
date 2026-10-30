@@ -4,6 +4,7 @@ import { RealtimeService } from '../realtime/realtime.service.js';
 import {serializeCapabilities} from './operator-policy.js';
 export async function updateUserSafely(id: string, patch: {
     operationalPermissions?:string|null;
+    username?:string;
     scannerOnly?: boolean;
     fullName?: string;
     role?: 'ADMIN' | 'OPERATOR' | 'VIEWER';
@@ -24,6 +25,7 @@ export async function updateUserSafely(id: string, patch: {
             throw new BadRequestError('La cuenta pendiente requiere activación mediante invitación.');
         if (patch.assignedEventId && !await tx.event.findUnique({ where: { id: patch.assignedEventId } }))
             throw new BadRequestError('Edición no encontrada.');
+        if(patch.username){const duplicate=await tx.user.findUnique({where:{username:patch.username}});if(duplicate&&duplicate.id!==id)throw new BadRequestError('Nombre de usuario no disponible.');}
         const after = { ...user, ...patch };
         if(after.role==='OPERATOR'&&(after.scannerOnly||user.role!=='OPERATOR'||user.scannerOnly&&!after.scannerOnly)&&patch.operationalPermissions===undefined)patch={...patch,operationalPermissions:serializeCapabilities('OPERATOR',Boolean(after.scannerOnly))};
         if(after.scannerOnly && (after.role !== 'OPERATOR' || !after.assignedEventId)) throw new BadRequestError('Escáner QR requiere base Operador y edición asignada.');
@@ -41,10 +43,12 @@ export async function updateUserSafely(id: string, patch: {
                 if (admins.some(a => !a.assignedEventId || a.assignedEventId === event.id) && !remaining.some(a => !a.assignedEventId || a.assignedEventId === event.id))
                     throw new BadRequestError('La edición quedaría sin administrador activo.');
         }
-        if (patch.isActive === false)
+        if (patch.isActive === false){
             await tx.passwordReset.updateMany({ where: { userId: id, usedAt: null, revokedAt: null }, data: { revokedAt: new Date() } });
-        const updated = await tx.user.update({ where: { id }, data: { ...patch, ...(user.isActive && patch.isActive === false ? { sessionVersion: { increment: 1 } } : {}) }, select: { id: true, email: true, fullName: true, scannerOnly: true, operationalPermissions:true, role: true, assignedEventId: true, accountStatus: true, staffArea: true, isActive: true, lastLoginAt: true, createdAt: true, updatedAt: true } });
-        const changes = { before: { operationalPermissions:user.operationalPermissions, scannerOnly: user.scannerOnly, role: user.role, isActive: user.isActive, assignedEventId: user.assignedEventId }, after: { operationalPermissions:updated.operationalPermissions, scannerOnly: updated.scannerOnly, role: updated.role, isActive: updated.isActive, assignedEventId: updated.assignedEventId }, operation: action };
+            await tx.userInvitation.updateMany({where:{userId:id,usedAt:null,revokedAt:null},data:{revokedAt:new Date()}});
+        }
+        const updated = await tx.user.update({ where: { id }, data: { ...patch, ...(user.isActive && patch.isActive === false ? { sessionVersion: { increment: 1 } } : {}) }, select: { id: true, email: true, username:true, fullName: true, scannerOnly: true, operationalPermissions:true, role: true, assignedEventId: true, accountStatus: true, staffArea: true, isActive: true, lastLoginAt: true, createdAt: true, updatedAt: true } });
+        const changes = { before: { username:user.username, operationalPermissions:user.operationalPermissions, scannerOnly: user.scannerOnly, role: user.role, isActive: user.isActive, assignedEventId: user.assignedEventId }, after: { username:updated.username, operationalPermissions:updated.operationalPermissions, scannerOnly: updated.scannerOnly, role: updated.role, isActive: updated.isActive, assignedEventId: updated.assignedEventId }, operation: action };
         await tx.auditLog.create({ data: { userId: actor.id, entity: 'USER', entityId: id, action: 'USER_UPDATE', changes: (process.env.DATABASE_URL?.startsWith('file:') ? JSON.stringify(changes) : changes) as any } });
         return updated;
     });

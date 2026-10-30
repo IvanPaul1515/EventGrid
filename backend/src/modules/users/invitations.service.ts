@@ -1,3 +1,6 @@
+import {PublicOriginService} from '../public-origin/public-origin.service.js';
+import {usernameSchema} from './username.js';
+import {smtpPolicy} from '../communications/smtp-state.js';
 import { uncertainMailFailure } from '../../utils/mailFailure.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import crypto from 'node:crypto';
@@ -51,26 +54,31 @@ export class InvitationsService {
           await this.prepare(userId);
           results.push({ userId, status: 'PENDING', reason: 'Proveedor desactivado; no se intentó enviar.' }); continue;
         }
+        if(smtpPolicy().realEmailBlocked){await this.prepare(userId);results.push({userId,status:'PENDING',reason:'Los envíos reales están bloqueados por la configuración del entorno.'});continue;}
+        const publicSettings=await PublicOriginService.settings();
+        if(!publicSettings.publicOrigin||publicSettings.originStatus!=='VERIFIED'){await this.prepare(userId);results.push({userId,status:'PENDING',reason:'Configura y verifica el dominio público de activación antes de enviar.'});continue;}
         const token = crypto.randomBytes(32).toString('base64url');
         const now = new Date();
         const claim = await prisma.$transaction(async tx => {
           const prior = await tx.userInvitation.findMany({ where: { userId, usedAt: null, revokedAt: null }, orderBy: { createdAt: 'desc' } });
           if (prior.some(item => item.status === 'PROCESSING' && now.getTime() - item.createdAt.getTime() < 60000)) return { skip: 'PROCESSING' };
           const live = prior.find(item => item.tokenHash && item.expiresAt && item.expiresAt > now);
-          if (live && !reinvite) return { skip: live.status };
+          if (live && !reinvite&&!['FAILED','REJECTED'].includes(live.status)) return { skip: live.status };
           await tx.userInvitation.updateMany({ where: { userId, usedAt: null, revokedAt: null }, data: { revokedAt: now } });
           const invitation = await tx.userInvitation.create({ data: { userId, tokenHash: crypto.createHash('sha256').update(token).digest('hex'), expiresAt: new Date(now.getTime() + 86400000), status: 'PROCESSING' } });
           return { invitation };
         }, { isolationLevel: 'Serializable' });
         if (!claim.invitation) { results.push({ userId, status: claim.skip, reason: 'Ya existe una invitación en curso o un enlace vigente. No se duplicó el envío.' }); continue; }
         invitationId = claim.invitation.id;
-        const origin = process.env.FRONTEND_URL || ENV.CORS_ORIGIN.find(url => url.startsWith('https://') || (ENV.NODE_ENV !== 'production' && url.startsWith('http://localhost:')));
-        if (!origin) throw new Error('Falta el origen público de activación.');
-        const url = new URL('/activate', origin); url.searchParams.set('token', token);
+        const activationUrl=await PublicOriginService.link('activation',token);if(!activationUrl)throw new Error('Public origin unavailable');
+        const url=new URL(activationUrl);
+        const event=user.assignedEventId?await prisma.event.findUnique({where:{id:user.assignedEventId},select:{name:true}}):null;
+        const eventName=event?.name||'EventGrid';
+        const safeEventName=eventName.replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]!));
         transport = CommunicationsService.createTransporter(config);
         const sent = await transport.sendMail({ from: `"${config.fromName}" <${config.fromEmail}>`, to: user.email,
-          subject: 'Invitación a EventGrid', text: `Establezca su contraseña en ${url.toString()}\nEl enlace vence en 24 horas y es de un solo uso.`,
-          html: `<p>Ha recibido una invitación a EventGrid.</p><p><a href="${url.toString().replace(/&/g, '&amp;')}">Establecer contraseña</a></p><p>Enlace individual de un solo uso; vence en 24 horas.</p>` });
+          subject: 'Invitación a EventGrid', text: `Has sido invitado a formar parte del equipo de ${eventName}.\nEstablezca su contraseña en ${url.toString()}\nEl enlace vence en 24 horas y es de un solo uso.`,
+          html: `<p>Has sido invitado a formar parte del equipo de ${safeEventName}.</p><p><a href="${url.toString().replace(/&/g, '&amp;')}">Activar mi cuenta</a></p><p>Enlace individual de un solo uso; vence en 24 horas.</p>` });
         const rejected = Array.isArray(sent.rejected) && sent.rejected.length > 0;
         const accepted = !rejected && Array.isArray(sent.accepted) && sent.accepted.some((email: any) => String(email).toLowerCase() === user.email.toLowerCase());
         const status = accepted ? 'ACCEPTED_BY_PROVIDER' : rejected ? 'REJECTED' : 'UNKNOWN_DELIVERY_STATUS';
@@ -89,7 +97,10 @@ export class InvitationsService {
     return { status: 'COMPLETED', results };
   }
 
-  static async accept(token: string, password: string) {
+  static async describe(token:string){const hash=crypto.createHash('sha256').update(token).digest('hex');const i=await prisma.userInvitation.findUnique({where:{tokenHash:hash}});if(!i||i.usedAt||i.revokedAt||!i.expiresAt||i.expiresAt<=new Date())throw new BadRequestError('Enlace inválido o vencido.');const user=await prisma.user.findUnique({where:{id:i.userId},select:{username:true,fullName:true}});if(!user)throw new BadRequestError('Enlace inválido o vencido.');return user;}
+
+
+  static async accept(token: string, password: string, username?:string) {
     const hash = crypto.createHash('sha256').update(token).digest('hex');
     const passwordHash = await bcrypt.hash(password, 12);
     const activated = await prisma.$transaction(async tx => {
@@ -97,7 +108,10 @@ export class InvitationsService {
       if (!invitation) throw new BadRequestError('Enlace inválido o vencido.');
       const claimed = await tx.userInvitation.updateMany({ where: { id: invitation.id, usedAt: null, revokedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date(), status: 'ACCEPTED' } });
       if (claimed.count !== 1) throw new BadRequestError('Enlace inválido, vencido o ya utilizado.');
-      return tx.user.update({ where: { id: invitation.userId }, data: { passwordHash, accountStatus: 'ACTIVE', isActive: true }, select: { id: true, assignedEventId: true } });
+      const proposed=username?usernameSchema.parse(username):undefined;
+      if(proposed){const duplicate=await tx.user.findUnique({where:{username:proposed}});if(duplicate&&duplicate.id!==invitation.userId)throw new BadRequestError('Nombre de usuario no disponible.');}
+      const user=await tx.user.update({ where: { id: invitation.userId }, data: {username:proposed,sessionVersion:{increment:1}, passwordHash, accountStatus: 'ACTIVE', isActive: true }, select: { id: true, assignedEventId: true } });
+      await tx.auditLog.create({data:{userId:user.id,entity:'USER',entityId:user.id,action:'USER_UPDATE',changes:JSON.stringify({operation:'INVITATION_ACTIVATED',username:proposed})}});return user;
     });
     if (activated.assignedEventId) RealtimeService.changed(activated.assignedEventId, ['users']);
     RealtimeService.notifyAccess(activated.id);

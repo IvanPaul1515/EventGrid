@@ -1,0 +1,11 @@
+import {Router} from 'express';
+import {z} from 'zod';
+import {authenticateToken} from '../../middleware/auth.js';
+import {actionRateLimiter} from '../../middleware/rateLimiter.js';
+import {PublicOriginService as S} from './public-origin.service.js';
+export const publicOriginRoutes=Router(),publicInstanceRoutes=Router();
+publicInstanceRoutes.get('/',async(_r,s,n)=>{try{s.setHeader('Cache-Control','no-store');s.json({installationId:(await S.settings()).installationId});}catch(e){n(e);}});
+publicOriginRoutes.use(authenticateToken,actionRateLimiter(10));
+publicOriginRoutes.get('/',async(r,s,n)=>{try{await S.requireGlobal(r.user!.id);s.json({data:await S.settings()});}catch(e){n(e);}});
+publicOriginRoutes.put('/',async(r,s,n)=>{try{const b=z.object({origin:z.string().max(300)}).strict().parse(r.body);s.json({data:await S.save(r.user!.id,b.origin)});}catch(e){n(e);}});
+publicOriginRoutes.post('/verify',async(r,s,n)=>{try{s.json({data:await S.verify(r.user!.id)});}catch(e){n(e);}});

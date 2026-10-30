@@ -1,3 +1,4 @@
+import {PublicOriginService} from '../public-origin/public-origin.service.js';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/db.js';
@@ -19,13 +20,8 @@ export class RecoveryService {
             const config = await CommunicationsService.getRawConfig(user.assignedEventId);
             if (!config?.isEnabled)
                 return; // No token or mail job is queued for later activation.
-            const origin = process.env.FRONTEND_URL || ENV.CORS_ORIGIN.find(s => s.startsWith('https://') || (ENV.NODE_ENV !== 'production' && s.startsWith('http://localhost')));
-            if (!origin)
-                return;
-            const url = new URL('/reset-password', origin);
-            if (url.protocol !== 'https:' && ENV.NODE_ENV === 'production')
-                return;
             const token = crypto.randomBytes(32).toString('base64url');
+            const recoveryUrl=await PublicOriginService.link('recovery',token);if(!recoveryUrl)return;const url=new URL(recoveryUrl);
             const minutes = Math.max(5, Math.min(60, Number(process.env.PASSWORD_RESET_TTL_MINUTES) || 15));
             const record = await writeTransaction(async (tx) => {
                 const recent = await tx.passwordReset.findFirst({ where: { userId: user.id, createdAt: { gt: new Date(Date.now() - 60000) }, usedAt: null, revokedAt: null } });

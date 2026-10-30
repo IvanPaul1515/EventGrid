@@ -26,6 +26,7 @@ export const UpdateEventSettingsSchema = z.object({
   themeMode: z.enum(['dark', 'light', 'system']).default('dark'),
   currencyCode: z.string().default('DOP'),
   currencySymbol: z.string().default('RD$'),
+  horizontalLogoUrl:z.string().max(500).nullable().optional(),
   logoUrl: z.string().nullable().optional(),
   loginLogoUrl: z.string().nullable().optional(),
   faviconUrl: z.string().nullable().optional(),

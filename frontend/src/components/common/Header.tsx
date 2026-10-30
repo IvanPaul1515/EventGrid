@@ -1,4 +1,4 @@
-import {EditionBrand} from './EditionBrand';
+import {HeaderBrand} from './HeaderBrand';
 import {NotificationCenter} from './NotificationCenter';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
@@ -58,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
         )}
 
         <div className="hidden sm:flex items-center pr-3 border-r border-border shrink-0">
-          <EditionBrand name={currentEvent?.name} logoUrl={currentEvent?.settings?.logoUrl} loginLogoUrl={currentEvent?.settings?.loginLogoUrl}/>
+          <HeaderBrand name={currentEvent?.name} logoUrl={currentEvent?.settings?.logoUrl} horizontalLogoUrl={currentEvent?.settings?.horizontalLogoUrl} isDark={isDark}/>
         </div>
 
         {/* Selector de Edición Activa (BarCamp RD) */}

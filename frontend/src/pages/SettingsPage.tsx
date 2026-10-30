@@ -1,3 +1,4 @@
+import {PublicDomainSettings} from '../components/common/PublicDomainSettings';
 import {SystemBuildInfo} from '../components/common/SystemBuildInfo';
 import {SmtpStatus} from '../components/common/SmtpStatus';
 import {scheduleService} from '../services/schedule.service';
@@ -76,6 +77,7 @@ export const SettingsPage: React.FC = () => {
 
   // Logo de la Edición
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [horizontalLogoUrl,setHorizontalLogoUrl]=useState('');
   const [logoUploading, setLogoUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -186,6 +188,7 @@ export const SettingsPage: React.FC = () => {
         setPrefix(currentEvent.settings.registrationPrefix || 'BC26-');
         setCurrencySymbol(currentEvent.settings.currencySymbol || 'RD$');
         setLogoUrl(currentEvent.settings.logoUrl || null);
+        setHorizontalLogoUrl(currentEvent.settings.horizontalLogoUrl || '');
         setTshirtEnabled(Boolean(currentEvent.settings.tshirtSizesEnabled));
         if (currentEvent.settings.tshirtSizes) {
           try {
@@ -363,6 +366,7 @@ export const SettingsPage: React.FC = () => {
     try {
       setSaving(true);
       await eventsService.updateSettings(currentEvent.id, {
+        horizontalLogoUrl:horizontalLogoUrl.trim()||null,
         primaryColor,
         secondaryColor,
         accentColor,
@@ -587,6 +591,7 @@ export const SettingsPage: React.FC = () => {
   return (
     <div onChangeCapture={() => { draftChanged.current = true; }} className="space-y-6 max-w-7xl mx-auto">
       {user?.role==='ADMIN'&&<SystemBuildInfo/>}
+      {user?.role==='ADMIN'&&!user.assignedEventId&&<PublicDomainSettings/>}
       {/* Notificación flotante */}
       {feedback && (
         <div
@@ -796,6 +801,7 @@ export const SettingsPage: React.FC = () => {
 
             {/* Ajuste Fino Hexadecimal */}
             <form onSubmit={handleSaveVisual} className="p-5 rounded-2xl bg-card border border-border space-y-4">
+              <label className="block text-sm">Logo horizontal del encabezado<input className="input-field w-full mt-1" maxLength={500} value={horizontalLogoUrl} onChange={e=>setHorizontalLogoUrl(e.target.value)} placeholder="/uploads/logos/archivo.png"/><span className="text-xs text-muted-foreground">Opcional. Conserva el logo compacto del menú lateral.</span></label>
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                 <Palette className="w-3.5 h-3.5 text-primary" />
                 Valores Hexadecimales y Variables de Edición

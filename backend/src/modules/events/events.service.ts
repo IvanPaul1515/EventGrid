@@ -1,3 +1,4 @@
+import {ensureOpinionSurvey} from '../opinions/opinions.setup.js';
 import { FinanceService } from '../finance/finance.service.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
 import { prisma } from '../../config/db.js';
@@ -155,6 +156,7 @@ export class EventsService {
       });
     }
 
+    await ensureOpinionSurvey(event.id);
     return EventsService.formatEvent(event);
   }
 
@@ -339,6 +341,7 @@ export class EventsService {
       }
     }
 
+    await ensureOpinionSurvey(newEvent.id);
     return newEvent;
   }
 

@@ -107,7 +107,7 @@ describe('separate password recovery, mock provider only', () => {
         expect(await prisma.passwordReset.count()).toBe(0);
     });
     it('hashes tokens, expires links, consumes a reset once and revokes previous sessions without leaking secrets', async () => {
-        vi.stubEnv('FRONTEND_URL', 'https://qa.example.invalid');
+        await prisma.applicationSettings.upsert({where:{id:'global'},create:{id:'global',publicOrigin:'https://qa.example.invalid',originStatus:'VERIFIED'},update:{publicOrigin:'https://qa.example.invalid',originStatus:'VERIFIED'}});
         vi.spyOn(CommunicationsService, 'getRawConfig').mockResolvedValue({ isEnabled: true, fromName: 'QA', fromEmail: 'no-reply@qa.invalid' } as any);
         const u = await prisma.user.create({ data: { email: 'recover@qa.invalid', fullName: 'Recovery', role: 'OPERATOR', assignedEventId: event.id, passwordHash: await bcrypt.hash(password, 4) } });
         const tokenBefore = jwt.sign({ id: u.id }, 'isolated-evolution-test');

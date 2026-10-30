@@ -1,3 +1,5 @@
+import {personName} from '../../utils/personName.js';
+import {emailLogo} from '../../utils/emailLogo.js';
 import { WalletService } from '../wallet/wallet.service.js';
 import { recipientIneligibility } from './recipient-policy.js';
 import { responsiveEmailHtml } from '../../utils/emailDocument.js';
@@ -44,6 +46,7 @@ export class CommunicationsService {
       return this.customTransporterFactory(config);
     }
 
+    if(!verifyOnly&&!smtpPolicy().simulationAllowed&&smtpPolicy().realEmailBlocked)throw new BadRequestError('Los envíos reales están bloqueados por la configuración del entorno.');
     const isTest = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
     const isBlocked = process.env.BLOCK_REAL_EMAIL === 'true';
     const isDev = process.env.NODE_ENV === 'development';
@@ -1600,7 +1603,7 @@ export class CommunicationsService {
       activityDay: (overrides as any)?.activityDay || '',
       activityRoom: (overrides as any)?.activityRoom || '',
       keynoteDescriptionHtml: (overrides as any)?.keynoteDescriptionHtml || '',
-      participantName: registration.participant?.fullName || 'Participante',
+      participantName: personName(registration.participant?.fullName || 'Participante'),
       participantFirstName: registration.participant?.firstName || 'Participante',
       participantEmail: registration.participant?.email || '',
       eventName: registration.event?.name || 'Evento Oficial',
@@ -1743,29 +1746,7 @@ export class CommunicationsService {
       });
     }
 
-    // 2. Logo de edición inline attachment si existe en disco y está referenciado
-    if (options?.logoUrl) {
-      const cleanPath = options.logoUrl.replace(/^\/?(uploads\/logos\/.*)/, '$1');
-      const resolvedDiskPath = path.resolve(process.cwd(), cleanPath);
-      if (fs.existsSync(resolvedDiskPath)) {
-        try {
-          const logoBuffer = fs.readFileSync(resolvedDiskPath);
-          const requiresLogo = preparedHtml.includes(options.logoUrl) ||
-                               preparedHtml.includes('/uploads/logos/') ||
-                               preparedHtml.includes('cid:event-logo');
-          if (requiresLogo) {
-            preparedHtml = preparedHtml.split(options.logoUrl).join('cid:event-logo');
-            preparedHtml = preparedHtml.replace(/src="[^"]*\/uploads\/logos\/[^"]*"/g, 'src="cid:event-logo"');
-            attachments.push({
-              content: logoBuffer,
-              cid: 'event-logo',
-              contentType: 'image/png',
-              contentDisposition: 'inline',
-            });
-          }
-        } catch {}
-      }
-    }
+    if(options?.logoUrl){const logo=emailLogo(preparedHtml,options.logoUrl);preparedHtml=logo.html;attachments.push(...logo.attachments);}
 
     return {
       html: preparedHtml,
@@ -1877,6 +1858,8 @@ export class CommunicationsService {
    * Enviar correo individual a un participante (QA-07, QA-08)
    */
   static async sendSingleEmail(input: SendEmailInput, userId?: string) {
+    if(!smtpPolicy().simulationAllowed&&(input.mode==='SIMULATION'||input.simulateOnly))throw new BadRequestError('La simulación no está disponible en esta instalación privada.');
+    if(!smtpPolicy().simulationAllowed&&smtpPolicy().realEmailBlocked)throw new BadRequestError('Los envíos reales están bloqueados por la configuración del entorno.');
     const registration = await prisma.registration.findUnique({
       where: { id: input.registrationId },
       include: {
@@ -2127,6 +2110,8 @@ export class CommunicationsService {
    * Enviar correos masivos por lotes sin límite silencioso de 200 (QA-09)
    */
   static async sendBulkEmail(input: SendBulkEmailInput, userId?: string) {
+    if(!smtpPolicy().simulationAllowed&&(input.mode==='SIMULATION'||input.simulateOnly))throw new BadRequestError('La simulación no está disponible en esta instalación privada.');
+    if(!smtpPolicy().simulationAllowed&&smtpPolicy().realEmailBlocked)throw new BadRequestError('Los envíos reales están bloqueados por la configuración del entorno.');
     const event = await prisma.event.findUnique({
       where: { id: input.eventId },
       include: { settings: true },

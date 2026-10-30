@@ -40,6 +40,7 @@ export const UsersPage: React.FC = () => {
 
   // Filtros
   const [search, setSearch] = useState('');
+  const [createUsername,setCreateUsername]=useState(''),[editUsername,setEditUsername]=useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [page, setPage] = useState(1);
@@ -124,6 +125,7 @@ export const UsersPage: React.FC = () => {
 
       const res = await usersService.createUser({
         email: createForm.email.trim(),
+        username:createUsername.trim(),inviteNow:true,invitationRequestKey:crypto.randomUUID(),
         fullName: [createForm.fullName.trim(),createSurname.trim()].filter(Boolean).join(' '),
         operationalPermissions:createPermissions,
         role: createForm.role,
@@ -132,9 +134,9 @@ export const UsersPage: React.FC = () => {
       });
 
       setIsCreateModalOpen(false);
-      setCreateForm({ email: '', fullName: '', role: 'OPERATOR', scannerOnly: false });setCreateSurname('');setCreatePermissions(undefined);
+      setCreateUsername('');setCreateForm({ email: '', fullName: '', role: 'OPERATOR', scannerOnly: false });setCreateSurname('');setCreatePermissions(undefined);
 
-      setSuccessMsg(`Cuenta de ${res.user.fullName} creada, pendiente de activación. Selecciónela en la lista para autorizar su invitación.`);
+      setSuccessMsg(`Cuenta de ${res.user.fullName} creada, pendiente de activación. ${res.user.creationInvitation?.results?.[0]?.status==='ACCEPTED_BY_PROVIDER'?'Invitación aceptada por el proveedor; entrega no confirmada.':res.user.creationInvitation?.results?.[0]?.reason||'Invitación pendiente de envío.'}`);
       setTimeout(() => setSuccessMsg(null), 5000);
 
       fetchUsers();
@@ -149,6 +151,7 @@ export const UsersPage: React.FC = () => {
   const handleOpenEdit = (u: UserItem) => {
     setSelectedUser(u);
     try{setEditPermissions(u.operationalPermissions==null?undefined:JSON.parse(u.operationalPermissions));}catch{setEditPermissions([]);}
+    setEditUsername(u.username||'');
     setEditForm({
       fullName: u.fullName,
       scannerOnly: Boolean(u.scannerOnly),
@@ -168,7 +171,7 @@ export const UsersPage: React.FC = () => {
       setSubmitting(true);
       setError(null);
 
-      const updated = await usersService.updateUser(selectedUser.id, { ...editForm, operationalPermissions:editPermissions, assignedEventId: editForm.assignedEventId || null });
+      const updated = await usersService.updateUser(selectedUser.id, { ...editForm,...(editUsername.trim()?{username:editUsername.trim()}:{}), operationalPermissions:editPermissions, assignedEventId: editForm.assignedEventId || null });
       setIsEditModalOpen(false);
       setSelectedUser(null);
       setSuccessMsg(`Usuario ${updated.fullName} actualizado correctamente.`);
@@ -324,7 +327,7 @@ export const UsersPage: React.FC = () => {
               <option value="ALL">Todos los roles</option>
               <option value="ADMIN">Administradores</option>
               <option value="OPERATOR">Operadores</option>
-              <option value="VIEWER">Consulta</option>
+              <option value="VIEWER">Solo consulta</option>
             </select>
           </div>
 
@@ -634,19 +637,20 @@ export const UsersPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">Rol en la Plataforma *</label>
+                <label className="block text-xs font-semibold text-foreground mb-1">Tipo de cuenta *</label>
                 <select aria-label="Rol"
-                  value={createForm.scannerOnly?'SCANNER':createForm.role}
-                  onChange={(e) => setCreateForm({ ...createForm, role: e.target.value==='SCANNER'?'OPERATOR':e.target.value as any, scannerOnly:e.target.value==='SCANNER' })}
+                  value={createForm.role}
+                  onChange={(e) => setCreateForm({ ...createForm, role:e.target.value as any,scannerOnly:false })}
                   className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary cursor-pointer font-medium"
                 >
-                  <option value="OPERATOR">Operador</option><option value="SCANNER">Escáner QR</option>
+                  <option value="OPERATOR">Personal operativo</option>
                   <option value="ADMIN">Administrador</option>
-                  <option value="VIEWER">Consulta</option>
+                  <option value="VIEWER">Solo consulta</option>
                 </select>
               </div>
+<label className="block text-sm">Nombre de usuario<input aria-label="Nombre de usuario nuevo" required minLength={3} maxLength={32} pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,31}" autoComplete="off" value={createUsername} onChange={e=>setCreateUsername(e.target.value)} className="input-field w-full"/></label><label className="flex gap-2 text-sm border border-border rounded-xl p-3"><input type="checkbox" disabled={createForm.role!=='OPERATOR'} checked={createForm.scannerOnly} onChange={e=>setCreateForm({...createForm,scannerOnly:e.target.checked})}/>Acceso especial: Escáner QR (sin cobros, entregas ni administración)</label>
 {createForm.role==='OPERATOR'&&!createForm.scannerOnly&&<OperatorPermissions value={createPermissions} onChange={setCreatePermissions} disabled={submitting}/>}
-              <section className="border border-border rounded-xl p-3 text-sm space-y-1"><h3 className="font-semibold">Edición y acceso</h3><p>Edición: {currentEvent?.name||'Selecciona una edición'}</p><p className="text-xs text-muted-foreground">La cuenta se crea pendiente de activación. La persona establecerá su contraseña mediante el flujo seguro existente. Crear la cuenta no envía correos.</p></section>
+              <section className="border border-border rounded-xl p-3 text-sm space-y-1"><h3 className="font-semibold">Edición y acceso</h3><p>Edición: {currentEvent?.name||'Selecciona una edición'}</p><p className="text-xs text-muted-foreground">La cuenta se crea pendiente de activación. La persona establecerá su contraseña mediante el flujo seguro existente. Crear e invitar autoriza un envío individual. Si falta SMTP o el dominio público, la invitación queda pendiente para reintentar.</p></section>
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-border">
                 <button
                   type="button"
@@ -660,7 +664,7 @@ export const UsersPage: React.FC = () => {
                   disabled={submitting}
                   className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold shadow-md disabled:opacity-50"
                 >
-                  {submitting ? 'Creando...' : 'Crear Usuario'}
+                  {submitting ? 'Creando...' : 'Crear e invitar'}
                 </button>
               </div>
             </form>
@@ -686,6 +690,7 @@ export const UsersPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleUpdateUser} className="mobile-form-body p-5 space-y-4">
+              <label className="block text-sm">Nombre de usuario<input aria-label="Nombre de usuario" minLength={3} maxLength={32} pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,31}" value={editUsername} onChange={e=>setEditUsername(e.target.value)} className="input-field w-full"/></label>
               {editForm.role==='OPERATOR'&&!editForm.scannerOnly&&<OperatorPermissions value={editPermissions} onChange={setEditPermissions} legacy={selectedUser?.operationalPermissions==null} disabled={submitting}/>}
 
               <div>
@@ -700,13 +705,13 @@ export const UsersPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">Rol RBAC *</label>
+                <label className="block text-xs font-semibold text-foreground mb-1">Tipo de cuenta *</label>
                 <select
                   value={editForm.role}
                   onChange={(e) => setEditForm({ ...editForm, role: e.target.value as any, scannerOnly: false })}
                   className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary cursor-pointer font-medium"
                 >
-                  <option value="OPERATOR">Operador</option>
+                  <option value="OPERATOR">Personal operativo</option>
                   <option value="ADMIN">Administrador</option>
                   <option value="VIEWER">Auditor (Consulta)</option>
                 </select>
@@ -718,7 +723,7 @@ export const UsersPage: React.FC = () => {
                   {events.map(event => <option key={event.id} value={event.id}>{event.name} · {event.year}</option>)}
                 </select>
               </div>
-              <label className="flex items-center gap-3 rounded-xl border border-border p-3 text-sm"><input type="checkbox" disabled={editForm.role!=='OPERATOR'} checked={editForm.scannerOnly} onChange={e=>setEditForm({...editForm,scannerOnly:e.target.checked,assignedEventId:editForm.assignedEventId||currentEvent?.id||''})}/>Perfil restringido Escáner QR</label>
+              <label className="flex items-center gap-3 rounded-xl border border-border p-3 text-sm"><input type="checkbox" disabled={editForm.role!=='OPERATOR'} checked={editForm.scannerOnly} onChange={e=>setEditForm({...editForm,scannerOnly:e.target.checked,assignedEventId:editForm.assignedEventId||currentEvent?.id||''})}/>Acceso especial: Escáner QR (restringido)</label>
               <label className="block text-xs">Área del staff (opcional)<input value={editForm.staffArea} onChange={e => setEditForm({ ...editForm, staffArea: e.target.value })} className="mt-1 w-full p-2 rounded-xl bg-background border border-border" /></label>
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border">

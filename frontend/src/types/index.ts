@@ -4,6 +4,7 @@ export type RegistrationStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED';
 export type PaymentStatus = 'PENDING' | 'PARTIAL' | 'PAID' | 'COURTESY';
 
 export interface User {
+  username?:string|null;
   operationalPermissions?:string|null;
   scannerOnly?: boolean;
   assignedEventId?: string | null;
@@ -19,6 +20,7 @@ export interface User {
 export type EventStatus = 'PLANNING' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 
 export interface EventSettings {
+  horizontalLogoUrl?:string|null;
   notificationStockThreshold?:number|null;
   timeZone?:string;allowOnsitePayments?:boolean;requirePaymentForEntry?:boolean;
   id: string;
@@ -347,6 +349,7 @@ export interface QrScanResult {
 }
 
 export interface EmailConfig {
+  simulationAllowed?:boolean;
   isConfigured?: boolean;
   realEmailBlocked?: boolean;
   realEmailAllowed?: boolean;

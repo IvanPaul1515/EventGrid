@@ -9,6 +9,7 @@ import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, Eye, EyeOff } from 'l
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const [scannerMode,setScannerMode]=useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -34,16 +35,16 @@ export const LoginPage: React.FC = () => {
     try {
       const res = await api.post('/auth/login', {
         email: email.trim().toLowerCase(),
-        password
+        password,scannerMode
       });
       const { token, user } = res.data.data;
       login(token, user);
-      navigate('/', { replace: true });
+      navigate(user.scannerOnly?'/reception':'/', { replace: true });
     } catch (err: any) {
       // Manejo de errores de autenticación seguro: no revelar si el correo existe o no
       const status = err.response?.status;
       if (status === 401 || status === 400) {
-        setError('Credenciales inválidas. Verifique su correo electrónico y contraseña.');
+        setError('Credenciales inválidas. Verifique su usuario o correo y contraseña.');
       } else if (status === 429) {
         setError('Demasiados intentos fallidos. Por seguridad, espere unos minutos antes de intentar nuevamente.');
       } else if (!err.response) {
@@ -104,7 +105,7 @@ export const LoginPage: React.FC = () => {
         <div className="bg-card/95 border border-border rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
           <div className="flex items-center gap-2 mb-5 sm:mb-6 text-sm text-foreground font-medium pb-3 border-b border-border">
             <Lock className="w-4 h-4 text-primary" />
-            <span className="font-display font-bold">Acceso al Panel de Control</span>
+            <span className="font-display font-bold">{scannerMode?'Acceso de escáner QR':'Acceso al Panel de Control'}</span>
           </div>
 
           {error && (
@@ -114,20 +115,22 @@ export const LoginPage: React.FC = () => {
             </div>
           )}
 
+          <button type="button" className="text-sm text-primary mb-4" disabled={loading} onClick={()=>{setScannerMode(v=>!v);setError(null);}}>{scannerMode?'Volver al acceso general':'Entrar como escáner'}</button>
+          {scannerMode&&<p className="text-xs text-muted-foreground mb-4">Usa una cuenta restringida de escáner. La cámara y la vinculación requieren acceso autorizado.</p>}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="login-email" className="block text-xs font-mono font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                Correo Electrónico
+                Correo o nombre de usuario
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted-foreground">
                   <Mail className="w-4 h-4" />
                 </div>
                 <input
-                  id="login-email" type="email"
+                  id="login-email" type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="usuario@barcamp.org.do"
+                  placeholder="Usuario o correo"
                   required
                   disabled={loading}
                   autoComplete="username"

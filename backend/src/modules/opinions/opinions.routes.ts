@@ -1,3 +1,6 @@
+import {ensureOpinionSurvey} from './opinions.setup.js';
+import {PublicOriginService} from '../public-origin/public-origin.service.js';
+import {publicRoutePath} from '../public-origin/public-origin.rules.js';
 import {Router,Request,Response,NextFunction} from 'express';
 import {randomBytes,createHmac} from 'node:crypto';
 import QRCode from 'qrcode';
@@ -28,17 +31,17 @@ publicOpinionsRoutes.use(privateHeaders,(req,res,next)=>{
 });
 async function publicSurvey(key:string,tx:any=prisma) {
  const survey=await tx.opinionSurvey.findUnique({where:{publicKey:id.parse(key)},include:{event:{select:{name:true,status:true,settings:{select:{primaryColor:true,backgroundColor:true,logoUrl:true}}}}}});
- if(!survey?.enabled||survey.event.status==='ARCHIVED')throw new NotFoundError('La encuesta no está disponible.');
+ if(!survey||survey.event.status==='ARCHIVED')throw new NotFoundError('La encuesta no está disponible.');
  return survey;
 }
 publicOpinionsRoutes.get('/:key',async(req,res,next)=>{try{
  const s=await publicSurvey(req.params.key);
- res.json({data:{name:s.event.name,appearance:s.event.settings,questions:JSON.parse(s.questions).filter((q:OpinionQuestion)=>q.enabled),categories}});
+ res.json({data:{surveyEnabled:s.enabled,buzonEnabled:s.buzonEnabled,name:s.event.name,appearance:s.event.settings,questions:JSON.parse(s.questions).filter((q:OpinionQuestion)=>q.enabled),categories}});
 }catch(e){next(e);}});
 publicOpinionsRoutes.post('/:key/responses',async(req,res,next)=>{try{
  const input=responseSchema.parse(req.body);
  await writeTransaction(async tx=>{
-  const s=await publicSurvey(req.params.key,tx);let answers;
+  const s=await publicSurvey(req.params.key,tx);if(!s.enabled)throw new BadRequestError('La encuesta está pausada.');let answers;
   try{answers=snapshotAnswers(JSON.parse(s.questions),input.kind,input.answers);}catch{throw new BadRequestError('Revisa las respuestas y las preguntas disponibles.');}
   const existing=await tx.opinionResponse.findUnique({where:{id:input.id}});
   if(existing){if(existing.eventId!==s.eventId||existing.kind!==input.kind||existing.answers!==JSON.stringify(answers))throw new BadRequestError('No se puede reutilizar esta confirmación.');return;}
@@ -47,7 +50,7 @@ publicOpinionsRoutes.post('/:key/responses',async(req,res,next)=>{try{
 }catch(e){next(e);}});
 publicOpinionsRoutes.post('/:key/suggestions',async(req,res,next)=>{try{
  const input=suggestionSchema.parse(req.body);
- await writeTransaction(async tx=>{const s=await publicSurvey(req.params.key,tx),existing=await tx.opinionSuggestion.findUnique({where:{id:input.id}});
+ await writeTransaction(async tx=>{const s=await publicSurvey(req.params.key,tx);if(!s.buzonEnabled)throw new BadRequestError('El buzón está pausado.');const existing=await tx.opinionSuggestion.findUnique({where:{id:input.id}});
   if(existing){if(existing.eventId!==s.eventId||existing.text!==input.text||existing.category!==input.category)throw new BadRequestError('No se puede reutilizar esta confirmación.');return;}
   await tx.opinionSuggestion.create({data:{id:input.id,eventId:s.eventId,category:input.category,text:input.text}});
  });const survey=await prisma.opinionSurvey.findUnique({where:{publicKey:req.params.key},select:{eventId:true}});if(survey)RealtimeService.changed(survey.eventId,['opinions']);res.status(201).json({message:'Gracias. Tu sugerencia fue recibida.'});
@@ -59,35 +62,29 @@ opinionsRoutes.use(authenticateToken,editionContext,privateHeaders,(req,_res,nex
  if(user.scannerOnly||user.role!=='ADMIN'&&!caps.includes(cap)&&!(req.method==='GET'&&caps.includes('OPINIONS_MANAGE')))return next(new ForbiddenError('Tu cuenta no tiene permiso para revisar opiniones.'));
  next();
 });
-function publicUrl(key:string) {
- const origin=process.env.FRONTEND_URL||ENV.CORS_ORIGIN.find(origin=>origin.startsWith('https://')||ENV.NODE_ENV!=='production'&&origin.startsWith('http://localhost'));
- if(!origin)throw new BadRequestError('Configure el dominio público del frontend antes de imprimir el QR.');
- const url=new URL(origin);if(!['https:','http:'].includes(url.protocol)||url.username||url.password)throw new BadRequestError('Dominio público no válido.');
- return `${url.origin}/opinions/${key}`;
+async function surveyConfig(eventId:string) {
+ const survey=await ensureOpinionSurvey(eventId),origin=await PublicOriginService.settings();
+ return {...survey,questions:JSON.parse(survey.questions),publicPath:publicRoutePath('opinions',survey.publicKey),publicUrl:await PublicOriginService.link('opinions',survey.publicKey),domainStatus:origin.originStatus};
 }
-async function config(eventId:string) {
- const survey=await prisma.opinionSurvey.findUnique({where:{eventId}});
- return survey?{...survey,questions:JSON.parse(survey.questions),publicUrl:publicUrl(survey.publicKey)}:{enabled:false,questions:defaultQuestions,publicUrl:null};
-}
-opinionsRoutes.get('/config',async(req,res,next)=>{try{res.json({data:await config(req.eventId!)});}catch(e){next(e);}});
+opinionsRoutes.get('/config',async(req,res,next)=>{try{res.json({data:await surveyConfig(req.eventId!)});}catch(e){next(e);}});
 opinionsRoutes.put('/config',requireAdmin,async(req,res,next)=>{try{
  const input=configSchema.parse(req.body);
  const result=await writeTransaction(async tx=>{
   const actor=await tx.user.findUnique({where:{id:req.user!.id}});
   if(!actor?.isActive||actor.scannerOnly||actor.role!=='ADMIN'||actor.accountStatus==='PENDING'||actor.assignedEventId&&actor.assignedEventId!==req.eventId)throw new ForbiddenError('Se requiere un administrador vigente.');
-  const result=await tx.opinionSurvey.upsert({where:{eventId:req.eventId!},create:{eventId:req.eventId!,enabled:input.enabled,questions:JSON.stringify(input.questions)},update:{enabled:input.enabled,questions:JSON.stringify(input.questions)}});
-  await tx.auditLog.create({data:{userId:actor.id,entity:'EVENT',entityId:req.eventId!,action:'SETTINGS_UPDATE',changes:JSON.stringify({operation:'OPINIONS_CONFIG',enabled:input.enabled,questionIds:input.questions.map(q=>q.id)})}});return result;
- });res.json({data:{...result,questions:JSON.parse(result.questions),publicUrl:publicUrl(result.publicKey)}});
+  const result=await tx.opinionSurvey.upsert({where:{eventId:req.eventId!},create:{eventId:req.eventId!,enabled:input.enabled,buzonEnabled:input.buzonEnabled??input.enabled,questions:JSON.stringify(input.questions)},update:{enabled:input.enabled,buzonEnabled:input.buzonEnabled??input.enabled,questions:JSON.stringify(input.questions)}});
+  await tx.auditLog.create({data:{userId:actor.id,entity:'EVENT',entityId:req.eventId!,action:'SETTINGS_UPDATE',changes:JSON.stringify({operation:'OPINIONS_CONFIG',enabled:input.enabled,buzonEnabled:input.buzonEnabled??input.enabled,questionIds:input.questions.map(q=>q.id)})}});return result;
+ });res.json({data:await surveyConfig(req.eventId!)});
 }catch(e){next(e);}});
 opinionsRoutes.get('/qr/:format',async(req,res,next)=>{try{
- const s=await prisma.opinionSurvey.findUnique({where:{eventId:req.eventId!}});if(!s)throw new BadRequestError('Guarda la encuesta para generar su enlace permanente.');
- const url=publicUrl(s.publicKey),format=z.enum(['svg','png']).parse(req.params.format);
+ const s=await ensureOpinionSurvey(req.eventId!);
+ const url=await PublicOriginService.link('opinions',s.publicKey);if(!url)throw new BadRequestError('Configura y verifica el dominio público antes de descargar un QR para otros dispositivos.');const format=z.enum(['svg','png']).parse(req.params.format);
  res.setHeader('Content-Disposition',`attachment; filename="eventgrid-opiniones.${format}"`);
  if(format==='svg')res.type('image/svg+xml').send(await QRCode.toString(url,{type:'svg',margin:4,errorCorrectionLevel:'M'}));
  else res.type('image/png').send(await QRCode.toBuffer(url,{width:1024,margin:4,errorCorrectionLevel:'M'}));
 }catch(e){next(e);}});
 opinionsRoutes.get('/summary',async(req,res,next)=>{try{
- const [responses,suggestions,total]=await Promise.all([prisma.opinionResponse.findMany({where:{eventId:req.eventId!},orderBy:{createdAt:'desc'},take:5000,select:{kind:true,answers:true}}),prisma.opinionSuggestion.findMany({where:{eventId:req.eventId!},select:{category:true}}),prisma.opinionResponse.count({where:{eventId:req.eventId!}})]);
+ const [responses,suggestions,total]=await Promise.all([prisma.opinionResponse.findMany({where:{eventId:req.eventId!},orderBy:{createdAt:'desc'},take:5000,select:{kind:true,answers:true,createdAt:true}}),prisma.opinionSuggestion.findMany({where:{eventId:req.eventId!},select:{category:true}}),prisma.opinionResponse.count({where:{eventId:req.eventId!}})]);
  res.json({data:{...summarizeOpinions(responses,suggestions),totalResponses:total,limited:total>5000}});
 }catch(e){next(e);}});
 opinionsRoutes.get('/responses',async(req,res,next)=>{try{

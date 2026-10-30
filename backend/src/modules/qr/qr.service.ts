@@ -8,7 +8,7 @@ import { writeTransaction } from '../../utils/writeTransaction.js';
 import { ticketToken } from './qr-input.js';
 
 export class QrService {
-  static payload(token: string) { return `${(process.env.PUBLIC_APP_URL || 'https://eventgrid.app').replace(/\/$/,'')}/t/${encodeURIComponent(token)}`; }
+  static payload(token: string) {return token;}
   /**
    * Generar o consultar código QR y entrada digital para una inscripción
    */

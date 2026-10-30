@@ -26,6 +26,7 @@ vi.mock('../src/config/db.js', async () => {
 });
 import { prisma } from '../src/config/db.js';
 import { app } from '../src/app.js';
+import * as smtpState from '../src/modules/communications/smtp-state.js';
 import { CommunicationsService } from '../src/modules/communications/communications.service.js';
 import { ParticipantsService } from '../src/modules/participants/participants.service.js';
 import { CreateScheduleItemSchema } from '../src/modules/schedule/schedule.dto.js';
@@ -39,6 +40,7 @@ beforeAll(async () => {
   execFileSync(process.execPath, [createRequire(import.meta.url).resolve('prisma/build/index.js'), 'db', 'push', '--schema', fileURLToPath(new URL('../prisma/schema.sqlite.prisma', import.meta.url)), '--skip-generate'], {
     env: { ...process.env, DATABASE_URL: isolated.url }, stdio: 'pipe',
   });
+  await prisma.applicationSettings.create({data:{id:'global',publicOrigin:'https://eventgrid.example.invalid',originStatus:'VERIFIED'}});
   const data = (slug: string) => ({ slug, name: slug, year: 2026, startDate: new Date(), endDate: new Date(), isDefault: slug === 'test-primary', settings: { create: { tshirtSizesEnabled: true, tshirtSizes: JSON.stringify(['M', 'L']) } } });
   event = await prisma.event.create({ data: data('test-primary') });
   other = await prisma.event.create({ data: data('test-other') });
@@ -189,25 +191,27 @@ describe('staff and explicit invitations', () => {
     const send = vi.fn(async (mail: any) => ({ accepted: [mail.to], messageId: '<fake-' + mail.to + '>' }));
     const raw = vi.spyOn(CommunicationsService, 'getRawConfig').mockResolvedValue({ isEnabled: true, fromName: 'Test', fromEmail: 'sender@example.invalid' } as any);
     const factory = vi.spyOn(CommunicationsService, 'createTransporter').mockReturnValue({ sendMail: send } as any);
-    vi.stubEnv('FRONTEND_URL', 'https://eventgrid.example.invalid');
+    const policy=vi.spyOn(smtpState,'smtpPolicy').mockReturnValue({realEmailBlocked:false,realEmailAllowed:true,simulationAllowed:false});
     try {
       const payload = { userIds: users.map(user => user.id), requestKey: crypto.randomUUID(), confirmed: true };
       expect((await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({ ...payload, confirmed: false })).status).toBe(400);
       const result = await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send(payload);
       expect(result.status).toBe(200); expect(send).toHaveBeenCalledTimes(2);
       await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send(payload); expect(send).toHaveBeenCalledTimes(2);
-      const tokens = users.map(user => { const mail = send.mock.calls.find(([mail]) => mail.to === user.email)![0]; return new URL(mail.text.match(/https:\/\/\S+/)[0]).searchParams.get('token')!; });
+      const tokens = users.map(user => { const mail = send.mock.calls.find(([mail]) => mail.to === user.email)![0]; return new URL(mail.text.match(/https:\/\/\S+/)[0]).hash.slice(7)!; });
       expect(tokens[0]).not.toBe(tokens[1]);
       const stored = await prisma.userInvitation.findFirstOrThrow({ where: { userId: users[0].id, revokedAt: null } });
       expect(stored.tokenHash).not.toContain(tokens[0]); expect(stored.expiresAt!.getTime() - stored.createdAt.getTime()).toBeGreaterThan(86300000);
-      const activation = { token: tokens[0], password: 'FictitiousPassword123!' };
+      const activation = { token: tokens[0], password: 'FictitiousPassword123!',username:'invited_user01' };
+      const described=await request(app).post('/api/v1/auth/invitation-info').send({token:tokens[0]});expect(described.status).toBe(200);expect(described.body.data).not.toHaveProperty('passwordHash');
       expect((await request(app).post('/api/v1/auth/accept-invitation').send(activation)).status).toBe(200);
+      expect((await request(app).post('/api/v1/auth/login').send({email:'INVITED_USER01',password:activation.password})).status).toBe(200);
       expect((await request(app).post('/api/v1/auth/accept-invitation').send(activation)).status).toBe(400);
       await prisma.userInvitation.updateMany({ where: { userId: users[1].id }, data: { expiresAt: new Date(0) } });
       expect((await request(app).post('/api/v1/auth/accept-invitation').send({ ...activation, token: tokens[1] })).status).toBe(400);
       await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({ ...payload, requestKey: crypto.randomUUID() });
       expect((await prisma.userInvitation.findUniqueOrThrow({ where: { id: stored.id } })).usedAt).toBeTruthy();
-    } finally { factory.mockRestore(); raw.mockRestore(); vi.unstubAllEnvs(); }
+    } finally { factory.mockRestore(); raw.mockRestore(); policy.mockRestore(); vi.unstubAllEnvs(); }
   });
 });
 
@@ -315,7 +319,7 @@ describe('simplified personnel and selected access invitations', () => {
     const active = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@barcamp.org.do' } });
     const send = vi.fn(async (mail: any) => { if (mail.to === pending[1].email) throw Object.assign(new Error('mock authentication failure'), { code: 'EAUTH' }); return { accepted: [mail.to], messageId: '<selection-' + crypto.randomUUID() + '>' }; });
     const raw = vi.spyOn(CommunicationsService, 'getRawConfig').mockResolvedValue({ isEnabled: true, fromName: 'Mock', fromEmail: 'sender@example.invalid' } as any);
-    const factory = vi.spyOn(CommunicationsService, 'createTransporter').mockReturnValue({ sendMail: send, close: vi.fn() } as any); vi.stubEnv('FRONTEND_URL', 'https://eventgrid.example.invalid');
+    const factory = vi.spyOn(CommunicationsService, 'createTransporter').mockReturnValue({ sendMail: send, close: vi.fn() } as any); const policy=vi.spyOn(smtpState,'smtpPolicy').mockReturnValue({realEmailBlocked:false,realEmailAllowed:true,simulationAllowed:false});
     try {
       const payload = { userIds: [pending[0].id, pending[1].id, pending[0].id, active.id], requestKey: crypto.randomUUID(), confirmed: true };
       const result = await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send(payload);
@@ -334,28 +338,37 @@ describe('simplified personnel and selected access invitations', () => {
       await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({ ...payload, requestKey: crypto.randomUUID(), userIds: [pending[0].id], reinvite: true });
       expect(send).toHaveBeenCalledTimes(3); expect((await prisma.userInvitation.findUniqueOrThrow({ where: { id: old.id } })).revokedAt).toBeTruthy();
       expect((await prisma.auditLog.findMany({ where: { action: 'USER_UPDATE' } })).some(log => JSON.parse(String(log.changes)).operation === 'INVITATIONS_DISPATCH')).toBe(true);
-    } finally { raw.mockRestore(); factory.mockRestore(); vi.unstubAllEnvs(); }
+    } finally { raw.mockRestore(); factory.mockRestore(); policy.mockRestore(); vi.unstubAllEnvs(); }
   });
 });
 
 
 describe('invitation concurrency and explicit reinvitation', () => {
+  it('revokes an unused invitation when its pending account is disabled and rejects duplicate usernames',async()=>{
+    const pending=await prisma.user.create({data:{fullName:'Synthetic Pending',email:'disabled-pending@example.invalid',username:'reserved_user',role:'OPERATOR',assignedEventId:event.id,accountStatus:'PENDING',isActive:false,passwordHash:'unusable'}});
+    const token=crypto.randomBytes(32).toString('base64url');
+    await prisma.userInvitation.create({data:{userId:pending.id,tokenHash:crypto.createHash('sha256').update(token).digest('hex'),expiresAt:new Date(Date.now()+86400000),status:'ACCEPTED_BY_PROVIDER'}});
+    const duplicate=await request(app).post('/api/v1/users').set(headers('ADMIN')).send({fullName:'Other Synthetic',email:'username-conflict@example.invalid',username:'RESERVED_USER',role:'OPERATOR',assignedEventId:event.id});expect(duplicate.status).toBe(400);
+    expect((await request(app).put('/api/v1/users/'+pending.id).set(headers('ADMIN')).send({isActive:false})).status).toBe(200);
+    expect((await request(app).post('/api/v1/auth/accept-invitation').send({token,password:'SyntheticOnlyPassword123!'})).status).toBe(400);
+    expect((await prisma.user.findUniqueOrThrow({where:{id:pending.id}})).accountStatus).toBe('PENDING');
+  });
   it('claims one account across distinct concurrent batches and only reinvites active accounts on explicit authorization', async () => {
     const pending = await prisma.user.create({ data: { fullName: 'Concurrent Invite', email: 'concurrent-invite@example.invalid', role: 'OPERATOR', assignedEventId: event.id, accountStatus: 'PENDING', isActive: false, passwordHash: 'unusable' } });
     const send = vi.fn(async (mail: any) => { await new Promise(resolve => setTimeout(resolve, 80)); return { accepted: [mail.to], messageId: '<concurrent-' + crypto.randomUUID() + '>' }; });
     const raw = vi.spyOn(CommunicationsService, 'getRawConfig').mockResolvedValue({ isEnabled: true, fromName: 'Mock', fromEmail: 'sender@example.invalid' } as any);
-    const factory = vi.spyOn(CommunicationsService, 'createTransporter').mockReturnValue({ sendMail: send } as any); vi.stubEnv('FRONTEND_URL', 'https://eventgrid.example.invalid');
+    const factory = vi.spyOn(CommunicationsService, 'createTransporter').mockReturnValue({ sendMail: send } as any); const policy=vi.spyOn(smtpState,'smtpPolicy').mockReturnValue({realEmailBlocked:false,realEmailAllowed:true,simulationAllowed:false});
     const dispatch = (extra = {}) => request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({ userIds: [pending.id], requestKey: crypto.randomUUID(), confirmed: true, ...extra });
     try {
       await Promise.all([dispatch(), dispatch()]); expect(send).toHaveBeenCalledOnce();
-      const firstMail = send.mock.calls[0][0]; const token = new URL(firstMail.text.match(/https:\/\/\S+/)[0]).searchParams.get('token');
+      const firstMail = send.mock.calls[0][0]; const token = new URL(firstMail.text.match(/https:\/\/\S+/)[0]).hash.slice(7);
       expect((await request(app).post('/api/v1/auth/accept-invitation').send({ token, password: 'UserChosenPassword123!' })).status).toBe(200);
       const active = await prisma.user.findUniqueOrThrow({ where: { id: pending.id } });
       await dispatch(); expect(send).toHaveBeenCalledOnce();
       await dispatch({ reinvite: true }); expect(send).toHaveBeenCalledTimes(2);
       expect((await prisma.user.findUniqueOrThrow({ where: { id: pending.id } })).passwordHash).toBe(active.passwordHash);
       expect((await request(app).post('/api/v1/auth/login').send({ email: pending.email, password: 'UserChosenPassword123!' })).status).toBe(200);
-    } finally { raw.mockRestore(); factory.mockRestore(); vi.unstubAllEnvs(); }
+    } finally { raw.mockRestore(); factory.mockRestore(); policy.mockRestore(); vi.unstubAllEnvs(); }
   });
 });
 
