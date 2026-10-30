@@ -1,3 +1,4 @@
+import {registrationConfirmation} from './registration-confirmation.js';
 import {purchaseContext,HISTORICAL_ONSITE} from './purchase-context.js';
 import {Prisma} from '@prisma/client';
 import { FinanceService,cents } from '../finance/finance.service.js';
@@ -521,7 +522,7 @@ export class ParticipantsService {
         paymentStatus: purchase.historical && !isCourtesy ? 'PENDING' : initialPaymentStatus,
         salesResponsibleId: isCourtesy ? null : (input.salesResponsibleId || null),
         saleTimestamp: purchase.saleTimestamp,
-        status: input.status ? input.status : (balanceDue === 0 || isCourtesy ? 'CONFIRMED' : 'PENDING'),
+        status: registrationConfirmation({balanceDue,isCourtesy,historical:purchase.historical,overrideStatus:input.status,overrideReason:input.confirmationOverrideReason,actorRole:actor?.role}),
         qrCode: `eg_qr_${crypto.randomBytes(16).toString('hex')}`,
         qrGeneratedAt: new Date(),
         notes: input.notes || null,
@@ -554,7 +555,7 @@ export class ParticipantsService {
       registration = await tx.registration.findUniqueOrThrow({where:{id:registration.id},include:{participant:true,ticketType:true,paymentMethod:true,salesResponsible:true}});
     }
     if (actorId) {
-      const changes = { purchaseOrigin: purchase.historical ? HISTORICAL_ONSITE : 'EVENTGRID', historicalDates: purchase.historicalDates, receiptReference: purchase.reference, createdByUserId: actorId, origin: registration.originLabel, commercialUserId: registration.commercialUserId, salesResponsibleId: registration.salesResponsibleId, responsibleChangeReason: input.responsibleChangeReason, ticketPrice: Number(registration.ticketPrice), amountPaid: Number(registration.amountPaid), paymentMethodId: registration.paymentMethodId, paymentStatus: registration.paymentStatus, isCourtesy: registration.isCourtesy };
+      const changes = { purchaseOrigin: purchase.historical ? HISTORICAL_ONSITE : 'EVENTGRID', historicalDates: purchase.historicalDates, receiptReference: purchase.reference, confirmationOverrideReason: input.confirmationOverrideReason, createdByUserId: actorId, origin: registration.originLabel, commercialUserId: registration.commercialUserId, salesResponsibleId: registration.salesResponsibleId, responsibleChangeReason: input.responsibleChangeReason, ticketPrice: Number(registration.ticketPrice), amountPaid: Number(registration.amountPaid), paymentMethodId: registration.paymentMethodId, paymentStatus: registration.paymentStatus, isCourtesy: registration.isCourtesy };
       await tx.auditLog.create({ data: { userId: actorId, action: 'CREATE', entity: 'REGISTRATION', entityId: registration.id, changes: (process.env.DATABASE_URL?.startsWith('file:') ? JSON.stringify(changes) : changes) as any } });
     }
     if (request && actorId) {
@@ -591,6 +592,7 @@ export class ParticipantsService {
 
     if ((input.status === 'CANCELLED' && existing.status !== 'CANCELLED') || (existing.status === 'CANCELLED' && input.status && input.status !== 'CANCELLED')) throw new BadRequestError('Utilice la operación administrativa de cancelación o reactivación; la edición de la ficha no sustituye sus controles.');
 
+    if(input.status&&input.status!==existing.status){const actor=userId?await tx.user.findUnique({where:{id:userId}}):null;if(actor?.role!=='ADMIN'||!input.confirmationOverrideReason||input.confirmationOverrideReason.trim().length<10)throw new BadRequestError('Modificar el estado de inscripción requiere administrador y motivo.');}
     if(input.isDemo!==undefined&&input.isDemo!==existing.isDemo){const actor=userId?await tx.user.findUnique({where:{id:userId}}):null;if(actor?.role!=='ADMIN')throw new ForbiddenError('Cambiar el carácter demo requiere administrador.');}
 
     const numberChanged = Boolean(input.registrationNumber && input.registrationNumber !== existing.registrationNumber);
@@ -778,6 +780,7 @@ export class ParticipantsService {
       },
     });
 
+    if(input.status&&input.status!==existing.status)await tx.auditLog.create({data:{userId:userId!,action:'UPDATE',entity:'REGISTRATION',entityId:registrationId,changes:JSON.stringify({operation:'ADMINISTRATIVE_REGISTRATION_STATUS',before:existing.status,after:input.status,reason:input.confirmationOverrideReason})}});
     if (approval) await auditCourtesy(tx, eventId, registrationId, userId, approval);
     return {
       ...updated,

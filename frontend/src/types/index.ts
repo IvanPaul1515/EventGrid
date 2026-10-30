@@ -347,6 +347,11 @@ export interface QrScanResult {
 }
 
 export interface EmailConfig {
+  isConfigured?: boolean;
+  realEmailBlocked?: boolean;
+  realEmailAllowed?: boolean;
+  connectionVerified?: boolean;
+  passwordInherited?: boolean;
   id?: string;
   eventId?: string | null;
   host: string;

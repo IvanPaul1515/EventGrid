@@ -31,7 +31,8 @@ export const CreateRegistrationSchema = z.object({
   paymentMethodId: z.string().optional().nullable(),
   salesResponsibleId: z.string().optional().nullable(),
   saleTimestamp: z.string().or(z.date()).optional(),
-  status: z.enum(['PENDING', 'CONFIRMED', 'CANCELLED']).default('PENDING'),
+  status: z.enum(['PENDING', 'CONFIRMED', 'CANCELLED']).optional(),
+  confirmationOverrideReason: z.string().trim().min(10).max(500).optional(),
   customFields: z.record(z.any()).optional().nullable(),
   notes: z.string().optional().nullable(),
 });

@@ -1,5 +1,5 @@
+import {EditionBrand} from './EditionBrand';
 import {NotificationCenter} from './NotificationCenter';
-import { resolveImageUrl } from '../../utils/imageUrl';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useEdition } from '../../context/EditionContext';
@@ -43,7 +43,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
   return (
     <header className="mobile-header h-[calc(4rem+env(safe-area-inset-top,0px))] shrink-0 border-b border-border bg-card/85 backdrop-blur-md sticky top-0 z-40 px-2.5 sm:px-6 flex items-center justify-between transition-colors pt-safe">
       {/* EventGrid Brand + Selector de Edición BarCamp */}
-      <div className="flex items-center gap-1.5 sm:gap-4 min-w-0">
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
         {/* Botón Hamburger para Móviles */}
         {onToggleMobileMenu && (
           <button
@@ -57,18 +57,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
           </button>
         )}
 
-        {/* Logo Barcamp en Barra Superior */}
-        <div className="hidden sm:flex items-center gap-2 pr-3 border-r border-border shrink-0">
-          <img
-            src="/barcamp-logo-nav.svg"
-            alt="BarCamp 2026"
-            className="h-6 w-auto on-dark-only object-contain"
-          />
-          <img
-            src="/barcamp-logo-nav-on-light.svg"
-            alt="BarCamp 2026"
-            className="h-6 w-auto on-light-only object-contain"
-          />
+        <div className="hidden sm:flex items-center pr-3 border-r border-border shrink-0">
+          <EditionBrand name={currentEvent?.name} logoUrl={currentEvent?.settings?.logoUrl} loginLogoUrl={currentEvent?.settings?.loginLogoUrl}/>
         </div>
 
         {/* Selector de Edición Activa (BarCamp RD) */}
@@ -131,9 +121,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
         </div>
 
         {/* Lugar e Indicador de Sede */}
-        <div className="hidden lg:flex items-center text-xs text-muted-foreground gap-1.5 pl-2 border-l border-border">
+        <div className="hidden xl:flex items-center min-w-0 max-w-[16rem] text-xs text-muted-foreground gap-1.5 pl-2 border-l border-border">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary" />
-          <span>{currentEvent?.venue || 'PUCMM, Santiago'}</span>
+          <span className="truncate" title={currentEvent?.venue}>{currentEvent?.venue}</span>
         </div>
       </div>
 
@@ -156,7 +146,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
         <button
           onClick={toggleTheme}
           className="p-2 rounded-xl bg-background hover:bg-muted border border-border text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-          title={isDark ? 'Cambiar a modo claro (Papel BarCamp)' : 'Cambiar a modo oscuro (Negro BarCamp)'}
+          title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
         >
           {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-primary" />}
         </button>
@@ -167,7 +157,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileMenu }) => {
             onClick={() => setUserMenuOpen(!userMenuOpen)}
             className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-background hover:bg-muted border border-border transition-colors group cursor-pointer"
           >
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-[#BA1513] flex items-center justify-center text-white font-bold text-xs shadow-sm">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-xs shadow-sm">
               {user?.fullName.charAt(0).toUpperCase()}
             </div>
             <div className="hidden sm:flex flex-col text-left">

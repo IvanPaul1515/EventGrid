@@ -18,10 +18,6 @@ export const TestEmailSchema = z
     eventId: z.string().optional().nullable(),
     recipientEmail: z.string().email('Correo de destinatario inválido').optional(),
     testRecipient: z.string().email('Correo de destinatario inválido').optional(),
-  })
-  .refine((data) => Boolean(data.recipientEmail || data.testRecipient), {
-    message: 'Debe especificar el correo del destinatario de prueba',
-    path: ['recipientEmail'],
   });
 
 export const SendEmailSchema = z.object({

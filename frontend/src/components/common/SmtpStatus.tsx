@@ -1,0 +1,4 @@
+import type {EmailConfig} from '../../types';
+export function SmtpStatus({config}:{config:Partial<EmailConfig>|null}) {
+ return <div className="space-y-1 text-xs" role="status"><div className="flex flex-wrap gap-x-4 gap-y-1"><span>Configurado: {config?.isConfigured?'Sí':'No'}</span><span>Habilitado: {config?.isEnabled?'Sí':'No'}</span><span>Conexión: {config?.connectionVerified?'Verificada recientemente':'Sin verificar'}</span><span>Envío real: {config?.realEmailAllowed&&config?.isEnabled&&config?.isConfigured?'Permitido con autorización manual':'Bloqueado'}</span></div>{config?.realEmailBlocked&&<p className="text-amber-600 dark:text-amber-400">Los envíos reales están bloqueados por la configuración del entorno</p>}{config?.passwordInherited&&<p className="text-muted-foreground">Credencial heredada de la configuración global del mismo servidor y usuario.</p>}</div>;
+}

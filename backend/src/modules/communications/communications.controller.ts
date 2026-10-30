@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {publicSmtpStatus} from './smtp-state.js';
 import { safeCommunicationError } from '../../utils/communicationError.js';
 import { EmailQueueWorker } from './communications.queue.js';
 import { authorizeOperatorEmail, OPERATOR_EMAIL_CODES } from './operator-policy.js';
@@ -25,7 +26,7 @@ export class CommunicationsController {
     catch (error) { next(error); }
   }
   static async getStatus(req: Request, res: Response, next: NextFunction) {
-    try { const config = await CommunicationsService.getConfig(req.eventId || req.query.eventId as string || null); res.json({ data: { isEnabled: Boolean(config?.isEnabled), isConfigured: Boolean(config?.host) } }); } catch (error) { next(error); }
+    try { const config = await CommunicationsService.getConfig(req.eventId || req.query.eventId as string || null); res.json({ data: publicSmtpStatus(config) }); } catch (error) { next(error); }
   }
   static async getConfig(req: Request, res: Response, next: NextFunction) {
     try {
@@ -86,7 +87,7 @@ export class CommunicationsController {
   static async testConnection(req: Request, res: Response, next: NextFunction) {
     try {
       const parsed = TestEmailSchema.parse(req.body);
-      const email = (parsed.recipientEmail || parsed.testRecipient)!.trim();
+      const email = (parsed.recipientEmail || parsed.testRecipient)?.trim();
       const result = await CommunicationsService.testConnection(email, parsed.eventId, req.user?.id);
       return res.status(200).json({ status: 'success', data: result });
     } catch (error) {

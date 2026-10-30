@@ -1,3 +1,4 @@
+import {SmtpStatus} from '../components/common/SmtpStatus';
 import { CommunicationOverview } from '../components/communications/CommunicationOverview';
 import { CommunicationParticipants } from '../components/communications/CommunicationParticipants';
 import { EmailPreview } from '../components/communications/EmailPreview';
@@ -61,7 +62,7 @@ export const CommunicationsPage: React.FC = () => {
 
   const [contextTemplate,setContextTemplate]=useState('DIGITAL_TICKET');
   // Estado del servicio SMTP (para banner informativo en cabecera)
-  const [serviceConfig, setServiceConfig] = useState<Pick<EmailConfig, 'isEnabled' | 'host'> | null>(null);
+  const [serviceConfig, setServiceConfig] = useState<Partial<EmailConfig> | null>(null);
 
   // ==========================================
   // ESTADO 5: COLA Y LOTES PERSISTENTES (Fase 4)
@@ -95,7 +96,6 @@ export const CommunicationsPage: React.FC = () => {
 
   // Envío de prueba individual
   const [showTestSendModal, setShowTestSendModal] = useState(false);
-  const [testSendRecipient, setTestSendRecipient] = useState('');
   const [sendingTestMail, setSendingTestMail] = useState(false);
 
   // ==========================================
@@ -447,13 +447,9 @@ export const CommunicationsPage: React.FC = () => {
 
   // Enviar correo de prueba para Redactar
   const handleSendTestMail = async () => {
-    if (!testSendRecipient || !testSendRecipient.includes('@')) {
-      alert('Por favor ingrese un correo válido para recibir la prueba.');
-      return;
-    }
     try {
       setSendingTestMail(true);
-      const res = await communicationsService.testConnection(currentEvent?.id, testSendRecipient.trim());
+      const res = await communicationsService.testConnection(currentEvent?.id);
       alert(res.message);
       setShowTestSendModal(false);
     } catch (err: any) {
@@ -610,35 +606,7 @@ export const CommunicationsPage: React.FC = () => {
 
         {/* Tarjeta de Estado del Servicio SMTP y Enlace a Administración */}
         <div className="flex flex-wrap items-center gap-3 p-3 rounded-2xl bg-card border border-border">
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                serviceConfig?.isEnabled
-                  ? serviceConfig.host.includes('example') || serviceConfig.host.includes('mailtrap')
-                    ? 'bg-sky-400 animate-pulse'
-                    : 'bg-emerald-400'
-                  : 'bg-zinc-600'
-              }`}
-            />
-            <div className="text-xs">
-              <span className="font-bold text-foreground">Servicio SMTP: </span>
-              <span
-                className={`font-semibold ${
-                  serviceConfig?.isEnabled
-                    ? serviceConfig.host.includes('example') || serviceConfig.host.includes('mailtrap')
-                      ? 'text-sky-400'
-                      : 'text-emerald-400'
-                    : 'text-muted-foreground'
-                }`}
-              >
-                {serviceConfig?.isEnabled
-                  ? serviceConfig.host.includes('example') || serviceConfig.host.includes('mailtrap')
-                    ? 'Modo Simulación'
-                    : 'Activo'
-                  : 'Desactivado'}
-              </span>
-            </div>
-          </div>
+          <SmtpStatus config={serviceConfig}/>
 
           {isAdmin && (
             <Link
@@ -1984,18 +1952,11 @@ export const CommunicationsPage: React.FC = () => {
           <div className="relative w-full max-w-md bg-card rounded-2xl border border-border shadow-2xl p-6 space-y-4">
             <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
               <Send className="w-4 h-4 text-primary" />
-              <span>Enviar Correo de Diagnóstico / Prueba</span>
+              <span>Verificar conexión SMTP</span>
             </h3>
             <p className="text-xs text-muted-foreground">
-              Se enviará una prueba de conectividad SMTP al correo especificado para verificar la recepción sin alterar participantes.
+              La verificación comprueba conexión, TLS y autenticación. No envía mensajes ni comprueba la recepción en un buzón.
             </p>
-            <input
-              type="email"
-              placeholder="su-correo@ejemplo.com"
-              value={testSendRecipient}
-              onChange={(e) => setTestSendRecipient(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
-            />
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
@@ -2007,11 +1968,11 @@ export const CommunicationsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleSendTestMail}
-                disabled={sendingTestMail || !testSendRecipient}
+                disabled={sendingTestMail}
                 className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 {sendingTestMail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                <span>{sendingTestMail ? 'Enviando...' : 'Enviar Prueba'}</span>
+                <span>{sendingTestMail ? 'Verificando...' : 'Verificar conexión'}</span>
               </button>
             </div>
           </div>
