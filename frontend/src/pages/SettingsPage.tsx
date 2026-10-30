@@ -1,3 +1,4 @@
+import {SmtpStatus} from '../components/common/SmtpStatus';
 import {scheduleService} from '../services/schedule.service';
 import { api } from '../services/api';
 import { useRealtimeRefresh } from '../context/RealtimeContext';
@@ -118,7 +119,6 @@ export const SettingsPage: React.FC = () => {
   const [loadingSmtp, setLoadingSmtp] = useState(false);
   const [savingSmtp, setSavingSmtp] = useState(false);
   const [testingSmtp, setTestingSmtp] = useState(false);
-  const [testEmailRecipient, setTestEmailRecipient] = useState('');
   const [smtpSummary, setSmtpSummary] = useState<SmtpSummaryResult | null>(null);
   const [smtpStatusBadge, setSmtpStatusBadge] = useState<{
     type: 'success' | 'simulated' | 'error' | 'disabled';
@@ -492,13 +492,7 @@ export const SettingsPage: React.FC = () => {
           password: '',
         });
         setHasStoredPassword(Boolean(config.hasPassword));
-        if (!config.isEnabled) {
-          setSmtpStatusBadge({ type: 'disabled', label: 'Servicio Deshabilitado' });
-        } else if (config.host.includes('example') || config.host.includes('mailtrap')) {
-          setSmtpStatusBadge({ type: 'simulated', label: 'Modo Simulación Activo' });
-        } else {
-          setSmtpStatusBadge({ type: 'success', label: 'Conexión Configurada' });
-        }
+        setSmtpStatusBadge({type:config.connectionVerified?'success':'disabled',label:config.connectionVerified?'Conexión verificada recientemente':'Conexión sin verificar'});
       }
     } catch (err: any) {
       console.error('Error cargando SMTP:', err);
@@ -532,14 +526,11 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleTestSmtpConnection = async () => {
-    if (!testEmailRecipient || !testEmailRecipient.includes('@')) {
-      showNotification('error', 'Ingrese un correo electrónico válido para recibir la prueba.');
-      return;
-    }
     try {
       setTestingSmtp(true);
       const targetEventId = smtpScope === 'edition' ? currentEvent?.id : null;
-      const res = await communicationsService.testConnection(targetEventId, testEmailRecipient.trim());
+      const res = await communicationsService.testConnection(targetEventId);
+      setSmtpConfig(previous=>({...previous,connectionVerified:res.connectionVerified,realEmailBlocked:res.realEmailBlocked,realEmailAllowed:res.realEmailAllowed}));
       if (res.simulated) {
         setSmtpStatusBadge({
           type: 'simulated',
@@ -1422,7 +1413,7 @@ export const SettingsPage: React.FC = () => {
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {smtpStatusBadge.details ||
                     (smtpConfig.isEnabled
-                      ? `Conectado a ${smtpConfig.host}:${smtpConfig.port}`
+                      ? 'Habilitado; la conexión debe verificarse explícitamente.'
                       : 'Active el servicio y guarde la configuración para habilitar los envíos.')}
                 </p>
               </div>
@@ -1439,6 +1430,7 @@ export const SettingsPage: React.FC = () => {
             </button>
           </div>
 
+          <SmtpStatus config={smtpConfig}/>
           {/* Formulario Principal de Configuración SMTP */}
           <form onSubmit={handleSaveSmtp} className="p-6 rounded-2xl bg-card border border-border space-y-5">
             <div className="flex items-center justify-between pb-4 border-b border-border">
@@ -1636,24 +1628,17 @@ export const SettingsPage: React.FC = () => {
           <div className="p-6 rounded-2xl bg-card border border-border space-y-4">
             <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
               <Send className="w-4 h-4 text-primary" />
-              <span>Verificación y Envío de Correo de Prueba</span>
+              <span>Verificar conexión SMTP sin enviar correo</span>
             </h3>
             <p className="text-xs text-muted-foreground">
-              Comprueba la autenticación SMTP, el protocolo TLS y el enrutamiento de red enviando un correo de diagnóstico.
+              Comprueba DNS, conexión TCP, TLS y autenticación. No envía mensajes ni necesita destinatario.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-2 max-w-lg">
-              <input
-                type="email"
-                placeholder="su-correo@ejemplo.com"
-                value={testEmailRecipient}
-                onChange={(e) => setTestEmailRecipient(e.target.value)}
-                className="flex-1 px-3.5 py-2.5 rounded-xl bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-              />
               <button
                 type="button"
                 onClick={handleTestSmtpConnection}
-                disabled={testingSmtp || !testEmailRecipient}
+                disabled={testingSmtp}
                 className="px-4 py-2.5 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground font-bold text-xs border border-border transition-all cursor-pointer disabled:opacity-50 shrink-0 flex items-center gap-1.5 justify-center"
               >
                 <Send className={`w-3.5 h-3.5 ${testingSmtp ? 'animate-spin' : ''}`} />

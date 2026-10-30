@@ -47,6 +47,16 @@ describe('email requires fresh explicit authorization', () => {
     await expect(CommunicationsService.testConnection('qa@example.invalid')).rejects.toThrow(/deshabilitado/);
     expect(mocks.verify).not.toHaveBeenCalled(); expect(mocks.sendMail).not.toHaveBeenCalled();
   });
+  it('verifies authentication even when sending is blocked, without a recipient, message or delivery history',async()=>{
+    vi.stubEnv('NODE_ENV','production');vi.stubEnv('VITEST','');vi.stubEnv('BLOCK_REAL_EMAIL','true');vi.stubEnv('DEMO_QUICK_ACCESS','false');
+    mocks.findConfig.mockResolvedValue({id:'smtp-blocked',isEnabled:true,host:'smtp.provider.invalid',password:'fake',user:'qa@example.invalid',port:587});
+    const result=await CommunicationsService.testConnection();expect(result.connectionVerified).toBe(true);expect(result.realEmailBlocked).toBe(true);expect(mocks.verify).toHaveBeenCalledOnce();expect(mocks.sendMail).not.toHaveBeenCalled();expect(mocks.createLog).not.toHaveBeenCalled();
+  });
+  it('never exposes provider secrets on authentication failure',async()=>{
+    vi.stubEnv('NODE_ENV','production');vi.stubEnv('VITEST','');vi.stubEnv('DEMO_QUICK_ACCESS','false');
+    mocks.findConfig.mockResolvedValue({isEnabled:true,host:'smtp.provider.invalid',password:'fake',port:587});mocks.verify.mockRejectedValueOnce(Object.assign(new Error('private provider details'),{code:'EAUTH'}));
+    await expect(CommunicationsService.testConnection()).rejects.toThrow('EAUTH');expect(mocks.sendMail).not.toHaveBeenCalled();expect(mocks.createLog).not.toHaveBeenCalled();
+  });
   it('startup, authentication, import, user creation and configuration do not dispatch mail', () => {
     for (const path of ['server.ts', 'config/db.ts', 'modules/auth/auth.service.ts', 'modules/import/import.service.ts', 'modules/users/users.service.ts']) {
       const source = readFileSync(new URL('../src/' + path, import.meta.url), 'utf8');

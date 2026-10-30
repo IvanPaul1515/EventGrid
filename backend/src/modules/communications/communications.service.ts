@@ -21,6 +21,7 @@ import { encryptSecret, decryptSecret } from '../../utils/crypto.js';
 import { QrService } from '../qr/qr.service.js';
 import nodemailer from 'nodemailer';
 import {smtpSecurity} from './private-smtp.js';
+import {inheritSmtpPassword,smtpPolicy,smtpConfigured} from './smtp-state.js';
 import QRCode from 'qrcode';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -29,6 +30,8 @@ import path from 'path';
 const emailText = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
 
 export class CommunicationsService {
+  private static connectionChecks=new Map<string,number>();
+  private static connectionKey(config:any) {return crypto.createHash('sha256').update(JSON.stringify([config.id,config.host,config.port,config.secure,config.user,config.password])).digest('hex');}
   private static customTransporterFactory: ((config: any) => any) | null = null;
 
   static setTransporterFactory(factory: ((config: any) => any) | null) {
@@ -36,7 +39,7 @@ export class CommunicationsService {
     EmailQueueWorker.setTransporterFactory(factory);
   }
 
-  static createTransporter(config: any) {
+  static createTransporter(config: any, verifyOnly=false) {
     if (this.customTransporterFactory) {
       return this.customTransporterFactory(config);
     }
@@ -47,7 +50,7 @@ export class CommunicationsService {
     const allowRealInDev = process.env.ALLOW_REAL_EMAIL_IN_DEV === 'true';
 
     // Salvaguarda absoluta contra envíos de correo accidentales en pruebas o desarrollo
-    if (isTest || isBlocked || (isDev && !allowRealInDev)) {
+    if (isTest || (!verifyOnly && (isBlocked || (isDev && !allowRealInDev) || process.env.DEMO_QUICK_ACCESS==='true'))) {
       console.warn('[CommunicationsService] 🛡️ SAFEGUARD ACTIVE: Real external SMTP is blocked in this environment (test/dev/safeguard). Using safe mock transport.');
       return {
         sendMail: async (mailOptions: any) => {
@@ -64,7 +67,7 @@ export class CommunicationsService {
       };
     }
 
-    if (usesBrevoHttps()) return brevoTransport();
+    if (!verifyOnly && usesBrevoHttps()) return brevoTransport();
     const rawPassword = config.password ? decryptSecret(config.password) : '';
     const isExternalSmtp = Boolean(
       config.host &&
@@ -100,7 +103,8 @@ export class CommunicationsService {
         where: { eventId },
       });
       if (editionConfig) {
-        return editionConfig;
+        const global=editionConfig.password?null:await prisma.emailConfig.findFirst({where:{eventId:null}});
+        return inheritSmtpPassword(editionConfig,global);
       }
       const globalConfig = await prisma.emailConfig.findFirst({
         where: { eventId: null },
@@ -159,24 +163,13 @@ export class CommunicationsService {
   }
 
   static async getConfig(eventId?: string | null) {
-    let config = null;
-
-    if (eventId) {
-      config = await prisma.emailConfig.findFirst({
-        where: { eventId },
-      });
-    }
-
-    // Si no hay configuración específica para la edición, buscar la configuración global
-    if (!config) {
-      config = await prisma.emailConfig.findFirst({
-        where: { eventId: null },
-      });
-    }
-
+    const config=await this.getRawConfig(eventId);
+    const policy=smtpPolicy();
     if (!config) {
       return {
+        id: undefined, eventId: eventId||null,
         isConfigured: false,
+        ...policy, connectionVerified:false,
         isEnabled: false,
         isGlobal: true,
         host: '',
@@ -193,7 +186,10 @@ export class CommunicationsService {
     return {
       id: config.id,
       eventId: config.eventId,
-      isConfigured: true,
+      isConfigured: smtpConfigured(config),
+      ...policy,
+      passwordInherited: Boolean((config as any).passwordInherited),
+      connectionVerified: Date.now()-(this.connectionChecks.get(this.connectionKey(config))||0)<15*60*1000,
       isEnabled: config.isEnabled,
       isGlobal: !config.eventId,
       host: config.host,
@@ -263,94 +259,24 @@ export class CommunicationsService {
   /**
    * Probar conexión y envío de correo de prueba (QA-07, QA-12)
    */
-  static async testConnection(recipientEmail: string, eventId?: string | null, userId?: string) {
-    if (!recipientEmail || !recipientEmail.includes('@')) {
-      throw new BadRequestError('Correo de destinatario de prueba inválido.');
-    }
-
-    // Buscar configuración de la edición o global
-    let config = eventId
-      ? await prisma.emailConfig.findFirst({ where: { eventId } })
-      : null;
-
-    if (!config) {
-      config = await prisma.emailConfig.findFirst({ where: { eventId: null } });
-    }
-
-    if (!config || !config.isEnabled) {
-      throw new BadRequestError(
-        'El servicio de correos está deshabilitado o no está configurado. Configure y active el servidor SMTP en Administración.'
-      );
-    }
-
-    const rawPassword = decryptSecret(config.password);
-
-    const isTest = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
-    const isBlocked = process.env.BLOCK_REAL_EMAIL === 'true';
-    const isDev = process.env.NODE_ENV === 'development';
-    const allowRealInDev = process.env.ALLOW_REAL_EMAIL_IN_DEV === 'true';
-
-    const isTestOrDemo =
-      isTest ||
-      isBlocked ||
-      (isDev && !allowRealInDev) ||
-      (!rawPassword && !usesBrevoHttps()) ||
-      config.host.includes('mailtrap') ||
-      config.host.includes('example') ||
-      recipientEmail.includes('@eventgrid.test');
-
-    if (isTestOrDemo) {
-      // Simulación explícita y segura sin envío real en pruebas o entorno demo
-      const log = await prisma.emailLog.create({
-        data: {
-          eventId: eventId || null,
-          recipientEmail,
-          recipientName: 'Prueba de Conexión',
-          templateCode: 'TEST_CONNECTION',
-          subject: 'Prueba de Configuración de Correo — EventGrid',
-          status: 'SIMULATED',
-          sentByUserId: userId || null,
-        },
-      });
-
-      return {
-        success: true,
-        simulated: true,
-        message: 'Conexión verificada en modo simulación segura (entorno de pruebas/desarrollo activo sin llamadas externas).',
-        log,
-      };
-    }
-
+  static async testConnection(_recipientEmail?: string, eventId?: string | null, _userId?: string) {
+    const config=await this.getRawConfig(eventId);
+    if(!config||!config.isEnabled)throw new BadRequestError('El servicio de correos está deshabilitado o no está configurado.');
+    if(!config.host||!config.port||(config.user&&!config.password))throw new BadRequestError('Configuración SMTP incompleta. Falta la contraseña o los parámetros del proveedor.');
+    if(process.env.DEMO_QUICK_ACCESS==='true')return {success:false,simulated:true,connectionVerified:false,...smtpPolicy(),message:'La demo no verifica proveedores reales. Los envíos reales están bloqueados por la configuración del entorno.',log:null};
+    let transporter:any;
+    const key=this.connectionKey(config);
     try {
-      const transporter = this.createTransporter(config);
-
-      if (typeof (transporter as any).verify === 'function') {
-        await (transporter as any).verify();
-      }
-
-      if (typeof (transporter as any).close === 'function') (transporter as any).close();
-      return {
-        success: true,
-        simulated: false,
-        message: 'Conexión SMTP verificada. No se envió ningún correo.',
-        log: null,
-      };
-    } catch (err: any) {
-      await prisma.emailLog.create({
-        data: {
-          eventId: eventId || null,
-          recipientEmail,
-          recipientName: 'Prueba Fallida',
-          templateCode: 'TEST_CONNECTION',
-          subject: 'Prueba Fallida de Correo',
-          status: 'FAILED',
-          errorMessage: err.message || 'Error en servidor SMTP',
-          sentByUserId: userId || null,
-        },
-      });
-
-      throw new BadRequestError(`Error en el servidor de correo: ${err.message}`);
-    }
+      transporter=this.createTransporter(config,true);
+      await transporter.verify();
+      const simulated=process.env.NODE_ENV==='test'||Boolean(process.env.VITEST);
+      if(!simulated)this.connectionChecks.set(key,Date.now());
+      return {success:true,simulated,connectionVerified:!simulated,...smtpPolicy(),message:simulated?'Prueba simulada; conexión real sin verificar.':'Conexión y autenticación SMTP verificadas. No se envió ningún correo.',log:null};
+    }catch(error:any){
+      this.connectionChecks.delete(key);
+      const code=['EAUTH','ETIMEDOUT','ECONNRESET','ENOTFOUND','ECONNECTION','ESOCKET','ETLS'].includes(error?.code)?error.code:'SMTP_ERROR';
+      throw new BadRequestError('No se verificó la conexión SMTP ('+code+'). Revise autenticación, DNS, puerto y TLS.');
+    }finally{transporter?.close?.();}
   }
 
   /**

@@ -85,7 +85,7 @@ export interface SmtpSummaryResult {
 
 export const communicationsService = {
   async reviewInterrupted(jobId: string) { return (await api.post('/communications/jobs/' + jobId + '/review-interrupted', { confirmed: true })).data.data; },
-  async getStatus(eventId: string): Promise<{ isEnabled: boolean; isConfigured: boolean }> { return (await api.get('/communications/status', { params: { eventId } })).data.data; },
+  async getStatus(eventId: string): Promise<Partial<EmailConfig>> { return (await api.get('/communications/status', { params: { eventId } })).data.data; },
   async getConfig(eventId?: string | null): Promise<EmailConfig | null> {
     const res = await api.get<ApiResponse<EmailConfig | null>>('/communications/config', {
       params: { eventId },
@@ -101,8 +101,8 @@ export const communicationsService = {
   async testConnection(
     eventId?: string | null,
     recipientEmail?: string
-  ): Promise<{ success: boolean; message: string; simulated?: boolean }> {
-    const res = await api.post<ApiResponse<{ success: boolean; message: string; simulated?: boolean }>>('/communications/test', {
+  ): Promise<{ success: boolean; message: string; simulated?: boolean; connectionVerified?: boolean; realEmailBlocked?: boolean; realEmailAllowed?: boolean }> {
+    const res = await api.post<ApiResponse<{ success: boolean; message: string; simulated?: boolean; connectionVerified?: boolean; realEmailBlocked?: boolean; realEmailAllowed?: boolean }>>('/communications/test', {
       eventId,
       recipientEmail,
       testRecipient: recipientEmail,

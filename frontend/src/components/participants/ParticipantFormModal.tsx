@@ -47,6 +47,8 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
   const [requestMessage, setRequestMessage] = useState('');
 
   // Estados del formulario
+  const [confirmationOverrideReason,setConfirmationOverrideReason]=useState('');
+  useEffect(()=>setConfirmationOverrideReason(''),[isOpen,registrationToEdit?.id]);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [documentId, setDocumentId] = useState('');
@@ -270,7 +272,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
       courtesyReason: isCourtesy ? courtesyReason.trim() || null : null,
       paymentMethodId: isCourtesy ? null : (paymentMethodId || null),
       salesResponsibleId: isCourtesy ? null : (salesResponsibleId || null),
-      status,
+      ...(user?.role==='ADMIN'&&confirmationOverrideReason.trim()?{status,confirmationOverrideReason:confirmationOverrideReason.trim()}:{}),
       notes: notes.trim() || null,
     };
 
@@ -559,27 +561,15 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({
               {historical&&<><p className="text-xs text-muted-foreground">Fechas declaradas, pendientes de revisión administrativa. No se inventan horas ni zonas. La incorporación queda registrada por separado.</p><div className="grid grid-cols-1 sm:grid-cols-3 gap-2"><label className="text-xs">Fecha original<input type="date" className="input-field" value={purchaseDate} onChange={e=>setPurchaseDate(e.target.value)}/></label><label className="text-xs">Hora original (opcional)<input type="time" step="1" className="input-field" value={purchaseTime} onChange={e=>setPurchaseTime(e.target.value)}/></label><label className="text-xs">Zona conocida (opcional)<input className="input-field" placeholder="-04:00" value={sourceTimezone} onChange={e=>setSourceTimezone(e.target.value)}/></label></div><label className="block text-xs">Referencia única / número de comprobante<input required maxLength={120} className="input-field" value={receiptReference} onChange={e=>setReceiptReference(e.target.value)}/></label><label className="flex gap-2 text-sm"><input type="checkbox" checked={historicalPaymentConfirmed} onChange={e=>setHistoricalPaymentConfirmed(e.target.checked)}/>Confirmo que el monto indicado ya se recibió fuera de EventGrid. Se conciliará como pago externo, sin ingreso nuevo de caja.</label></>}
             </div> : <p className="text-xs text-muted-foreground">Las fechas originales se consultan en la ficha; sus correcciones requieren revisión administrativa con motivo en la cronología de compras.</p>}
 
-            <div>
-              <label className="block text-xs font-semibold text-foreground uppercase tracking-wider mb-1.5">
-                Estado de inscripción (no es asistencia)
-              </label>
-              <select
-                value={status}
-                disabled={loading || registrationToEdit?.status === 'CANCELLED'}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="CONFIRMED">Inscripción confirmada</option>
-                <option value="PENDING">Inscripción pendiente</option>
-
-                {registrationToEdit?.status === 'CANCELLED' && <option value="CANCELLED">Cancelado</option>}
-              </select>
-              <p className="text-[11px] text-muted-foreground mt-1">La confirmación corresponde a la inscripción. El pago se calcula con los abonos; la asistencia requiere check-in. Cancelar o reactivar requiere la acción administrativa de la ficha.</p>
+            <div className="text-sm space-y-2">
+              <p className="font-semibold">{registrationToEdit ? (registrationToEdit.status==='CONFIRMED'?'Inscripción confirmada':'Estado actual: '+registrationToEdit.status) : historical ? 'Pendiente de revisión de la compra histórica' : isCourtesy || balanceDue===0 ? 'Inscripción confirmada al registrar' : amountPaid>0 ? 'Inscripción pendiente: pago parcial' : 'Inscripción pendiente: falta el pago'}</p>
+              <p className="text-xs text-muted-foreground">El servidor calcula la confirmación con el pago registrado. La asistencia requiere check-in posterior.</p>
+              {user?.role==='ADMIN'&&<details className="text-xs"><summary className="cursor-pointer text-muted-foreground">Ajuste administrativo excepcional</summary><div className="space-y-2 pt-2"><select aria-label="Estado excepcional de inscripción" value={status} disabled={loading||registrationToEdit?.status==='CANCELLED'} onChange={e=>setStatus(e.target.value)} className="input-field"><option value="PENDING">Inscripción pendiente</option><option value="CONFIRMED">Inscripción confirmada</option>{registrationToEdit?.status==='CANCELLED'&&<option value="CANCELLED">Cancelado</option>}</select><input aria-label="Motivo del ajuste de inscripción" placeholder="Motivo del ajuste (mínimo 10 caracteres)" minLength={10} maxLength={500} value={confirmationOverrideReason} onChange={e=>setConfirmationOverrideReason(e.target.value)} className="input-field"/></div></details>}
             </div>
           </div>
 
           {/* Toggle de Cortesía */}
-          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 space-y-3">
+          <div className="p-2 rounded-xl bg-muted/30 border border-border space-y-2">
             <label className="flex items-center gap-2 text-xs font-semibold text-foreground">
               <input type="checkbox" checked={isCourtesy || requestCourtesy} onChange={toggleCourtesy} disabled={loading || user?.role === 'VIEWER' || Boolean(registrationToEdit && Number(registrationToEdit.amountPaid || registrationToEdit.totalAmount) > 0)} />
               {user?.role === 'OPERATOR' ? 'Solicitar cortesía' : 'Registrar como Entrada de Cortesía'}
