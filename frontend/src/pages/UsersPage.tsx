@@ -3,7 +3,7 @@ import { PersonnelNavigation } from '../components/common/PersonnelNavigation';
 import { Link,useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useRealtimeRefresh } from '../context/RealtimeContext';
-import { UserInvitationModal, InvitationHistory } from '../components/common/UserInvitationModal';
+import { UserInvitationModal, InvitationHistory,InvitationDiagnosticNotice } from '../components/common/UserInvitationModal';
 import { invitationLabel } from '../utils/invitationStatus';
 import { PersonnelInvitations } from '../components/common/PersonnelInvitations';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -409,7 +409,7 @@ export const UsersPage: React.FC = () => {
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[11px] text-muted-foreground break-all">{u.email}</span><p className="text-[10px] text-muted-foreground">{invitationLabel(u.invitationState)}</p>
+                              <span className="text-[11px] text-muted-foreground break-all">{u.email}</span><p className="text-[10px] text-muted-foreground">{invitationLabel(u.invitationState)}</p><InvitationDiagnosticNotice diagnostic={u.invitationDiagnostic} compact/>
                             </div>
                           </div>
                         </td>
@@ -510,7 +510,7 @@ export const UsersPage: React.FC = () => {
                               </span>
                             )}
                           </div>
-                          <span className="text-[11px] text-muted-foreground break-all">{u.email}</span><p className="text-[10px] text-muted-foreground">{invitationLabel(u.invitationState)}</p>
+                          <span className="text-[11px] text-muted-foreground break-all">{u.email}</span><p className="text-[10px] text-muted-foreground">{invitationLabel(u.invitationState)}</p><InvitationDiagnosticNotice diagnostic={u.invitationDiagnostic} compact/>
                         </div>
                       </div>
 
