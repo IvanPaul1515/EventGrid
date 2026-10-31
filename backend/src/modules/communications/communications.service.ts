@@ -1,5 +1,5 @@
 import {effectivePrimaryTemplate} from './primary-templates.js';
-import {messagePriority,priorityHeaders,registrationMessages} from './mail-policy.js';
+import {messagePriority,priorityHeaders,registrationMessages,templateMetadata} from './mail-policy.js';
 import {personName} from '../../utils/personName.js';
 import {emailLogo,emailLogoPreview} from '../../utils/emailLogo.js';
 import { WalletService } from '../wallet/wallet.service.js';
@@ -143,13 +143,13 @@ export class CommunicationsService {
         const editionTemplate = await prisma.emailTemplate.findFirst({
           where: { code: c, eventId },
         });
-        if (editionTemplate) return effectivePrimaryTemplate(editionTemplate,this.DEFAULT_TEMPLATES.find(t=>t.code===editionTemplate.code));
+        if (editionTemplate) return {...effectivePrimaryTemplate(editionTemplate,this.DEFAULT_TEMPLATES.find(t=>t.code===editionTemplate.code)),priority:templateMetadata(editionTemplate.variables).priority};
       }
 
       const globalTemplate = await prisma.emailTemplate.findFirst({
         where: { code: c, eventId: null },
       });
-      if (globalTemplate) return effectivePrimaryTemplate(globalTemplate,this.DEFAULT_TEMPLATES.find(t=>t.code===globalTemplate.code));
+      if (globalTemplate) return {...effectivePrimaryTemplate(globalTemplate,this.DEFAULT_TEMPLATES.find(t=>t.code===globalTemplate.code)),priority:templateMetadata(globalTemplate.variables).priority};
 
       const def = this.DEFAULT_TEMPLATES.find((t) => t.code === c);
       if (def) {
@@ -1467,21 +1467,12 @@ export class CommunicationsService {
     }
 
     return existing.map((t) => {
-      let vars: string[] = [];
-      if (typeof t.variables === 'string') {
-        try {
-          vars = JSON.parse(t.variables);
-        } catch {
-          vars = [];
-        }
-      } else if (Array.isArray(t.variables)) {
-        vars = t.variables as string[];
-      }
+      const metadata=templateMetadata(t.variables);const vars=metadata.variables;
 
       return {
         ...effectivePrimaryTemplate(t,this.DEFAULT_TEMPLATES.find(d=>d.code===t.code)),
         variables: [...new Set([...vars,'registrationStateMessage','paymentStateMessage','eventTime','arrivalInstructions','keynoteSummary'])],
-        priority:messagePriority(t.code,t.priority),
+        priority:messagePriority(t.code,metadata.priority),
       };
     });
   }
@@ -1499,7 +1490,7 @@ export class CommunicationsService {
     const updated = await prisma.emailTemplate.update({
       where: { id: templateId },
       data: {
-        priority:input.priority,
+        variables:input.priority?JSON.stringify({...templateMetadata(template.variables),priority:input.priority}):undefined,
         name: input.name || template.name,
         subject: input.subject,
         bodyHtml: input.bodyHtml,

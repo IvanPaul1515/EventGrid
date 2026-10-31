@@ -1,5 +1,5 @@
 import {describe,it,expect,vi} from 'vitest';
-import {CAMPAIGN_TEMPLATES,campaignTemplates,messagePriority,priorityHeaders,registrationMessages} from '../src/modules/communications/mail-policy.js';
+import {CAMPAIGN_TEMPLATES,campaignTemplates,messagePriority,priorityHeaders,registrationMessages,templateMetadata} from '../src/modules/communications/mail-policy.js';
 import {primaryTemplate,effectivePrimaryTemplate} from '../src/modules/communications/primary-templates.js';
 import {chosenUsernameSchema,usernameSchema} from '../src/modules/users/username.js';
 import {sendRequestGate} from '../../frontend/src/utils/sendRequest';
@@ -18,3 +18,5 @@ describe('send request lifecycle never waits for delivery and prevents double cl
  it('releases after SMTP acceptance, suppresses concurrent clicks and permits explicit subsequent actions',async()=>{const gate=sendRequestGate(),busy=vi.fn();let resolve!:(v:any)=>void;const action=vi.fn(()=>new Promise(r=>{resolve=r;}));const first=gate.run(action,busy);expect(gate.pending).toBe(true);expect(await gate.run(action,busy)).toBeUndefined();expect(action).toHaveBeenCalledOnce();resolve({status:'ACCEPTED_BY_SMTP'});expect(await first).toEqual({status:'ACCEPTED_BY_SMTP'});expect(gate.pending).toBe(false);expect(busy.mock.calls).toEqual([[true],[false]]);await gate.run(async()=>({status:'QUEUED'}),busy);expect(gate.pending).toBe(false);});
  it.each(['timeout','server failure'])('always releases after %s without automatically retrying',async message=>{const gate=sendRequestGate(),busy=vi.fn(),action=vi.fn(async()=>{throw Error(message);});await expect(gate.run(action,busy)).rejects.toThrow(message);expect(gate.pending).toBe(false);expect(action).toHaveBeenCalledOnce();expect(busy.mock.calls).toEqual([[true],[false]]);});
 });
+
+it('reads legacy JSON variable arrays and persists importance without a database migration or losing variables',()=>{expect(templateMetadata('["eventName","participantName"]')).toEqual({variables:['eventName','participantName']});expect(templateMetadata(JSON.stringify({variables:['eventName'],priority:'HIGH'}))).toEqual({variables:['eventName'],priority:'HIGH'});expect(templateMetadata('invalid')).toEqual({variables:[]});expect(templateMetadata({variables:['eventName'],priority:'untrusted'})).toEqual({variables:['eventName']});});

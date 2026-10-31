@@ -560,7 +560,6 @@ model EmailConfig {
 }
 
 model EmailTemplate {
-  priority String?
   id        String   @id @default(uuid())
   eventId   String?
   code      String   // INSCRIPTION_CONFIRMATION, DIGITAL_TICKET, EVENT_REMINDER, PAYMENT_CONFIRMATION, PENDING_BALANCE, INSCRIPTION_CANCELLED, GENERAL_ANNOUNCEMENT
