@@ -372,6 +372,7 @@ export interface EmailConfig {
 }
 
 export interface EmailTemplate {
+  priority?:'NORMAL'|'HIGH';
   id: string;
   eventId: string;
   code: string;

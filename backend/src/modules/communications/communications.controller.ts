@@ -1,3 +1,4 @@
+import {campaignTemplates} from './mail-policy.js';
 import { z } from 'zod';
 import {publicSmtpStatus} from './smtp-state.js';
 import { safeCommunicationError } from '../../utils/communicationError.js';
@@ -98,7 +99,7 @@ export class CommunicationsController {
   static async getTemplates(req: Request, res: Response, next: NextFunction) {
     try {
       const eventId = ((req.user?.role !== 'ADMIN' || Boolean(req.user?.assignedEventId)) ? req.eventId : req.query.eventId as string) || null;
-      const templates = await CommunicationsService.getTemplates(eventId);
+      const templates = campaignTemplates(await CommunicationsService.getTemplates(eventId),eventId);
       return res.status(200).json({ status: 'success', data: req.user?.role === 'OPERATOR' ? templates.filter(t => OPERATOR_EMAIL_CODES.includes(t.code)) : templates });
     } catch (error) {
       next(error);
@@ -117,7 +118,7 @@ export class CommunicationsController {
         action: 'EMAIL_TEMPLATE_UPDATE',
         entity: 'EMAIL_TEMPLATE',
         entityId: templateId,
-        changes: { subject: validated.subject },
+        changes: { subject: validated.subject,priority:validated.priority },
       });
 
       return res.status(200).json({

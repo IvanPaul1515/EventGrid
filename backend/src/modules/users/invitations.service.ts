@@ -1,5 +1,5 @@
 import {PublicOriginService} from '../public-origin/public-origin.service.js';
-import {usernameSchema} from './username.js';
+import {chosenUsernameSchema} from './username.js';
 import {smtpPolicy} from '../communications/smtp-state.js';
 import { uncertainMailFailure } from '../../utils/mailFailure.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
@@ -77,8 +77,8 @@ export class InvitationsService {
         const safeEventName=eventName.replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]!));
         transport = CommunicationsService.createTransporter(config);
         const sent = await transport.sendMail({ from: `"${config.fromName}" <${config.fromEmail}>`, to: user.email,
-          subject: 'Invitación a EventGrid', text: `Has sido invitado a formar parte del equipo de ${eventName}.\nEstablezca su contraseña en ${url.toString()}\nEl enlace vence en 24 horas y es de un solo uso.`,
-          html: `<p>Has sido invitado a formar parte del equipo de ${safeEventName}.</p><p><a href="${url.toString().replace(/&/g, '&amp;')}">Activar mi cuenta</a></p><p>Enlace individual de un solo uso; vence en 24 horas.</p>` });
+          subject: 'Invitación a EventGrid', text: `Has sido invitado a formar parte del equipo de ${eventName}.\nElige tu nombre de usuario y contraseña en ${url.toString()}\nEl enlace vence en 24 horas y es de un solo uso.`,
+          html: `<p>Has sido invitado a formar parte del equipo de ${safeEventName}.</p><p>Tu acceso fue autorizado para tu función. Elige tu nombre de usuario y contraseña para completar el registro.</p><p><a href="${url.toString().replace(/&/g, '&amp;')}">Activar mi cuenta</a></p><p>Enlace individual de un solo uso; vence en 24 horas.</p>` });
         const rejected = Array.isArray(sent.rejected) && sent.rejected.length > 0;
         const accepted = !rejected && Array.isArray(sent.accepted) && sent.accepted.some((email: any) => String(email).toLowerCase() === user.email.toLowerCase());
         const status = accepted ? 'ACCEPTED_BY_PROVIDER' : rejected ? 'REJECTED' : 'UNKNOWN_DELIVERY_STATUS';
@@ -97,10 +97,10 @@ export class InvitationsService {
     return { status: 'COMPLETED', results };
   }
 
-  static async describe(token:string){const hash=crypto.createHash('sha256').update(token).digest('hex');const i=await prisma.userInvitation.findUnique({where:{tokenHash:hash}});if(!i||i.usedAt||i.revokedAt||!i.expiresAt||i.expiresAt<=new Date())throw new BadRequestError('Enlace inválido o vencido.');const user=await prisma.user.findUnique({where:{id:i.userId},select:{username:true,fullName:true}});if(!user)throw new BadRequestError('Enlace inválido o vencido.');return user;}
+  static async describe(token:string){const hash=crypto.createHash('sha256').update(token).digest('hex');const i=await prisma.userInvitation.findUnique({where:{tokenHash:hash}});if(!i||i.usedAt||i.revokedAt||!i.expiresAt||i.expiresAt<=new Date())throw new BadRequestError('Enlace inválido o vencido.');const user=await prisma.user.findUnique({where:{id:i.userId},select:{username:true,fullName:true,email:true,role:true,assignedEventId:true}});if(!user)throw new BadRequestError('Enlace inválido o vencido.');const event=user.assignedEventId?await prisma.event.findUnique({where:{id:user.assignedEventId},select:{name:true}}):null;return {username:user.username,fullName:user.fullName,email:user.email,role:user.role,eventName:event?.name||'EventGrid'};}
 
 
-  static async accept(token: string, password: string, username?:string) {
+  static async accept(token: string, password: string, username?:string,welcomeConfirmed=false) {
     const hash = crypto.createHash('sha256').update(token).digest('hex');
     const passwordHash = await bcrypt.hash(password, 12);
     const activated = await prisma.$transaction(async tx => {
@@ -108,13 +108,17 @@ export class InvitationsService {
       if (!invitation) throw new BadRequestError('Enlace inválido o vencido.');
       const claimed = await tx.userInvitation.updateMany({ where: { id: invitation.id, usedAt: null, revokedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date(), status: 'ACCEPTED' } });
       if (claimed.count !== 1) throw new BadRequestError('Enlace inválido, vencido o ya utilizado.');
-      const proposed=username?usernameSchema.parse(username):undefined;
+      const proposed=username?chosenUsernameSchema.parse(username):undefined;
       if(proposed){const duplicate=await tx.user.findUnique({where:{username:proposed}});if(duplicate&&duplicate.id!==invitation.userId)throw new BadRequestError('Nombre de usuario no disponible.');}
-      const user=await tx.user.update({ where: { id: invitation.userId }, data: {username:proposed,sessionVersion:{increment:1}, passwordHash, accountStatus: 'ACTIVE', isActive: true }, select: { id: true, assignedEventId: true } });
+      const user=await tx.user.update({ where: { id: invitation.userId }, data: {username:proposed,sessionVersion:{increment:1}, passwordHash, accountStatus: 'ACTIVE', isActive: true }, select: { id: true, assignedEventId: true,email:true,fullName:true } });
       await tx.auditLog.create({data:{userId:user.id,entity:'USER',entityId:user.id,action:'USER_UPDATE',changes:JSON.stringify({operation:'INVITATION_ACTIVATED',username:proposed})}});return user;
     });
     if (activated.assignedEventId) RealtimeService.changed(activated.assignedEventId, ['users']);
     RealtimeService.notifyAccess(activated.id);
-    return { message: 'Contraseña establecida. Puede iniciar sesión.' };
+    let welcomeStatus='NOT_REQUESTED';
+    if(welcomeConfirmed&&!smtpPolicy().realEmailBlocked){let transport:any;try{const config=await CommunicationsService.getRawConfig(activated.assignedEventId);if(config?.isEnabled){transport=CommunicationsService.createTransporter(config);const result=await transport.sendMail({from:`"${config.fromName}" <${config.fromEmail}>`,to:activated.email,subject:'Cuenta activada en EventGrid',text:'Tu cuenta de EventGrid está activada. Ya puedes iniciar sesión con tu nombre de usuario o correo. Si no realizaste esta operación, contacta a la administración.'});welcomeStatus=result.accepted?.includes(activated.email)?'ACCEPTED_BY_PROVIDER':'UNCONFIRMED';}else welcomeStatus='DISABLED';}catch{welcomeStatus='UNCONFIRMED';}finally{transport?.close?.();}
+     await prisma.auditLog.create({data:{userId:activated.id,action:'USER_UPDATE',entity:'USER',entityId:activated.id,changes:JSON.stringify({operation:'ACTIVATION_WELCOME',status:welcomeStatus,manuallyConfirmed:true})}});
+    }
+    return { message: 'Cuenta activada. Puede iniciar sesión.',welcomeStatus };
   }
 }

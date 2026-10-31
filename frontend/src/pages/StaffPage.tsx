@@ -1,3 +1,4 @@
+import {OperatorPermissions} from '../components/common/OperatorPermissions';
 import { PhoneInput } from '../components/common/PhoneInput';
 import { formatPhone, normalizedPhone } from '../utils/phone';
 import { PersonnelNavigation } from '../components/common/PersonnelNavigation';
@@ -18,17 +19,17 @@ export function StaffPage() {
   const lock = useRef(false);
   const [access, setAccess] = useState<any>(null);
   const [role, setRole] = useState('OPERATOR');
-  const [scannerOnly,setScannerOnly]=useState(false),[username,setUsername]=useState('');
+  const [scannerOnly,setScannerOnly]=useState(false),[permissions,setPermissions]=useState<string[]>();
   const [invitationIds, setInvitationIds] = useState<string[] | null>(null);
   const [phoneOriginal, setPhoneOriginal] = useState('');
   const edit = (item: any) => { setError(''); setPhoneOriginal(item.phone || ''); setDraft(item); };
-  const openAccess = async (item: any) => { setError(''); try { const result = (await api.get('/staff/' + item.id + '/access')).data.data; setRole('OPERATOR');setScannerOnly(false);setUsername(''); setAccess({ staff: item, ...result }); } catch (err: any) { setError(err.response?.data?.message || 'No fue posible consultar el acceso.'); } };
+  const openAccess = async (item: any) => { setError(''); try { const result = (await api.get('/staff/' + item.id + '/access')).data.data; setRole('OPERATOR');setScannerOnly(false);setPermissions(undefined); setAccess({ staff: item, ...result }); } catch (err: any) { setError(err.response?.data?.message || 'No fue posible consultar el acceso.'); } };
   const load = async () => { const request = ++version.current; try { const data = (await api.get('/staff')).data.data; if (request === version.current) setItems(data); } catch { if (request === version.current) setError('No fue posible cargar el staff.'); } };
   useEffect(() => { setDraft(null); setAccess(null); setInvitationIds(null); load(); return () => { version.current++; }; }, [currentEvent?.id]);
   useRealtimeRefresh('staff', load);
   return <div className="space-y-5">
     <PersonnelNavigation />
-    {hasRole(['ADMIN'])&&<Link className="btn-secondary inline-flex" to="/users?create=1">Agregar usuario</Link>}
+    {hasRole(['ADMIN'])&&<Link className="btn-secondary inline-flex" to="/users?create=1">Invitar usuario</Link>}
     <div className="flex items-center justify-between gap-3"><h1 className="text-2xl font-display font-bold">Staff / Colaboradores</h1>
       {hasRole(['ADMIN']) && <button className="px-4 py-2 rounded-full bg-primary text-white text-xs font-bold" onClick={() => edit({ ...empty })}>Agregar colaborador</button>}</div>
     <p className="text-xs text-muted-foreground">Personal de {currentEvent?.name}. Registrar una persona no crea una cuenta ni envía correos. Los aportes institucionales históricos permanecen en Patrocinadores.</p>
@@ -41,16 +42,16 @@ export function StaffPage() {
     {access && createPortal(<div className="mobile-safe-overlay fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"><div role="dialog" aria-modal="true" aria-label="Acceso del colaborador" className="mobile-form-dialog bg-card border border-border rounded-2xl p-5 w-full max-w-md max-h-[90dvh] overflow-y-auto space-y-4">
       <h2 className="font-bold">Acceso a EventGrid</h2><p>{access.staff.firstName} {access.staff.lastName}</p><p className="break-all text-sm">{access.staff.email}</p>
       {access.account ? <p className="text-sm">Cuenta {access.account.fullName} · {access.account.role}. {access.linked ? 'Vinculada.' : 'Ya existe. Confirme para vincularla sin cambiar sus permisos.'}</p> : <label className="block text-sm">Tipo de cuenta<select className="block w-full bg-background border border-border rounded-xl p-2 mt-1" value={role} onChange={e => setRole(e.target.value)}><option value="OPERATOR">Personal operativo</option><option value="VIEWER">Solo consulta</option><option value="ADMIN">Administrador</option></select></label>}
-      {!access.account&&<><label className="block text-sm">Nombre de usuario<input required minLength={3} maxLength={32} pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,31}" className="input-field w-full" value={username} onChange={e=>setUsername(e.target.value)}/></label><label className="flex gap-2 text-sm"><input type="checkbox" disabled={role!=='OPERATOR'} checked={scannerOnly} onChange={e=>setScannerOnly(e.target.checked)}/>Acceso especial: Escáner QR</label></>}
+      {!access.account&&<><label className="flex gap-2 text-sm"><input type="checkbox" disabled={role!=='OPERATOR'} checked={scannerOnly} onChange={e=>setScannerOnly(e.target.checked)}/>Acceso especial: Escáner QR</label></>}
+      {!access.account&&role==='OPERATOR'&&!scannerOnly&&<OperatorPermissions value={permissions} onChange={setPermissions} disabled={busy}/>}
       <p className="text-xs text-muted-foreground">Crear e invitar autoriza una invitación individual. Vincular una cuenta existente conserva sus permisos y no envía mensajes.</p>
       {error && <p role="alert" className="text-sm text-rose-500">{error}</p>}
       <div className="flex flex-wrap gap-3"><button disabled={busy} onClick={() => setAccess(null)}>Cerrar</button>
       {!access.linked && <button disabled={busy} className="bg-primary text-primary-foreground px-3 py-2 rounded-xl" onClick={async () => {
         if (lock.current) return;
-        if(!access.account&&!/^[a-z0-9][a-z0-9._-]{2,31}$/i.test(username.trim())){setError('Introduce un nombre de usuario de 3 a 32 caracteres: letras, números, punto, guion o guion bajo.');return;}
         lock.current = true; setBusy(true); setError('');
-        try { const result = (await api.post('/staff/' + access.staff.id + '/access', { role,scannerOnly:role==='OPERATOR'&&scannerOnly,username:!access.account?username:undefined,inviteNow:!access.account,invitationRequestKey:crypto.randomUUID(), linkExisting: Boolean(access.account) })).data.data; setAccess({ ...access, account: result, linked: true });setError(result.creationInvitation?.results?.[0]?.reason||''); await load(); } catch(err: any) { setError(err.response?.data?.message || 'No fue posible crear el acceso.'); } finally { lock.current = false; setBusy(false); }
-      }}>{access.account ? 'Vincular cuenta existente' : 'Crear e invitar'}</button>}
+        try { const result = (await api.post('/staff/' + access.staff.id + '/access', { role,scannerOnly:role==='OPERATOR'&&scannerOnly,operationalPermissions:permissions,inviteNow:!access.account,invitationRequestKey:crypto.randomUUID(), linkExisting: Boolean(access.account) })).data.data; setAccess({ ...access, account: result, linked: true });setError(result.creationInvitation?.results?.[0]?.reason||''); await load(); } catch(err: any) { setError(err.response?.data?.message || 'No fue posible crear el acceso.'); } finally { lock.current = false; setBusy(false); }
+      }}>{access.account ? 'Vincular cuenta existente' : 'Crear y enviar invitación'}</button>}
       {access.linked && access.account && <><Link className="text-primary py-2" to="/users">Consultar en Usuarios</Link><button className="text-primary py-2" onClick={() => { setInvitationIds([access.account.id]); setAccess(null); }}>Invitar usuario</button></>}
       </div></div></div>, document.body)}
     {invitationIds && <UserInvitationModal ids={invitationIds} onClose={() => setInvitationIds(null)} onSaved={() => { void load(); }} />}

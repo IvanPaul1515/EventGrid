@@ -1,3 +1,4 @@
+import {sendRequestGate} from '../utils/sendRequest';
 import {SmtpStatus} from '../components/common/SmtpStatus';
 import { CommunicationOverview } from '../components/communications/CommunicationOverview';
 import { CommunicationParticipants } from '../components/communications/CommunicationParticipants';
@@ -112,6 +113,8 @@ export const CommunicationsPage: React.FC = () => {
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
   const [templateSubject, setTemplateSubject] = useState('');
+  const [templatePriority,setTemplatePriority]=useState<'NORMAL'|'HIGH'>('NORMAL');
+  const singleGate=useRef(sendRequestGate()),bulkGate=useRef(sendRequestGate());
   const [templateBody, setTemplateBody] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateFeedback, setTemplateFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -323,7 +326,7 @@ export const CommunicationsPage: React.FC = () => {
       const newScope = templateScope.current !== requestedScope;
       if (data.length > 0 && (newScope || !selectedTemplate)) {
         setSelectedTemplate(data[0]);
-        setTemplateSubject(data[0].subject);
+        setTemplateSubject(data[0].subject);setTemplatePriority(data[0].priority||'NORMAL');
         setTemplateBody(data[0].bodyHtml);
       }
       if (data.length > 0 && (newScope || !composeSubject)) {
@@ -397,11 +400,11 @@ export const CommunicationsPage: React.FC = () => {
 
   // Enviar correo individual con protección contra duplicados (Fase QA Integral)
   const handleSendSingleEmail = async (force = false) => {
-    if (!selectedRegistration || !currentEvent) return;
+    if (!selectedRegistration || !currentEvent || singleGate.current.pending) return;
     try {
       setSendingSingle(true);
       setSingleFeedback(null);
-      const res = await communicationsService.sendSingleEmail({
+      const res = await singleGate.current.run(()=>communicationsService.sendSingleEmail({
         eventId: currentEvent.id,
         registrationId: selectedRegistration.id,
         templateCode: composeTemplateCode,
@@ -411,7 +414,8 @@ export const CommunicationsPage: React.FC = () => {
         forceResend: force,
         confirmedResend: force,
         resendReason: force ? singleResendReason : undefined,
-      });
+      }),setSendingSingle);
+      if(!res)return;
 
       setSingleFeedback({
         type: 'success',
@@ -469,6 +473,7 @@ export const CommunicationsPage: React.FC = () => {
       await communicationsService.updateTemplate(selectedTemplate.id, {
         subject: templateSubject,
         bodyHtml: templateBody,
+        priority:templatePriority,
       });
       setTemplateFeedback({ type: 'success', message: 'Plantilla actualizada exitosamente.' });
       await loadTemplates();
@@ -523,11 +528,11 @@ export const CommunicationsPage: React.FC = () => {
 
   // Ejecutar envío masivo
   const handleExecuteBulkSend = async () => {
-    if (!currentEvent) return;
+    if (!currentEvent || bulkGate.current.pending) return;
     try {
       setSendingBulk(true);
       setBulkResult(null);
-      const res = await communicationsService.sendBulkEmail({
+      const res = await bulkGate.current.run(()=>communicationsService.sendBulkEmail({
         eventId: currentEvent.id,
         templateCode: bulkTemplateCode,
         targetGroup: bulkTargetGroup,
@@ -539,7 +544,8 @@ export const CommunicationsPage: React.FC = () => {
         mode: bulkDeliveryMode,
         simulateOnly: bulkDeliveryMode === 'SIMULATION',
         confirmedDemoSending: confirmedBulkDemoSending,
-      });
+      }),setSendingBulk);
+      if(!res)return;
 
       setBulkResult(res);
       setBulkStep(4);
@@ -808,7 +814,7 @@ export const CommunicationsPage: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setSelectedTemplate(t);
-                    setTemplateSubject(t.subject);
+                    setTemplateSubject(t.subject);setTemplatePriority(t.priority||'NORMAL');
                     setTemplateBody(t.bodyHtml);
                     setTemplateFeedback(null);
                   }}
@@ -841,6 +847,7 @@ export const CommunicationsPage: React.FC = () => {
                     <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
                       <FileText className="w-4 h-4 text-primary" />
                       <span>{selectedTemplate.name}</span>
+                      <label className="text-sm ml-3">Prioridad<select aria-label="Prioridad del correo" className="input-field ml-2" value={templatePriority} onChange={e=>setTemplatePriority(e.target.value as 'NORMAL'|'HIGH')}><option value="NORMAL">Normal</option><option value="HIGH">Alta</option></select></label>
                     </h3>
                     <p className="text-xs font-mono text-muted-foreground mt-0.5">{selectedTemplate.code}</p>
                   </div>

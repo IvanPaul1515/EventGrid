@@ -110,6 +110,7 @@ export const EmailPreviewSchema = z.object({
 });
 
 export const UpdateTemplateSchema = z.object({
+  priority:z.enum(['NORMAL','HIGH']).optional(),
   name: z.string().optional(),
   subject: z.string().min(1, 'El asunto es requerido'),
   bodyHtml: z.string().min(1, 'El contenido HTML es requerido'),

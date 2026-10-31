@@ -1,3 +1,4 @@
+import {messagePriority,priorityHeaders} from './mail-policy.js';
 import { recipientIneligibility } from './recipient-policy.js';
 import { writeTransaction } from '../../utils/writeTransaction.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
@@ -444,7 +445,9 @@ export class EmailQueueWorker {
                     } catch {}
                   }
 
+                  let snapshot:any={};try{snapshot=typeof job.templateSnapshot==='string'?JSON.parse(job.templateSnapshot):job.templateSnapshot||{};}catch{}
                   const sendResult = await transporter.sendMail({
+                    ...priorityHeaders(snapshot.priority?messagePriority(job.templateCode||'',snapshot.priority):'NORMAL'),
                     from: `"${config?.fromName || 'EventGrid'}" <${config?.fromEmail || 'noreply@eventgrid.app'}>`,
                     to: email,
                     replyTo: config?.replyToEmail || undefined,

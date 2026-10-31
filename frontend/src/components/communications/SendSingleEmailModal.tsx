@@ -1,3 +1,4 @@
+import {sendRequestGate} from '../../utils/sendRequest';
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { communicationsService, EmailPreviewResult } from '../../services/communications.service';
@@ -23,9 +24,9 @@ export const SendSingleEmailModal: React.FC<Props> = ({ registrationId, recipien
     const admin = hasRole(['ADMIN']);
     const [reload, setReload] = useState(0);
     const [templates, setTemplates] = useState<EmailTemplate[]>([]), [code, setCode] = useState(initialTemplate), [preview, setPreview] = useState<EmailPreviewResult | null>(null), [history, setHistory] = useState<any[]>([]), [provider, setProvider] = useState<{isEnabled:boolean;isConfigured:boolean;simulationAllowed?:boolean}>({ isEnabled: false, isConfigured: false }), [mode, setMode] = useState<'REAL' | 'SIMULATION'>('REAL'), [busy, setBusy] = useState(false), [loading, setLoading] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState(''), [duplicate, setDuplicate] = useState<any>(null), [demoConfirmed, setDemoConfirmed] = useState(false);
-    const lock = useRef(false), scope = useRef(0);
+    const lock = useRef(false), scope = useRef(0),sendGate=useRef(sendRequestGate());
     useEffect(() => { if (!isOpen)
-        return; const id = ++scope.current; setPreview(null); setError(''); setMessage(''); setTemplates([]); setHistory([]); setDuplicate(null); setCode(initialTemplate); setMode('REAL'); setDemoConfirmed(false); setLoading(true); Promise.all([communicationsService.getTemplates(eventId), communicationsService.getStatus(eventId)]).then(([items, status]) => { if (scope.current !== id)
+        return; const id = ++scope.current; setBusy(false);lock.current=false;setPreview(null); setError(''); setMessage(''); setTemplates([]); setHistory([]); setDuplicate(null); setCode(initialTemplate); setMode('REAL'); setDemoConfirmed(false); setLoading(true); Promise.all([communicationsService.getTemplates(eventId), communicationsService.getStatus(eventId)]).then(([items, status]) => { if (scope.current !== id)
         return; setTemplates(items); setProvider(status); setCode(items.some(t => t.code === initialTemplate) ? initialTemplate : items[0]?.code || ''); }).catch(() => { if (scope.current === id)
         setError('No se pudieron cargar las plantillas o el estado del proveedor. Cierra y vuelve a abrir para consultar.'); }).finally(() => { if (scope.current === id)
         setLoading(false); }); return () => { scope.current++; }; }, [isOpen, eventId, registrationId, initialTemplate]);
@@ -45,13 +46,14 @@ export const SendSingleEmailModal: React.FC<Props> = ({ registrationId, recipien
         setMessage('');
         const key = scope.current;
         try {
-            const result = await communicationsService.sendSingleEmail({ eventId, registrationId, templateCode: code, expectedRecipientEmail: preview.recipientEmail, mode, simulateOnly: mode === 'SIMULATION', confirmedDemoSending: demoConfirmed, ...(reason ? { forceResend: true, confirmedResend: true, resendReason: reason } : {}) });
+            const result = await sendGate.current.run(()=>communicationsService.sendSingleEmail({ eventId, registrationId, templateCode: code, expectedRecipientEmail: preview.recipientEmail, mode, simulateOnly: mode === 'SIMULATION', confirmedDemoSending: demoConfirmed, ...(reason ? { forceResend: true, confirmedResend: true, resendReason: reason } : {}) }),setBusy);
+            if(!result)return;
             if (key !== scope.current)
                 return;
             setMessage(result.message);
-            setPreview(null);
             setDuplicate(null);
-            onSent?.();
+            setReload(v=>v+1);
+            try{onSent?.();}catch{console.error('No se pudo actualizar la vista después del envío.');}
         }
         catch (e: any) {
             if (key !== scope.current)
@@ -64,9 +66,7 @@ export const SendSingleEmailModal: React.FC<Props> = ({ registrationId, recipien
                 setError(e.response?.data?.message || 'No se confirmó el resultado. Consulta el historial antes de autorizar otro intento.');
         }
         finally {
-            lock.current = false;
-            if (key === scope.current)
-                setBusy(false);
+            if (key === scope.current){lock.current = false;setBusy(false);}
         }
     }
     if (!isOpen)

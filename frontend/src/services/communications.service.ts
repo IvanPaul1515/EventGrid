@@ -126,7 +126,7 @@ export const communicationsService = {
 
   async updateTemplate(
     templateId: string,
-    data: { subject: string; bodyHtml: string; bodyText?: string }
+    data: { subject: string; bodyHtml: string; bodyText?: string; priority?:'NORMAL'|'HIGH' }
   ): Promise<EmailTemplate> {
     const res = await api.put<ApiResponse<EmailTemplate>>(`/communications/templates/${templateId}`, data);
     return res.data.data;
