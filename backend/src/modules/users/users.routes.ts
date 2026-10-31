@@ -34,7 +34,9 @@ router.get('/:id/invitations', async (req, res, next) => {
   try {
     await ensureScope([req.params.id], req.user!.assignedEventId);
     const items = await prisma.userInvitation.findMany({ where: { userId: req.params.id }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, createdAt: true, expiresAt: true, sentAt: true, usedAt: true, revokedAt: true, errorMessage: true } });
-    res.json({ data: items });
+    const user=await prisma.user.findUnique({where:{id:req.params.id},select:{id:true,accountStatus:true,assignedEventId:true}});
+    const diagnostic=user?(await InvitationsService.withStatus([user]))[0].invitationDiagnostic:null;
+    res.json({ data: items,diagnostic });
   } catch (error) { next(error); }
 });
 
@@ -58,9 +60,9 @@ router.post('/invitations/preview', async (req, res, next) => {
 
 router.post('/invitations/send', explicitActionLimit, async (req, res, next) => {
   try {
-    const data = z.object({ userIds: z.array(z.string().uuid()).min(1).max(100), requestKey: z.string().uuid(), confirmed: z.literal(true), reinvite: z.boolean().default(false) }).parse(req.body);
+    const data = z.object({ userIds: z.array(z.string().uuid()).min(1).max(100), requestKey: z.string().uuid(), confirmed: z.literal(true), reinvite: z.boolean().default(false),confirmedDuplicateRisk:z.boolean().default(false) }).parse(req.body);
     await ensureScope(data.userIds, req.user!.assignedEventId);
-    res.json({ data: await InvitationsService.send(data.userIds, data.requestKey, req.user!.id, data.reinvite) });
+    res.json({ data: await InvitationsService.send(data.userIds, data.requestKey, req.user!.id, data.reinvite,data.confirmedDuplicateRisk) });
   } catch (error) { next(error); }
 });
 

@@ -1,6 +1,8 @@
 import { api } from './api';
 
+export interface InvitationDiagnostic {state:string;deliveryState:string;tokenState:string;blocks:{code:string;reason:string}[];canSend:boolean;requiresDuplicateRiskConfirmation:boolean;hasProviderReference:boolean;explanation?:string|null;latestAttempt?:{status:string;reason?:string|null;at:string;attempted?:boolean|null;errorCode?:string;stage?:string;responseCode?:number}|null}
 export interface UserItem {
+  invitationDiagnostic?:InvitationDiagnostic;
   username?:string|null;
   creationInvitation?:{results:{status:string;reason?:string}[]};
   operationalPermissions?:string|null;

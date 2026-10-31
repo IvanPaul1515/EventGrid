@@ -170,7 +170,7 @@ describe('definitive attendance and later delivery', () => {
 
 describe('staff and explicit invitations', () => {
   it('guest chooses credentials; administrative invitation cannot impose a username and welcome requires explicit activation',async()=>{
-    const raw=vi.spyOn(CommunicationsService,'getRawConfig').mockResolvedValue({isEnabled:true,fromName:'Synthetic',fromEmail:'sender@example.invalid'} as any);
+    const raw=vi.spyOn(CommunicationsService,'getRawConfig').mockResolvedValue({isEnabled:true,host:'smtp.example.invalid',port:587,fromName:'Synthetic',fromEmail:'sender@example.invalid'} as any);
     const send=vi.fn(async(mail:any)=>({accepted:[mail.to],rejected:[],messageId:'<mock-guest-welcome>'}));
     const factory=vi.spyOn(CommunicationsService,'createTransporter').mockReturnValue({sendMail:send,close:vi.fn()} as any);
     // Keep the initial invitation blocked, then authorize only the mocked activation welcome.
@@ -209,7 +209,7 @@ describe('staff and explicit invitations', () => {
   it('authorizes one batch with individual hashed tokens, single use, expiry and replacement', async () => {
     const users = await Promise.all([1, 2].map(i => prisma.user.create({ data: { fullName: 'Invitation ' + i, email: `invite${i}@example.invalid`, role: 'OPERATOR', assignedEventId: event.id, accountStatus: 'PENDING', isActive: false, passwordHash: 'unusable' } })));
     const send = vi.fn(async (mail: any) => ({ accepted: [mail.to], messageId: '<fake-' + mail.to + '>' }));
-    const raw = vi.spyOn(CommunicationsService, 'getRawConfig').mockResolvedValue({ isEnabled: true, fromName: 'Test', fromEmail: 'sender@example.invalid' } as any);
+    const raw = vi.spyOn(CommunicationsService, 'getRawConfig').mockResolvedValue({ isEnabled: true,host:'smtp.example.invalid',port:587, fromName: 'Test', fromEmail: 'sender@example.invalid' } as any);
     const factory = vi.spyOn(CommunicationsService, 'createTransporter').mockReturnValue({ sendMail: send } as any);
     const policy=vi.spyOn(smtpState,'smtpPolicy').mockReturnValue({realEmailBlocked:false,realEmailAllowed:true,simulationAllowed:false});
     try {
@@ -338,7 +338,7 @@ describe('simplified personnel and selected access invitations', () => {
     const pending = await Promise.all([1, 2, 3].map(i => prisma.user.create({ data: { fullName: 'Selected ' + i, email: `selected-${i}@example.invalid`, role: 'VIEWER', assignedEventId: event.id, accountStatus: 'PENDING', isActive: false, passwordHash: 'unusable' } })));
     const active = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@barcamp.org.do' } });
     const send = vi.fn(async (mail: any) => { if (mail.to === pending[1].email) throw Object.assign(new Error('mock authentication failure'), { code: 'EAUTH' }); return { accepted: [mail.to], messageId: '<selection-' + crypto.randomUUID() + '>' }; });
-    const raw = vi.spyOn(CommunicationsService, 'getRawConfig').mockResolvedValue({ isEnabled: true, fromName: 'Mock', fromEmail: 'sender@example.invalid' } as any);
+    const raw = vi.spyOn(CommunicationsService, 'getRawConfig').mockResolvedValue({ isEnabled: true,host:'smtp.example.invalid',port:587, fromName: 'Mock', fromEmail: 'sender@example.invalid' } as any);
     const factory = vi.spyOn(CommunicationsService, 'createTransporter').mockReturnValue({ sendMail: send, close: vi.fn() } as any); const policy=vi.spyOn(smtpState,'smtpPolicy').mockReturnValue({realEmailBlocked:false,realEmailAllowed:true,simulationAllowed:false});
     try {
       const payload = { userIds: [pending[0].id, pending[1].id, pending[0].id, active.id], requestKey: crypto.randomUUID(), confirmed: true };
@@ -364,6 +364,34 @@ describe('simplified personnel and selected access invitations', () => {
 
 
 describe('invitation concurrency and explicit reinvitation', () => {
+  it('does not classify a preparation failure as an uncertain SMTP attempt',async()=>{
+    const pending=await prisma.user.create({data:{fullName:'Synthetic Preparation',email:'prepare-diagnostic@example.invalid',role:'VIEWER',assignedEventId:event.id,accountStatus:'PENDING',isActive:false,passwordHash:'unusable'}});
+    const raw=vi.spyOn(CommunicationsService,'getRawConfig').mockResolvedValue({isEnabled:true,host:'smtp.example.invalid',port:587,fromName:'Synthetic',fromEmail:'sender@example.invalid'} as any);
+    const factory=vi.spyOn(CommunicationsService,'createTransporter').mockImplementation(()=>{throw Error('Private preparation detail');});
+    const policy=vi.spyOn(smtpState,'smtpPolicy').mockReturnValue({realEmailBlocked:false,realEmailAllowed:true,simulationAllowed:false});
+    try{const r=await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({userIds:[pending.id],requestKey:crypto.randomUUID(),confirmed:true});expect(r.body.data.results[0]).toMatchObject({status:'FAILED',attempted:false});expect(JSON.stringify(r.body)).not.toContain('Private preparation detail');expect((await prisma.user.findUniqueOrThrow({where:{id:pending.id}})).accountStatus).toBe('PENDING');}finally{policy.mockRestore();factory.mockRestore();raw.mockRestore();}
+  });
+  it('preserves unknown outcomes, persists per-recipient results and requires explicit duplicate-risk authorization even after expiry',async()=>{
+    const pending=await Promise.all([1,2].map(i=>prisma.user.create({data:{email:`diagnostic-invite-${i}@example.invalid`,fullName:'Synthetic Invitation '+i,role:'OPERATOR',assignedEventId:event.id,isActive:false,accountStatus:'PENDING',passwordHash:'unusable'}})));
+    let uncertain=true;
+    const send=vi.fn(async(mail:any)=>{if(mail.to===pending[1].email&&uncertain)throw Object.assign(Error('private SMTP transcript must not be persisted'),{code:'ETIMEDOUT',command:'DATA',password:'synthetic-private-value'});return {accepted:[{address:' '+mail.to.toUpperCase()+' '}],messageId:'<mock-diagnostics>'};});
+    const raw=vi.spyOn(CommunicationsService,'getRawConfig').mockResolvedValue({isEnabled:true,host:'smtp.example.invalid',port:587,fromName:'Synthetic',fromEmail:'sender@example.invalid'} as any);
+    const factory=vi.spyOn(CommunicationsService,'createTransporter').mockReturnValue({sendMail:send,close:vi.fn()} as any);
+    const policy=vi.spyOn(smtpState,'smtpPolicy').mockReturnValue({realEmailBlocked:false,realEmailAllowed:true,simulationAllowed:false});
+    try{
+      const body={userIds:pending.map(u=>u.id),requestKey:crypto.randomUUID(),confirmed:true};
+      const first=await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send(body);expect(first.status).toBe(200);expect(first.body.data.results.find((r:any)=>r.userId===pending[0].id).status).toBe('ACCEPTED_BY_PROVIDER');expect(first.body.data.results.find((r:any)=>r.userId===pending[1].id)).toMatchObject({status:'UNKNOWN_DELIVERY_STATUS',attempted:true,errorCode:'ETIMEDOUT',stage:'DATA'});expect(JSON.stringify(first.body)).not.toContain('synthetic-private');
+      await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send(body);expect(send).toHaveBeenCalledTimes(2);
+      const unknown=await prisma.userInvitation.findFirstOrThrow({where:{userId:pending[1].id,revokedAt:null}});expect(unknown.sentAt).toBeTruthy();await prisma.userInvitation.update({where:{id:unknown.id},data:{expiresAt:new Date(0)}});
+      await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({...body,userIds:[pending[1].id],requestKey:crypto.randomUUID(),reinvite:true});expect(send).toHaveBeenCalledTimes(2);
+      await prisma.applicationSettings.update({where:{id:'global'},data:{publicOrigin:null,originStatus:'UNCONFIGURED'}});
+      const selection=await request(app).post('/api/v1/users/invitations/selection').set(headers('ADMIN')).send({userIds:[pending[1].id]});expect(selection.body.data[0].invitationDiagnostic).toMatchObject({deliveryState:'UNKNOWN_DELIVERY_STATUS',tokenState:'EXPIRED',canSend:false,requiresDuplicateRiskConfirmation:true});expect(selection.body.data[0].invitationDiagnostic.blocks[0].code).toBe('PUBLIC_DOMAIN_MISSING');expect(selection.body.data[0].invitation).not.toHaveProperty('messageId');
+      const blocked=await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({...body,userIds:[pending[1].id],requestKey:crypto.randomUUID()});expect(blocked.body.data.results[0]).toMatchObject({status:'PENDING',code:'PUBLIC_DOMAIN_MISSING',attempted:false});expect(send).toHaveBeenCalledTimes(2);expect((await prisma.userInvitation.findUniqueOrThrow({where:{id:unknown.id}})).status).toBe('UNKNOWN_DELIVERY_STATUS');
+      const history=await request(app).get('/api/v1/users/'+pending[1].id+'/invitations').set(headers('ADMIN'));expect(history.body.diagnostic.blocks[0].code).toBe('PUBLIC_DOMAIN_MISSING');expect(JSON.stringify(history.body)).not.toContain('tokenHash');
+      await prisma.applicationSettings.update({where:{id:'global'},data:{publicOrigin:'https://eventgrid.example.invalid',originStatus:'VERIFIED'}});uncertain=false;
+      const retried=await request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({...body,userIds:[pending[1].id],requestKey:crypto.randomUUID(),reinvite:true,confirmedDuplicateRisk:true});expect(retried.body.data.results[0].status).toBe('ACCEPTED_BY_PROVIDER');expect(send).toHaveBeenCalledTimes(3);expect((await prisma.userInvitation.findUniqueOrThrow({where:{id:unknown.id}})).revokedAt).toBeTruthy();
+    }finally{policy.mockRestore();factory.mockRestore();raw.mockRestore();await prisma.applicationSettings.update({where:{id:'global'},data:{publicOrigin:'https://eventgrid.example.invalid',originStatus:'VERIFIED'}});}
+  });
   it('revokes an unused invitation when its pending account is disabled and rejects duplicate usernames',async()=>{
     const pending=await prisma.user.create({data:{fullName:'Synthetic Pending',email:'disabled-pending@example.invalid',username:'reserved_user',role:'OPERATOR',assignedEventId:event.id,accountStatus:'PENDING',isActive:false,passwordHash:'unusable'}});
     const token=crypto.randomBytes(32).toString('base64url');
@@ -376,7 +404,7 @@ describe('invitation concurrency and explicit reinvitation', () => {
   it('claims one account across distinct concurrent batches and only reinvites active accounts on explicit authorization', async () => {
     const pending = await prisma.user.create({ data: { fullName: 'Concurrent Invite', email: 'concurrent-invite@example.invalid', role: 'OPERATOR', assignedEventId: event.id, accountStatus: 'PENDING', isActive: false, passwordHash: 'unusable' } });
     const send = vi.fn(async (mail: any) => { await new Promise(resolve => setTimeout(resolve, 80)); return { accepted: [mail.to], messageId: '<concurrent-' + crypto.randomUUID() + '>' }; });
-    const raw = vi.spyOn(CommunicationsService, 'getRawConfig').mockResolvedValue({ isEnabled: true, fromName: 'Mock', fromEmail: 'sender@example.invalid' } as any);
+    const raw = vi.spyOn(CommunicationsService, 'getRawConfig').mockResolvedValue({ isEnabled: true,host:'smtp.example.invalid',port:587, fromName: 'Mock', fromEmail: 'sender@example.invalid' } as any);
     const factory = vi.spyOn(CommunicationsService, 'createTransporter').mockReturnValue({ sendMail: send } as any); const policy=vi.spyOn(smtpState,'smtpPolicy').mockReturnValue({realEmailBlocked:false,realEmailAllowed:true,simulationAllowed:false});
     const dispatch = (extra = {}) => request(app).post('/api/v1/users/invitations/send').set(headers('ADMIN')).send({ userIds: [pending.id], requestKey: crypto.randomUUID(), confirmed: true, ...extra });
     try {
