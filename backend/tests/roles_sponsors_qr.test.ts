@@ -169,6 +169,26 @@ describe('definitive attendance and later delivery', () => {
 });
 
 describe('staff and explicit invitations', () => {
+  it('guest chooses credentials; administrative invitation cannot impose a username and welcome requires explicit activation',async()=>{
+    const raw=vi.spyOn(CommunicationsService,'getRawConfig').mockResolvedValue({isEnabled:true,fromName:'Synthetic',fromEmail:'sender@example.invalid'} as any);
+    const send=vi.fn(async(mail:any)=>({accepted:[mail.to],rejected:[],messageId:'<mock-guest-welcome>'}));
+    const factory=vi.spyOn(CommunicationsService,'createTransporter').mockReturnValue({sendMail:send,close:vi.fn()} as any);
+    // Keep the initial invitation blocked, then authorize only the mocked activation welcome.
+    const policy=vi.spyOn(smtpState,'smtpPolicy').mockReturnValue({realEmailBlocked:true,realEmailAllowed:false,simulationAllowed:true});
+    try{
+      const created=await request(app).post('/api/v1/users').set(headers('ADMIN')).send({fullName:'Synthetic Guest',email:'guest-choice@example.invalid',username:'admin_chosen_name',role:'OPERATOR',assignedEventId:event.id,inviteNow:true,invitationRequestKey:crypto.randomUUID()});
+      expect(created.status).toBe(201);expect(created.body.data.username).toBeNull();expect(created.body.data.accountStatus).toBe('PENDING');expect(send).not.toHaveBeenCalled();
+      const token=crypto.randomBytes(32).toString('base64url');await prisma.userInvitation.create({data:{userId:created.body.data.id,tokenHash:crypto.createHash('sha256').update(token).digest('hex'),expiresAt:new Date(Date.now()+86400000),status:'ACCEPTED_BY_PROVIDER'}});
+      const info=await request(app).post('/api/v1/auth/invitation-info').send({token});expect(info.body.data).toMatchObject({fullName:'Synthetic Guest',email:'guest-choice@example.invalid',role:'OPERATOR',eventName:event.name});expect(info.body.data).not.toHaveProperty('assignedEventId');
+      expect((await request(app).post('/api/v1/auth/invitation-username').send({token,username:'admin'})).status).toBe(400);
+      expect((await request(app).post('/api/v1/auth/invitation-username').send({token,username:'guest_personal42'})).body.data.available).toBe(true);
+      expect((await request(app).post('/api/v1/auth/accept-invitation').send({token,password:'FictitiousPassword123!'})).status).toBe(400);
+      policy.mockReturnValue({realEmailBlocked:false,realEmailAllowed:true,simulationAllowed:false});
+      const payload={token,password:'FictitiousPassword123!',username:'guest_personal42',welcomeConfirmed:true};const activated=await request(app).post('/api/v1/auth/accept-invitation').send(payload);expect(activated.status).toBe(200);expect(activated.body.data.welcomeStatus).toBe('ACCEPTED_BY_PROVIDER');expect(send).toHaveBeenCalledOnce();
+      expect((await request(app).post('/api/v1/auth/accept-invitation').send(payload)).status).toBe(400);expect(send).toHaveBeenCalledOnce();
+      expect((await request(app).post('/api/v1/auth/login').send({email:'GUEST_PERSONAL42',password:payload.password})).status).toBe(200);
+    }finally{policy.mockRestore();factory.mockRestore();raw.mockRestore();}
+  });
   it('records personnel separately without creating a user or institutional sponsor', async () => {
     const before = await prisma.user.count(); const sponsors = await prisma.sponsor.count();
     const result = await request(app).post('/api/v1/staff').set(headers('ADMIN')).send({ firstName: 'Fake', lastName: 'Staff', email: 'staff@example.invalid', area: 'Reception' });
@@ -362,7 +382,7 @@ describe('invitation concurrency and explicit reinvitation', () => {
     try {
       await Promise.all([dispatch(), dispatch()]); expect(send).toHaveBeenCalledOnce();
       const firstMail = send.mock.calls[0][0]; const token = new URL(firstMail.text.match(/https:\/\/\S+/)[0]).hash.slice(7);
-      expect((await request(app).post('/api/v1/auth/accept-invitation').send({ token, password: 'UserChosenPassword123!' })).status).toBe(200);
+      expect((await request(app).post('/api/v1/auth/accept-invitation').send({ token, password: 'UserChosenPassword123!',username:'concurrent_user01' })).status).toBe(200);
       const active = await prisma.user.findUniqueOrThrow({ where: { id: pending.id } });
       await dispatch(); expect(send).toHaveBeenCalledOnce();
       await dispatch({ reinvite: true }); expect(send).toHaveBeenCalledTimes(2);

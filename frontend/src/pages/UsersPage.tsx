@@ -40,7 +40,7 @@ export const UsersPage: React.FC = () => {
 
   // Filtros
   const [search, setSearch] = useState('');
-  const [createUsername,setCreateUsername]=useState(''),[editUsername,setEditUsername]=useState('');
+  const [editUsername,setEditUsername]=useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [page, setPage] = useState(1);
@@ -125,7 +125,7 @@ export const UsersPage: React.FC = () => {
 
       const res = await usersService.createUser({
         email: createForm.email.trim(),
-        username:createUsername.trim(),inviteNow:true,invitationRequestKey:crypto.randomUUID(),
+        inviteNow:true,invitationRequestKey:crypto.randomUUID(),
         fullName: [createForm.fullName.trim(),createSurname.trim()].filter(Boolean).join(' '),
         operationalPermissions:createPermissions,
         role: createForm.role,
@@ -134,7 +134,7 @@ export const UsersPage: React.FC = () => {
       });
 
       setIsCreateModalOpen(false);
-      setCreateUsername('');setCreateForm({ email: '', fullName: '', role: 'OPERATOR', scannerOnly: false });setCreateSurname('');setCreatePermissions(undefined);
+      setCreateForm({ email: '', fullName: '', role: 'OPERATOR', scannerOnly: false });setCreateSurname('');setCreatePermissions(undefined);
 
       setSuccessMsg(`Cuenta de ${res.user.fullName} creada, pendiente de activación. ${res.user.creationInvitation?.results?.[0]?.status==='ACCEPTED_BY_PROVIDER'?'Invitación aceptada por el proveedor; entrega no confirmada.':res.user.creationInvitation?.results?.[0]?.reason||'Invitación pendiente de envío.'}`);
       setTimeout(() => setSuccessMsg(null), 5000);
@@ -599,7 +599,7 @@ export const UsersPage: React.FC = () => {
             <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
               <div className="flex items-center gap-2">
                 <UserCheck className="w-5 h-5 text-primary" />
-                <h3 className="text-sm font-bold text-foreground">Crear Nuevo Usuario</h3>
+                <h3 className="text-sm font-bold text-foreground">Invitar usuario</h3>
               </div>
               <button
                 onClick={() => setIsCreateModalOpen(false)}
@@ -616,7 +616,7 @@ export const UsersPage: React.FC = () => {
                 <input
                   aria-label="Nombre" type="text"
                   required minLength={2}
-                  placeholder="Ej. Laura Gómez"
+                  placeholder="Ej. Laura"
                   value={createForm.fullName}
                   onChange={(e) => setCreateForm({ ...createForm, fullName: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-muted/40 border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
@@ -648,9 +648,9 @@ export const UsersPage: React.FC = () => {
                   <option value="VIEWER">Solo consulta</option>
                 </select>
               </div>
-<label className="block text-sm">Nombre de usuario<input aria-label="Nombre de usuario nuevo" required minLength={3} maxLength={32} pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,31}" autoComplete="off" value={createUsername} onChange={e=>setCreateUsername(e.target.value)} className="input-field w-full"/></label><label className="flex gap-2 text-sm border border-border rounded-xl p-3"><input type="checkbox" disabled={createForm.role!=='OPERATOR'} checked={createForm.scannerOnly} onChange={e=>setCreateForm({...createForm,scannerOnly:e.target.checked})}/>Acceso especial: Escáner QR (sin cobros, entregas ni administración)</label>
+<label className="flex gap-2 text-sm border border-border rounded-xl p-3"><input type="checkbox" disabled={createForm.role!=='OPERATOR'} checked={createForm.scannerOnly} onChange={e=>setCreateForm({...createForm,scannerOnly:e.target.checked})}/>Acceso especial: Escáner QR (sin cobros, entregas ni administración)</label>
 {createForm.role==='OPERATOR'&&!createForm.scannerOnly&&<OperatorPermissions value={createPermissions} onChange={setCreatePermissions} disabled={submitting}/>}
-              <section className="border border-border rounded-xl p-3 text-sm space-y-1"><h3 className="font-semibold">Edición y acceso</h3><p>Edición: {currentEvent?.name||'Selecciona una edición'}</p><p className="text-xs text-muted-foreground">La cuenta se crea pendiente de activación. La persona establecerá su contraseña mediante el flujo seguro existente. Crear e invitar autoriza un envío individual. Si falta SMTP o el dominio público, la invitación queda pendiente para reintentar.</p></section>
+              <section className="border border-border rounded-xl p-3 text-sm space-y-1"><h3 className="font-semibold">Edición y acceso</h3><p>Edición: {currentEvent?.name||'Selecciona una edición'}</p><p className="text-xs text-muted-foreground">La cuenta se crea pendiente de activación. La persona elegirá su nombre de usuario y establecerá su contraseña mediante el flujo seguro existente. Crear e invitar autoriza un envío individual. Si falta SMTP o el dominio público, la invitación queda pendiente para reintentar.</p></section>
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-border">
                 <button
                   type="button"
@@ -664,7 +664,7 @@ export const UsersPage: React.FC = () => {
                   disabled={submitting}
                   className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-bold shadow-md disabled:opacity-50"
                 >
-                  {submitting ? 'Creando...' : 'Crear e invitar'}
+                  {submitting ? 'Creando...' : 'Crear y enviar invitación'}
                 </button>
               </div>
             </form>

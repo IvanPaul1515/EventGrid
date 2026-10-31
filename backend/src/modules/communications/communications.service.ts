@@ -1,5 +1,7 @@
+import {effectivePrimaryTemplate} from './primary-templates.js';
+import {messagePriority,priorityHeaders,registrationMessages,templateMetadata} from './mail-policy.js';
 import {personName} from '../../utils/personName.js';
-import {emailLogo} from '../../utils/emailLogo.js';
+import {emailLogo,emailLogoPreview} from '../../utils/emailLogo.js';
 import { WalletService } from '../wallet/wallet.service.js';
 import { recipientIneligibility } from './recipient-policy.js';
 import { responsiveEmailHtml } from '../../utils/emailDocument.js';
@@ -141,18 +143,18 @@ export class CommunicationsService {
         const editionTemplate = await prisma.emailTemplate.findFirst({
           where: { code: c, eventId },
         });
-        if (editionTemplate) return editionTemplate;
+        if (editionTemplate) return {...effectivePrimaryTemplate(editionTemplate,this.DEFAULT_TEMPLATES.find(t=>t.code===editionTemplate.code)),priority:templateMetadata(editionTemplate.variables).priority};
       }
 
       const globalTemplate = await prisma.emailTemplate.findFirst({
         where: { code: c, eventId: null },
       });
-      if (globalTemplate) return globalTemplate;
+      if (globalTemplate) return {...effectivePrimaryTemplate(globalTemplate,this.DEFAULT_TEMPLATES.find(t=>t.code===globalTemplate.code)),priority:templateMetadata(globalTemplate.variables).priority};
 
       const def = this.DEFAULT_TEMPLATES.find((t) => t.code === c);
       if (def) {
         return {
-          ...def,
+          ...effectivePrimaryTemplate(def,def),
           id: `default-${c}`,
           eventId: null,
           isDefault: true,
@@ -1465,20 +1467,12 @@ export class CommunicationsService {
     }
 
     return existing.map((t) => {
-      let vars: string[] = [];
-      if (typeof t.variables === 'string') {
-        try {
-          vars = JSON.parse(t.variables);
-        } catch {
-          vars = [];
-        }
-      } else if (Array.isArray(t.variables)) {
-        vars = t.variables as string[];
-      }
+      const metadata=templateMetadata(t.variables);const vars=metadata.variables;
 
       return {
-        ...t,
-        variables: vars,
+        ...effectivePrimaryTemplate(t,this.DEFAULT_TEMPLATES.find(d=>d.code===t.code)),
+        variables: [...new Set([...vars,'registrationStateMessage','paymentStateMessage','eventTime','arrivalInstructions','keynoteSummary'])],
+        priority:messagePriority(t.code,metadata.priority),
       };
     });
   }
@@ -1496,6 +1490,7 @@ export class CommunicationsService {
     const updated = await prisma.emailTemplate.update({
       where: { id: templateId },
       data: {
+        variables:input.priority?JSON.stringify({...templateMetadata(template.variables),priority:input.priority}):undefined,
         name: input.name || template.name,
         subject: input.subject,
         bodyHtml: input.bodyHtml,
@@ -1525,7 +1520,6 @@ export class CommunicationsService {
       qrToken = ticketInfo.qrToken;
     }
 
-    const publicUrlBase = process.env.PUBLIC_APP_URL || 'https://eventgrid.app';
     const qrUrl = QrService.payload(qrToken);
 
     const qrBuffer = await QRCode.toBuffer(qrUrl, {
@@ -1537,12 +1531,15 @@ export class CommunicationsService {
 
     const eventId = registration.eventId || registration.event?.id;
     let scheduleHtml = '';
+    let keynoteSummary='Los detalles de la conferencia magistral se anunciarán próximamente.';
     if (eventId) {
       try {
         const scheduleItems = await prisma.scheduleItem.findMany({
           where: { eventId, status: { not: 'CANCELLED' }, OR: [{ visibility: 'PUBLISHED' }, { visibility: 'SCHEDULED', publishAt: { lte: new Date() } }] },
           orderBy: [{ day: 'asc' }, { startTime: 'asc' }, { order: 'asc' }],
         });
+        const keynote=scheduleItems.find(item=>/keynote|magistral/i.test(item.category||''));
+        if(keynote)keynoteSummary=[keynote.title,keynote.speakerName,keynote.startTime,keynote.room].filter(Boolean).join(' · ');
         if (scheduleItems.length > 0) {
           scheduleHtml = `
             <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-family: Arial, sans-serif; font-size: 14px;">
@@ -1581,15 +1578,19 @@ export class CommunicationsService {
       ? `<p style="margin: 3px 0 0 0; font-size: 12px; color: #64748b;">${institution}</p>`
       : '';
     const rawLogoUrl = registration.event?.settings?.logoUrl || (registration.event as any)?.logoUrl || '';
-    const logoUrl = rawLogoUrl ? (rawLogoUrl.startsWith('http') ? rawLogoUrl : `${publicUrlBase}${rawLogoUrl.startsWith('/') ? '' : '/'}${rawLogoUrl}`) : '';
+    const logoUrl = rawLogoUrl ? (rawLogoUrl.startsWith('http') ? rawLogoUrl : `${rawLogoUrl.startsWith('/') ? '' : '/'}${rawLogoUrl}`) : '';
     const eventLogoHtml = logoUrl
       ? `<td valign="top" align="right" style="width: 60px; padding-left: 12px;"><img src="${logoUrl}" alt="${registration.event?.name || 'Evento'}" width="52" height="52" style="display: block; width: 52px; height: 52px; object-fit: contain; border-radius: 10px; border: 1px solid #261a1a; padding: 2px; background-color: #1a1212;" /></td>`
-      : `<td valign="top" align="right" style="width: 60px; padding-left: 12px;"><div style="background-color: #1a1212; border: 1px solid #2b1b1b; border-radius: 10px; padding: 6px 8px; text-align: center; display: inline-block;"><span style="font-family: Arial, sans-serif; font-weight: 900; font-size: 15px; color: #ED2917; letter-spacing: -0.5px;">BC</span><span style="font-family: monospace; font-weight: 800; font-size: 13px; color: #f5f1ec;">26</span></div></td>`;
+      : `<td valign="top" align="right" style="width: 60px; padding-left: 12px;"><div style="background-color: #1a1212; border: 1px solid #2b1b1b; border-radius: 10px; padding: 6px 8px; text-align: center; display: inline-block;"><span style="font-family: Arial, sans-serif; font-weight: 900; font-size: 15px; color: #ED2917; letter-spacing: -0.5px;">EventGrid</span></div></td>`;
 
-    const scheduleUrl = `${publicUrlBase}/schedule`;
+    const scheduleUrl = '';
     const primaryColor = registration.event?.settings?.primaryColor || '#ED2917';
 
     const variables: Record<string, string> = {
+      ...registrationMessages(registration),
+      eventTime:registration.event?.startDate?new Date(registration.event.startDate).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit',timeZone:'America/Santo_Domingo'}):'Por anunciar',
+      arrivalInstructions:emailText(registration.event?.settings?.arrivalInstructions||'Consulta las indicaciones de la organización.'),
+      keynoteSummary:emailText(keynoteSummary),
       primaryColor,
       eventColor: primaryColor,
       logoUrl,
@@ -1604,7 +1605,7 @@ export class CommunicationsService {
       activityRoom: (overrides as any)?.activityRoom || '',
       keynoteDescriptionHtml: (overrides as any)?.keynoteDescriptionHtml || '',
       participantName: personName(registration.participant?.fullName || 'Participante'),
-      participantFirstName: registration.participant?.firstName || 'Participante',
+      participantFirstName: personName(registration.participant?.firstName || 'Participante'),
       participantEmail: registration.participant?.email || '',
       eventName: registration.event?.name || 'Evento Oficial',
       eventYear: String(registration.event?.year || new Date().getFullYear()),
@@ -1623,7 +1624,7 @@ export class CommunicationsService {
       balanceDue: Number(registration.balanceDue || 0).toFixed(2),
       externalReference: emailText(registration.externalReference || 'No disponible'),
       paymentDeadline: registration.event?.settings?.paymentDeadlineAt ? new Date(registration.event.settings.paymentDeadlineAt).toLocaleString('es-DO', { timeZone: 'America/Santo_Domingo' }) : 'No configurada',
-      paymentInstructions: emailText(registration.event?.settings?.paymentInstructions || 'Consulta los canales oficiales de pago de la universidad.'),
+      paymentInstructions: emailText(registration.event?.settings?.paymentInstructions || 'Consulta los canales de pago autorizados por la organización.'),
       paymentSupportContact: emailText(registration.event?.settings?.paymentSupportContact || 'Administración del evento'),
       refundAmount: (registration.refunds || []).filter((r: any) => r.status === 'REFUNDED').reduce((n: number, r: any) => n + Number(r.refundedAmount), 0).toFixed(2),
       refundReference: (registration.refunds || []).filter((r: any) => r.status === 'REFUNDED').map((r: any) => emailText(r.reference)).filter(Boolean).join(', ') || 'No disponible',
@@ -1674,11 +1675,12 @@ export class CommunicationsService {
     // Sustitución de variables
     for (const [key, val] of Object.entries(variables)) {
       const regex = new RegExp(`{{${key}}}`, 'g');
-      subject = subject.replace(regex, val);
-      html = html.replace(regex, val);
-      text = text.replace(regex, val);
+      subject = subject.replace(regex, ()=>val);
+      html = html.replace(regex,()=>['participantName','participantFirstName','participantEmail','eventName','eventVenue','registrationNumber','ticketType','evento','lugar','numero_registro','tipo_entrada'].includes(key)?emailText(val):val);
+      text = text.replace(regex, ()=>val);
     }
 
+    if(/{{\s*[^{}]+\s*}}/.test(subject+' '+html+' '+text))throw new BadRequestError('La plantilla contiene variables sin sustituir. Revisa la vista previa antes de enviar.');
     html = responsiveEmailHtml(html);
     return {
       subject,
@@ -1841,7 +1843,7 @@ export class CommunicationsService {
 
     return {
       subject: rendered.subject,
-      html: rendered.html,
+      html:emailLogoPreview(rendered.html,registration.event?.settings?.logoUrl||''),
       text: rendered.text,
       fromName: config.fromName || 'EventGrid Notificaciones',
       fromEmail: config.fromEmail || 'notificaciones@eventgrid.com',
@@ -2039,6 +2041,7 @@ export class CommunicationsService {
       });
 
       const sendResult = await transporter.sendMail({
+        ...priorityHeaders(messagePriority(template.code,template.priority)),
         from: `"${config.fromName}" <${config.fromEmail}>`,
         to: registration.participant.email,
         replyTo: config.replyToEmail || undefined,
@@ -2308,6 +2311,7 @@ export class CommunicationsService {
     const approvedBodyText = template.bodyText || null;
     const templateSnapshot = JSON.stringify({
       code: template.code,
+      priority:messagePriority(template.code,template.priority),
       name: template.name,
       subject: template.subject,
       bodyHtml: template.bodyHtml,

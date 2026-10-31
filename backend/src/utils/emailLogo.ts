@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+export function emailLogoPreview(html:string,logoUrl:string,root?:string){const prepared=emailLogo(html,logoUrl,root),logo=prepared.attachments[0];return logo?prepared.html.replaceAll('cid:event-logo',`data:${logo.contentType};base64,${logo.content.toString('base64')}`):prepared.html;}
 export function emailLogo(html:string,logoUrl:string,root=path.resolve(process.cwd(),'uploads/logos')) {
  const removeLogo=()=>html.replace(/<img\b[^>]*\bsrc=(["'])([^"']+)\1[^>]*>/gi,(tag,_quote,src)=>src===logoUrl||src.replace(/&amp;/g,'&')===logoUrl?'':tag);
  let pathname='';try{pathname=decodeURIComponent(new URL(logoUrl,'http://local.invalid').pathname);}catch{return {html,attachments:[]};}

@@ -37,7 +37,7 @@ export class UsersController {
     try {
       const parsed = CreateUserSchema.parse({ ...req.body, assignedEventId: req.eventId });
       const actorUserId = req.user?.id;
-      const result = await UsersService.createUser(parsed, actorUserId);
+      const result = await UsersService.createUser({...parsed,username:parsed.inviteNow?undefined:parsed.username}, actorUserId);
       const invitation=parsed.inviteNow?await InvitationsService.send([result.user.id],parsed.invitationRequestKey||crypto.randomUUID(),actorUserId!):null;
 
       return res.status(201).json({

@@ -1,5 +1,5 @@
 import {usernameSchema} from './username.js';
-import {serializeCapabilities} from './operator-policy.js';
+import {serializeCapabilities,OPERATOR_CAPABILITIES,OperatorCapability} from './operator-policy.js';
 import crypto from 'crypto';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
 import { InvitationsService } from './invitations.service.js';
@@ -60,7 +60,7 @@ personnelRoutes.get('/:id/access', requireAdmin, async (req, res, next) => {
 });
 personnelRoutes.post('/:id/access', requireAdmin, async (req, res, next) => {
   try {
-    const data = z.object({ username:usernameSchema.optional(),scannerOnly:z.boolean().default(false),inviteNow:z.boolean().default(false),invitationRequestKey:z.string().uuid().optional(),role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER']).default('OPERATOR'), linkExisting: z.boolean().default(false) }).parse(req.body);
+    const data = z.object({ username:usernameSchema.optional(),scannerOnly:z.boolean().default(false),operationalPermissions:z.array(z.string().refine(value=>Object.hasOwn(OPERATOR_CAPABILITIES,value))).max(20).optional(),inviteNow:z.boolean().default(false),invitationRequestKey:z.string().uuid().optional(),role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER']).default('OPERATOR'), linkExisting: z.boolean().default(false) }).parse(req.body);
     if(data.scannerOnly&&data.role!=='OPERATOR')throw new BadRequestError('Escáner QR requiere personal operativo.');
     const account = await prisma.$transaction(async tx => {
       const actor=await tx.user.findUnique({where:{id:req.user!.id}});
@@ -77,7 +77,7 @@ personnelRoutes.post('/:id/access', requireAdmin, async (req, res, next) => {
         if (!data.linkExisting) throw new BadRequestError('Confirme la vinculación con la cuenta existente.');
         if (await tx.staffMember.findFirst({ where: { userId: user.id, eventId: req.eventId! } })) throw new BadRequestError('La cuenta ya está vinculada a otro colaborador.');
       } else {
-        user = await tx.user.create({ data: { fullName: staff.firstName + ' ' + staff.lastName, email,username:data.username,scannerOnly:data.scannerOnly, role: data.role, operationalPermissions:serializeCapabilities(data.role,data.scannerOnly), assignedEventId: req.eventId!, isActive: false, accountStatus: 'PENDING', passwordHash: 'pending-activation:' + crypto.randomUUID() } });
+        user = await tx.user.create({ data: { fullName: staff.firstName + ' ' + staff.lastName, email,username:data.inviteNow?undefined:data.username,scannerOnly:data.scannerOnly, role: data.role, operationalPermissions:serializeCapabilities(data.role,data.scannerOnly,'RECEPTION',data.operationalPermissions as OperatorCapability[]|undefined), assignedEventId: req.eventId!, isActive: false, accountStatus: 'PENDING', passwordHash: 'pending-activation:' + crypto.randomUUID() } });
       }
       await tx.staffMember.update({ where: { id: staff.id }, data: { userId: user.id } });
       await tx.auditLog.create({ data: { userId: req.user!.id, action: 'USER_UPDATE', entity: 'USER', entityId: user.id, changes: JSON.stringify({ operation: 'STAFF_ACCESS_LINK', staffId: staff.id,username:user.username,role:user.role,scannerOnly:user.scannerOnly,operationalPermissions:user.operationalPermissions }) } });

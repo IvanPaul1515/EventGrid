@@ -1,5 +1,5 @@
 export const invitationLabel = (status?: string) => ({
-  PENDING: 'Invitación pendiente', PROCESSING: 'En procesamiento', ACCEPTED_BY_PROVIDER: 'Enviada al proveedor',
+  PENDING: 'Invitación pendiente', PROCESSING: 'En procesamiento', ACCEPTED_BY_PROVIDER: 'Aceptada por el servicio de envío',
   DELIVERED: 'Entregada al servidor receptor', DEFERRED: 'Entrega aplazada', REJECTED: 'Rechazada',
   FAILED: 'Fallida', UNKNOWN_DELIVERY_STATUS: 'Resultado de envío sin confirmar', EXPIRED: 'Enlace vencido',
   ACCEPTED: 'Cuenta activada', ACTIVATED: 'Cuenta activada', INVALID_USER: 'Cuenta o correo no válido',
